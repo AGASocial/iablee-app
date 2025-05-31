@@ -19,7 +19,6 @@ export default function LocaleLayout({
   params: { locale: string }
 }) {
   return (
-    <html lang={locale} suppressHydrationWarning>
       <body className={inter.className}>
         <ThemeProvider
           attribute="class"
@@ -31,6 +30,5 @@ export default function LocaleLayout({
           <Toaster richColors closeButton position="top-right" />
         </ThemeProvider>
       </body>
-    </html>
   );
 } 
