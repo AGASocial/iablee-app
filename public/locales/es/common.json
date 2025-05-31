@@ -1,0 +1,11 @@
+{
+  "welcome": "Bienvenido de nuevo",
+  "signIn": "Iniciar sesión",
+  "dashboard": "Tablero",
+  "totalAssets": "Total de Activos Digitales",
+  "totalBeneficiaries": "Total de Beneficiarios",
+  "recentAssets": "Activos Digitales Recientes",
+  "recentBeneficiaries": "Beneficiarios Recientes",
+  "noAssets": "Aún no se han agregado activos digitales. Agrega tu primer activo digital para comenzar.",
+  "noBeneficiaries": "Aún no se han agregado beneficiarios. Agrega tu primer beneficiario para comenzar."
+} 

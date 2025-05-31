@@ -18,6 +18,7 @@ import {
 import { supabase } from "@/lib/supabase"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import LanguageSwitcher from "@/components/LanguageSwitcher"
 
 interface DashboardLayoutProps {
   children: React.ReactNode
@@ -154,11 +155,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               >
                 <path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3" />
               </svg>
-              <span className="font-bold">iAble</span>
+              <span className="font-bold">iablee</span>
             </Link>
           </div>
           <div className="flex flex-1 items-center justify-between space-x-2 md:justify-end">
             <nav className="flex items-center space-x-2">
+              <LanguageSwitcher />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="relative h-8 w-8 rounded-full">

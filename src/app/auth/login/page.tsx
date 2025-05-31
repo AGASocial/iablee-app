@@ -18,14 +18,14 @@ export default function LoginPage() {
           >
             <path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3" />
           </svg>
-          iAble
+          iablee
         </div>
         <div className="relative z-20 mt-auto">
           <blockquote className="space-y-2">
             <p className="text-lg">
               &ldquo;Secure your digital legacy and ensure your loved ones have access to what matters most.&rdquo;
             </p>
-            <footer className="text-sm">iAble Team</footer>
+            <footer className="text-sm">iablee Team</footer>
           </blockquote>
         </div>
       </div>

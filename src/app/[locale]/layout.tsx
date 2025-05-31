@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import "./globals.css";
+import "../globals.css";
 import { Toaster } from "sonner";
 import { ThemeProvider } from "@/components/theme-provider";
-// Note: For App Router, useTranslation is used in each component/page, not appWithTranslation here.
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -12,13 +11,15 @@ export const metadata: Metadata = {
   description: "Secure and manage your digital legacy with iablee",
 };
 
-export default function RootLayout({
+export default function LocaleLayout({
   children,
+  params: { locale },
 }: {
-  children: React.ReactNode
+  children: React.ReactNode,
+  params: { locale: string }
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang={locale} suppressHydrationWarning>
       <body className={inter.className}>
         <ThemeProvider
           attribute="class"
@@ -32,4 +33,4 @@ export default function RootLayout({
       </body>
     </html>
   );
-}
+} 

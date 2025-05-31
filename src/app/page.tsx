@@ -8,7 +8,7 @@ export default function Home() {
         <div className="container flex h-14 items-center">
           <div className="mr-4 flex">
             <Link href="/" className="mr-6 flex items-center space-x-2">
-              <span className="font-bold">iAble</span>
+              <span className="font-bold">iablee</span>
             </Link>
           </div>
           <div className="flex flex-1 items-center justify-between space-x-2 md:justify-end">
@@ -30,7 +30,7 @@ export default function Home() {
               Secure Your Digital Legacy
             </h1>
             <p className="max-w-[42rem] leading-normal text-muted-foreground sm:text-xl sm:leading-8">
-              iAble helps you manage and securely transfer your digital assets to your loved ones.
+              iablee helps you manage and securely transfer your digital assets to your loved ones.
               Take control of your digital inheritance today.
             </p>
             <div className="space-x-4">
