@@ -7,5 +7,9 @@
   "recentBeneficiaries": "Beneficiarios Recientes",
   "noBeneficiaries": "Aún no se han agregado beneficiarios. Agrega tu primer beneficiario para comenzar.",
   "digitalAssets": "Activos Digitales",
-  "beneficiaries": "Beneficiarios"
+  "beneficiaries": "Beneficiarios",
+  "profile": "Perfil",
+  "profileSettings": "Configuración del Perfil",
+  "language": "Idioma",
+  "signOut": "Cerrar Sesión"
 } 
