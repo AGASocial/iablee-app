@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { Database } from "@/lib/supabase"
 import { PlusCircle, User, Layers, BadgeCheck, Clock, XCircle } from "lucide-react"
+import { useTranslation } from 'next-i18next'
 
 // Helper for status badge
 function StatusBadge({ status }: { status: string }) {
@@ -23,6 +24,7 @@ type DigitalAsset = Database["public"]["Tables"]["digital_assets"]["Row"]
 type Beneficiary = Database["public"]["Tables"]["beneficiaries"]["Row"]
 
 export default function DashboardPage() {
+  const { t } = useTranslation('common')
   const [assets, setAssets] = React.useState<DigitalAsset[]>([])
   const [beneficiaries, setBeneficiaries] = React.useState<Beneficiary[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
@@ -64,18 +66,18 @@ export default function DashboardPage() {
   return (
     <div className="flex-1 space-y-8 p-8 pt-6">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
+        <h2 className="text-3xl font-bold tracking-tight">{t('dashboard')}</h2>
         
       </div>
       <div className="grid gap-6 grid-cols-2 lg:grid-cols-2">
         <Card className="shadow-lg mb-6">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle>Your Digital Assets</CardTitle>
-              <CardDescription>Overview of your digital assets</CardDescription>
+              <CardTitle>{t('yourDigitalAssets')}</CardTitle>
+              <CardDescription>{t('overviewDigitalAssets')}</CardDescription>
             </div>
             <Button variant="outline" size="sm" className="flex items-center gap-2">
-              <PlusCircle className="h-4 w-4" /> Add Asset
+              <PlusCircle className="h-4 w-4" /> {t('addAsset')}
             </Button>
           </CardHeader>
           <CardContent>
@@ -87,7 +89,7 @@ export default function DashboardPage() {
               <div className="flex flex-col items-center justify-center py-8">
                 <XCircle className="h-10 w-10 text-gray-400 mb-2" />
                 <p className="text-center text-sm text-muted-foreground">
-                  No digital assets added yet. Add your first digital asset to get started.
+                  {t('noAssets')}
                 </p>
               </div>
             ) : (
@@ -128,7 +130,7 @@ export default function DashboardPage() {
         <Card className="shadow-lg mb-6">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle>Recent Beneficiaries</CardTitle>
+              <CardTitle>{t('recentBeneficiaries')}</CardTitle>
               <CardDescription>Your most recently added beneficiaries</CardDescription>
             </div>
             <Button variant="outline" size="sm" className="flex items-center gap-2">

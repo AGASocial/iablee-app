@@ -1,1 +1,3 @@
-export { default } from "../page"; 
+export default function LocaleHome() {
+  return <div>Welcome! Please select a section.</div>;
+} 

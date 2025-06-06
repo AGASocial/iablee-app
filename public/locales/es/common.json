@@ -7,5 +7,8 @@
   "recentAssets": "Activos Digitales Recientes",
   "recentBeneficiaries": "Beneficiarios Recientes",
   "noAssets": "Aún no se han agregado activos digitales. Agrega tu primer activo digital para comenzar.",
-  "noBeneficiaries": "Aún no se han agregado beneficiarios. Agrega tu primer beneficiario para comenzar."
+  "noBeneficiaries": "Aún no se han agregado beneficiarios. Agrega tu primer beneficiario para comenzar.",
+  "yourDigitalAssets": "Tus Activos Digitales",
+  "overviewDigitalAssets": "Resumen de tus activos digitales",
+  "addAsset": "Agregar Activo"
 } 

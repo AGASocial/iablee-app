@@ -1,8 +1,17 @@
+import createMiddleware from 'next-intl/middleware';
+import {routing} from './i18n/routing';
 import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
+const intlMiddleware = createMiddleware(routing);
+
 export async function middleware(req: NextRequest) {
+  // First, run next-intl middleware for locale negotiation
+  const intlResponse = await intlMiddleware(req);
+  if (intlResponse) return intlResponse;
+
+  // Then, run your Supabase session logic
   const res = NextResponse.next()
   const supabase = createMiddlewareClient({ req, res })
 
