@@ -11,5 +11,15 @@
   "profile": "Profile",
   "profileSettings": "Profile Settings",
   "language": "Language",
-  "signOut": "Sign Out"
+  "signOut": "Sign Out",
+  "totalAssets": "Total Assets",
+  "protectedAssets": "Protected Assets",
+  "beneficiariesStat": "Beneficiaries",
+  "recentActivity": "Recent Activity",
+  "digitalAssetsRegistered": "Digital assets registered",
+  "assetsWithProtection": "Assets with protection enabled",
+  "registeredBeneficiaries": "Registered beneficiaries",
+  "changesLast30Days": "Changes in last 30 days",
+  "manageBeneficiaries": "Manage your beneficiaries",
+  "addBeneficiary": "Add Beneficiary"
 } 

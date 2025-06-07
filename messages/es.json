@@ -1,5 +1,5 @@
 {
-  "dashboard": "Tablero",
+  "dashboard": "Vista general",
   "yourDigitalAssets": "Tus Activos Digitales",
   "overviewDigitalAssets": "Resumen de tus activos digitales",
   "addAsset": "Agregar Activo",
@@ -11,5 +11,15 @@
   "profile": "Perfil",
   "profileSettings": "Configuración del Perfil",
   "language": "Idioma",
-  "signOut": "Cerrar Sesión"
+  "signOut": "Cerrar Sesión",
+  "totalAssets": "Activos Totales",
+  "protectedAssets": "Activos Protegidos",
+  "beneficiariesStat": "Beneficiarios",
+  "recentActivity": "Actividad Reciente",
+  "digitalAssetsRegistered": "Activos digitales registrados",
+  "assetsWithProtection": "Activos con protección habilitada",
+  "registeredBeneficiaries": "Beneficiarios registrados",
+  "changesLast30Days": "Cambios en los últimos 30 días",
+  "manageBeneficiaries": "Gestiona tus beneficiarios",
+  "addBeneficiary": "Agregar Beneficiario"
 } 
