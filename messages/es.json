@@ -4,6 +4,7 @@
   "overviewDigitalAssets": "Resumen de tus activos digitales",
   "addAsset": "Agregar Activo",
   "noAssets": "Aún no se han agregado activos digitales. Agrega tu primer activo digital para comenzar.",
+  "noAssetsFound": "No hay activos digitales. Agrega tu primer activo digital para comenzar.",
   "recentBeneficiaries": "Beneficiarios Recientes",
   "noBeneficiaries": "Aún no se han agregado beneficiarios. Agrega tu primer beneficiario para comenzar.",
   "digitalAssets": "Activos Digitales",
@@ -49,5 +50,6 @@
   "companyShares": "Acciones de la compañía",
   "cryptocurrency": "Criptomoneda",
   "safetyBox": "Caja de seguridad",
-  "other": "Otro"
+  "other": "Otro",
+  "loading": "Cargando..."
 } 

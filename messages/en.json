@@ -4,6 +4,7 @@
   "overviewDigitalAssets": "Overview of your digital assets",
   "addAsset": "Add Asset",
   "noAssets": "No digital assets added yet. Add your first digital asset to get started.",
+  "noAssetsFound": "There are no assets. Add Assets",
   "recentBeneficiaries": "Recent Beneficiaries",
   "noBeneficiaries": "No beneficiaries added yet. Add your first beneficiary to get started.",
   "digitalAssets": "Digital Assets",
@@ -49,5 +50,6 @@
   "companyShares": "Company Shares",
   "cryptocurrency": "Cryptocurrency",
   "safetyBox": "Safety box",
-  "other": "Other"
+  "other": "Other",
+  "loading": "Loading..."
 } 
