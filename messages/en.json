@@ -51,5 +51,12 @@
   "cryptocurrency": "Cryptocurrency",
   "safetyBox": "Safety box",
   "other": "Other",
-  "loading": "Loading..."
+  "loading": "Loading...",
+  "website": "Website",
+  "validUntil": "Valid Until",
+  "description": "Description",
+  "files": "Files",
+  "save": "Save",
+  "saving": "Saving...",
+  "cancel": "Cancel"
 } 

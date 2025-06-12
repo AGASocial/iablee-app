@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { X, Banknote, Shield, FileText, Home, BarChart, Award, LineChart, PieChart, Bitcoin, Vault, MoreHorizontal } from "lucide-react";
+import AddAssetForm from './AddAssetForm';
 
 const assetTypes = [
   { key: "bank", label: "bankAccount", icon: Banknote },
@@ -21,7 +22,7 @@ const assetTypes = [
   { key: "other", label: "other", icon: MoreHorizontal },
 ];
 
-export default function AddAssetModal({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+export default function AddAssetModal({ open, onOpenChange, onAssetAdded }: { open: boolean; onOpenChange: (v: boolean) => void, onAssetAdded?: () => void }) {
   const t = useTranslations();
   const [step, setStep] = useState(1);
   const [selectedType, setSelectedType] = useState<string | null>(null);
@@ -35,6 +36,11 @@ export default function AddAssetModal({ open, onOpenChange }: { open: boolean; o
     setStep(1);
     setSelectedType(null);
     onOpenChange(false);
+  };
+
+  const handleSuccess = () => {
+    handleClose();
+    if (onAssetAdded) onAssetAdded();
   };
 
   return (
@@ -58,17 +64,18 @@ export default function AddAssetModal({ open, onOpenChange }: { open: boolean; o
                   onClick={() => handleTypeSelect(type.key)}
                 >
                   <Icon className="w-10 h-10 mb-2 text-blue-500" />
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-900">{t(type.label)}</span>
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{t(type.label)}</span>
                 </button>
               );
             })}
           </div>
         )}
-        {step === 2 && (
-          <div className="flex flex-col items-center justify-center min-h-[200px]">
-            <p className="mb-4 text-lg font-semibold">{t("selectedType")}: {t(assetTypes.find(a => a.key === selectedType)?.label || "")}</p>
-            <Button variant="outline" onClick={() => setStep(1)}>{t("back")}</Button>
-          </div>
+        {step === 2 && selectedType && (
+          <AddAssetForm
+            assetType={selectedType}
+            onSuccess={handleSuccess}
+            onCancel={handleClose}
+          />
         )}
       </DialogContent>
     </Dialog>

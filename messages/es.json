@@ -51,5 +51,12 @@
   "cryptocurrency": "Criptomoneda",
   "safetyBox": "Caja de seguridad",
   "other": "Otro",
-  "loading": "Cargando..."
+  "loading": "Cargando...",
+  "website": "Sitio web",
+  "validUntil": "Válido hasta",
+  "description": "Descripción",
+  "files": "Archivos",
+  "save": "Guardar",
+  "saving": "Guardando...",
+  "cancel": "Cancelar"
 } 
