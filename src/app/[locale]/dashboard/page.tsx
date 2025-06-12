@@ -17,10 +17,17 @@ interface Asset {
 
 interface Beneficiary {
   id: string;
-  beneficiary_name: string;
-  relationship: string;
-  status: string;
-  created_at: string;
+  full_name: string;
+  email: string | null;
+  phone_number: string | null;
+  relationship: string | null;
+  notes: string | null;
+  notified: boolean | null;
+  status: string | null;
+  last_notified_at: string | null;
+  email_verified: boolean | null;
+  created_at: string | null;
+  updated_at: string | null;
   user_id: string;
 }
 
@@ -49,6 +56,16 @@ export default function DashboardPage() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [form, setForm] = useState({
+    full_name: '',
+    email: '',
+    phone_number: '',
+    relationship: '',
+    notes: '',
+    notified: false,
+  });
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     async function fetchDashboardData() {
@@ -91,6 +108,43 @@ export default function DashboardPage() {
 
     fetchDashboardData();
   }, []);
+
+  // Add beneficiary handler
+  async function handleAddBeneficiary() {
+    setSubmitting(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('No user');
+      console.log('User:', user);
+      const { error } = await supabase.from('beneficiaries').insert({
+        user_id: user.id,
+        full_name: form.full_name,
+        email: form.email,
+        phone_number: form.phone_number,
+        relationship: form.relationship,
+        notes: form.notes,
+        notified: form.notified,
+        status: 'active',
+      });
+      if (error) throw error;
+      setShowAddModal(false);
+      setForm({ full_name: '', email: '', phone_number: '', relationship: '', notes: '', notified: false });
+      setLoading(true);
+      // Refetch data
+      const { data: beneficiariesData } = await supabase
+        .from('beneficiaries')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(5);
+      setBeneficiaries(beneficiariesData || []);
+    } catch (e) {
+      alert('Error adding beneficiary');
+    } finally {
+      setSubmitting(false);
+      setLoading(false);
+    }
+  }
 
   return (
     <div className="flex-1 space-y-8 p-8 pt-6">
@@ -208,7 +262,7 @@ export default function DashboardPage() {
               <CardTitle>{t('recentBeneficiaries')}</CardTitle>
               <CardDescription>{t('manageBeneficiaries')}</CardDescription>
             </div>
-            <Button variant="outline" size="sm" className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="flex items-center gap-2" onClick={() => setShowAddModal(true)}>
               <PlusCircle className="h-4 w-4" /> {t('addBeneficiary')}
             </Button>
           </CardHeader>
@@ -227,12 +281,16 @@ export default function DashboardPage() {
             ) : (
               <div className="space-y-4">
                 {beneficiaries.map((beneficiary) => (
-                  <div key={beneficiary.id} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex items-center space-x-4">
-                      <div>
-                        <p className="font-medium">{beneficiary.beneficiary_name}</p>
-                        <p className="text-sm text-muted-foreground">{beneficiary.relationship}</p>
-                      </div>
+                  <div key={beneficiary.id} className="flex flex-col md:flex-row md:items-center md:justify-between p-4 border rounded-lg">
+                    <div className="flex flex-col space-y-1">
+                      <span className="font-medium">{beneficiary.full_name}</span>
+                      <span className="text-sm text-muted-foreground">{beneficiary.email}</span>
+                      <span className="text-sm text-muted-foreground">{beneficiary.phone_number}</span>
+                      <span className="text-sm text-muted-foreground">{beneficiary.relationship}</span>
+                      <span className="text-sm text-muted-foreground">{beneficiary.notes}</span>
+                      <span className="text-xs">{beneficiary.notified ? t('notified') : t('notNotified')}</span>
+                      <span className="text-xs">{beneficiary.email_verified ? t('emailVerified') : t('emailNotVerified')}</span>
+                      <span className="text-xs">{beneficiary.last_notified_at ? `${t('lastNotifiedAt')}: ${beneficiary.last_notified_at}` : ''}</span>
                     </div>
                     <StatusBadge status={beneficiary.status || 'Active'} />
                   </div>
@@ -242,6 +300,31 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white dark:bg-gray-900 rounded-lg shadow-lg p-8 w-full max-w-md">
+            <h3 className="text-lg font-bold mb-4">{t('addBeneficiary')}</h3>
+            <div className="space-y-4">
+              <input className="w-full p-2 border rounded" placeholder={t('name')} value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} />
+              <input className="w-full p-2 border rounded" placeholder={t('email')} value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+              <input className="w-full p-2 border rounded" placeholder={t('phoneNumber')} value={form.phone_number} onChange={e => setForm(f => ({ ...f, phone_number: e.target.value }))} />
+              <input className="w-full p-2 border rounded" placeholder={t('relationship')} value={form.relationship} onChange={e => setForm(f => ({ ...f, relationship: e.target.value }))} />
+              <textarea className="w-full p-2 border rounded" placeholder={t('notes')} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={form.notified} onChange={e => setForm(f => ({ ...f, notified: e.target.checked }))} />
+                {t('notifyNow')}
+              </label>
+            </div>
+            <div className="flex justify-end gap-2 mt-6">
+              <Button variant="outline" onClick={() => setShowAddModal(false)}>{t('cancel')}</Button>
+              <Button onClick={handleAddBeneficiary} disabled={submitting}>
+                {submitting ? t('saving') : t('save')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 

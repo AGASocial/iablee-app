@@ -71,29 +71,47 @@ export type Database = {
         Row: {
           id: string
           user_id: string
-          beneficiary_email: string
-          beneficiary_name: string
-          relationship: string
-          created_at: string
-          updated_at: string
+          full_name: string
+          email: string | null
+          relationship: string | null
+          phone_number: string | null
+          notes: string | null
+          notified: boolean | null
+          status: string | null
+          last_notified_at: string | null
+          email_verified: boolean | null
+          created_at: string | null
+          updated_at: string | null
         }
         Insert: {
           id?: string
           user_id: string
-          beneficiary_email: string
-          beneficiary_name: string
-          relationship: string
-          created_at?: string
-          updated_at?: string
+          full_name: string
+          email?: string | null
+          relationship?: string | null
+          phone_number?: string | null
+          notes?: string | null
+          notified?: boolean | null
+          status?: string | null
+          last_notified_at?: string | null
+          email_verified?: boolean | null
+          created_at?: string | null
+          updated_at?: string | null
         }
         Update: {
           id?: string
           user_id?: string
-          beneficiary_email?: string
-          beneficiary_name?: string
-          relationship?: string
-          created_at?: string
-          updated_at?: string
+          full_name?: string
+          email?: string | null
+          relationship?: string | null
+          phone_number?: string | null
+          notes?: string | null
+          notified?: boolean | null
+          status?: string | null
+          last_notified_at?: string | null
+          email_verified?: boolean | null
+          created_at?: string | null
+          updated_at?: string | null
         }
       }
     }

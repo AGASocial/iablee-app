@@ -58,5 +58,15 @@
   "files": "Archivos",
   "save": "Guardar",
   "saving": "Guardando...",
-  "cancel": "Cancelar"
-} 
+  "cancel": "Cancelar",
+  "notNotified": "No notificado",
+  "emailNotVerified": "Correo no verificado",
+  "name": "Nombre",
+  "email": "Correo electrónico",
+  "phoneNumber": "Teléfono",
+  "relationship": "Relación",
+  "notes": "Notas",
+  "notifyNow": "Notificar ahora",
+  "beneficiariesTitle": "Beneficiarios",
+  "deleteConfirm": "¿Estás seguro de que deseas eliminar este beneficiario?"
+}

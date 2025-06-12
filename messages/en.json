@@ -58,5 +58,15 @@
   "files": "Files",
   "save": "Save",
   "saving": "Saving...",
-  "cancel": "Cancel"
+  "cancel": "Cancel",
+  "notNotified": "Not notified",
+  "emailNotVerified": "Email not verified",
+  "name": "Name",
+  "email": "Email",
+  "phoneNumber": "Phone Number",
+  "relationship": "Relationship",
+  "notes": "Notes",
+  "notifyNow": "Notify now",
+  "beneficiariesTitle": "Beneficiaries",
+  "deleteConfirm": "Are you sure you want to delete this beneficiary?"
 } 

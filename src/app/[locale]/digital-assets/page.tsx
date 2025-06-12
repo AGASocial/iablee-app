@@ -21,10 +21,13 @@ export default function DigitalAssetsPage() {
         setLoading(false);
         return;
       }
+      console.log('user', user.id);
       const { data, error } = await supabase
         .from('digital_assets')
         .select('id, asset_name, asset_type, status, beneficiary:beneficiary_id(full_name)')
         .eq('user_id', user.id);
+      console.log('data', data);
+      console.log('error', error);
       if (error) {
         setAssets([]);
       } else {
