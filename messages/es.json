@@ -63,10 +63,13 @@
   "emailNotVerified": "Correo no verificado",
   "name": "Nombre",
   "email": "Correo electrónico",
+  "password": "Contraseña",
   "phoneNumber": "Teléfono",
   "relationship": "Relación",
   "notes": "Notas",
   "notifyNow": "Notificar ahora",
   "beneficiariesTitle": "Beneficiarios",
-  "deleteConfirm": "¿Estás seguro de que deseas eliminar este beneficiario?"
+  "deleteConfirmBeneficiary": "¿Estás seguro de que deseas eliminar este beneficiario?",
+  "deleteConfirmDigitalAsset": "¿Estás seguro de que deseas eliminar este activo digital?",
+  "numberOfFiles": "Número de archivos"
 }

@@ -63,10 +63,13 @@
   "emailNotVerified": "Email not verified",
   "name": "Name",
   "email": "Email",
+  "password": "Password",
   "phoneNumber": "Phone Number",
   "relationship": "Relationship",
   "notes": "Notes",
   "notifyNow": "Notify now",
   "beneficiariesTitle": "Beneficiaries",
-  "deleteConfirm": "Are you sure you want to delete this beneficiary?"
+  "deleteConfirmBeneficiary": "Are you sure you want to delete this beneficiary?",
+  "deleteConfirmDigitalAsset": "Are you sure you want to delete this digital asset?",
+  "numberOfFiles": "Number of Files"
 } 

@@ -3,6 +3,7 @@ import { useTranslations } from 'next-intl';
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
+import { Pencil, Trash2 } from "lucide-react";
 
 interface Beneficiary {
     id: string;
@@ -89,7 +90,7 @@ export default function BeneficiariesPage() {
     }
 
     async function handleDeleteBeneficiary(id: string) {
-        if (!confirm(t('deleteConfirm'))) return;
+        if (!confirm(t('deleteConfirmBeneficiary'))) return;
         setSubmitting(true);
         try {
             await supabase.from('beneficiaries').delete().eq('id', id);
@@ -199,9 +200,25 @@ export default function BeneficiariesPage() {
                                         <td className="px-6 py-4 whitespace-nowrap text-gray-100">{b.phone_number}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-gray-100">{b.relationship}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-gray-100">{b.status}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-gray-400">
-                                            <button className="mr-4 hover:underline text-blue-400" onClick={() => handleEditBeneficiary(b)}>{t('edit')}</button>
-                                            <button className="hover:underline text-red-400" onClick={() => handleDeleteBeneficiary(b.id)}>{t('delete')}</button>
+                                        <td className="px-6 py-4 whitespace-nowrap flex gap-2">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="flex items-center gap-1"
+                                                onClick={() => handleEditBeneficiary(b)}
+                                            >
+                                                <Pencil className="w-4 h-4" />
+                                                {t('edit')}
+                                            </Button>
+                                            <Button
+                                                variant="destructive"
+                                                size="sm"
+                                                className="flex items-center gap-1"
+                                                onClick={() => handleDeleteBeneficiary(b.id)}
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                                {t('delete')}
+                                            </Button>
                                         </td>
                                     </tr>
                                 ))

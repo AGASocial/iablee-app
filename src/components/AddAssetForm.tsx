@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase";
 
-export default function AddAssetForm({ assetType, onSuccess, onCancel }: { assetType: string, onSuccess: () => void, onCancel: () => void }) {
+export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: { assetType: string, onSuccess: () => void, onCancel: () => void, asset?: any }) {
   const t = useTranslations();
   const [form, setForm] = useState({
     asset_name: "",
@@ -19,8 +19,25 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel }: { asset
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (asset) {
+      setForm({
+        asset_name: asset.asset_name || "",
+        email: asset.email || "",
+        password: asset.password || "",
+        website: asset.website || "",
+        valid_until: asset.valid_until ? asset.valid_until.split('T')[0] : "",
+        description: asset.description || "",
+        files: [], // Existing files not handled for now
+      });
+    }
+  }, [asset]);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
+    if (name === 'valid_until') {
+      console.log('valid_until input changed:', value);
+    }
     setForm(prev => ({ ...prev, [name]: value }));
   };
 
@@ -35,11 +52,16 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel }: { asset
     e.preventDefault();
     setLoading(true);
     setError(null);
+    console.log('Submitting asset:', {
+      form: form,
+
+      asset: asset,
+
+    });
     try {
-      console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
-      console.log('Supabase Key:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+      
       const { data: { user }, error: userError } = await supabase.auth.getUser();
-      console.log('User:', user, 'User Error:', userError);
+
       if (!user) throw new Error("Not authenticated");
 
       // Upload files if any
@@ -55,19 +77,35 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel }: { asset
         }
       }
 
-      // Insert asset
-      const { error: insertError } = await supabase.from('digital_assets').insert({
-        user_id: user.id,
-        asset_type: assetType,
-        asset_name: form.asset_name,
-        email: form.email,
-        password: form.password, // Consider encrypting in production
-        website: form.website,
-        valid_until: form.valid_until || null,
-        description: form.description,
-        files: fileUrls.length > 0 ? fileUrls : null,
-      });
-      if (insertError) throw insertError;
+      if (asset) {
+        // Update existing asset
+        const { error: updateError } = await supabase.from('digital_assets').update({
+          asset_type: asset.asset_type,
+          asset_name: form.asset_name,
+          email: form.email,
+          password: form.password,
+          website: form.website,
+          valid_until: form.valid_until ? form.valid_until : null,
+          description: form.description,
+          files: fileUrls.length > 0 ? fileUrls : asset.files || null,
+        }).eq('id', asset.id);
+        console.log('updateError', updateError);
+        if (updateError) throw updateError;
+      } else {
+        // Insert new asset
+        const { error: insertError } = await supabase.from('digital_assets').insert({
+          user_id: user.id,
+          asset_type: assetType,
+          asset_name: form.asset_name,
+          email: form.email,
+          password: form.password,
+          website: form.website,
+          valid_until: form.valid_until ? form.valid_until : null,
+          description: form.description,
+          files: fileUrls.length > 0 ? fileUrls : null,
+        });
+        if (insertError) throw insertError;
+      }
       onSuccess();
     } catch (err: any) {
       setError(err.message || "Error adding asset");
