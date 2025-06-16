@@ -71,5 +71,7 @@
   "beneficiariesTitle": "Beneficiaries",
   "deleteConfirmBeneficiary": "Are you sure you want to delete this beneficiary?",
   "deleteConfirmDigitalAsset": "Are you sure you want to delete this digital asset?",
-  "numberOfFiles": "Number of Files"
+  "numberOfFiles": "Number of Files",
+  "assignBeneficiary": "Assign Beneficiary",
+  "selected": "Selected"
 } 

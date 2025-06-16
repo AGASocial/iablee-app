@@ -75,7 +75,7 @@ export default function AddAssetModal({ open, onOpenChange, onAssetAdded, asset 
                   onClick={() => handleTypeSelect(type.key)}
                 >
                   <Icon className="w-10 h-10 mb-2 text-blue-500" />
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{t(type.label)}</span>
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-900">{t(type.label)}</span>
                   {isSelected && <span className="mt-1 text-xs text-blue-600">{t('selectedType')}</span>}
                 </button>
               );

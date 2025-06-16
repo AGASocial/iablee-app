@@ -78,7 +78,7 @@ export default function DashboardPage() {
           .from('digital_assets')
           .select('*')
           .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
+          .order('asset_name', { ascending: true })
           .limit(5);
 
         // Fetch beneficiaries
@@ -86,7 +86,7 @@ export default function DashboardPage() {
           .from('beneficiaries')
           .select('*')
           .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
+          .order('full_name', { ascending: false })
           .limit(5);
 
         // Update stats

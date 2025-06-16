@@ -71,5 +71,7 @@
   "beneficiariesTitle": "Beneficiarios",
   "deleteConfirmBeneficiary": "¿Estás seguro de que deseas eliminar este beneficiario?",
   "deleteConfirmDigitalAsset": "¿Estás seguro de que deseas eliminar este activo digital?",
-  "numberOfFiles": "Número de archivos"
+  "numberOfFiles": "Número de archivos",
+  "assignBeneficiary": "Asignar Beneficiario",
+  "selected": "Seleccionado"
 }

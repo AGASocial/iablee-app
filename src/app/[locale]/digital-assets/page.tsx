@@ -6,6 +6,7 @@ import AddAssetModal from '@/components/AddAssetModal';
 import { useState, useEffect } from 'react';
 import { supabase } from "@/lib/supabase";
 import { Pencil, Trash2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
 
 export default function DigitalAssetsPage() {
   const t = useTranslations();
@@ -13,16 +14,31 @@ export default function DigitalAssetsPage() {
   const [assets, setAssets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editAsset, setEditAsset] = useState<any | null>(null);
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
+  const [beneficiaries, setBeneficiaries] = useState<any[]>([]);
+  const [selectedBeneficiaryId, setSelectedBeneficiaryId] = useState<string | null>(null);
 
   const fetchAssets = async () => {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     const { data, error } = await supabase
       .from('digital_assets')
-      .select('id, asset_name, asset_type, status, email, password, website, valid_until, description, files, beneficiary:beneficiary_id(full_name)')
-      .eq('user_id', user?.id);
+      .select('id, asset_name, asset_type, status, email, password, website, valid_until, description, files, beneficiary_id, beneficiary:beneficiary_id(id, full_name)')
+      .eq('user_id', user?.id)
+      .order('asset_name', { ascending: false });
     setAssets(data || []);
     setLoading(false);
+  };
+
+  const fetchBeneficiaries = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data, error } = await supabase
+      .from('beneficiaries')
+      .select('id, full_name, email')
+      .eq('user_id', user?.id)
+      .order('full_name', { ascending: true });
+    setBeneficiaries(data || []);
   };
 
   useEffect(() => {
@@ -37,7 +53,7 @@ export default function DigitalAssetsPage() {
       // Refetch data after delete
       const { data: refreshed } = await supabase
         .from('digital_assets')
-        .select('id, asset_name, asset_type, status, email, password, website, valid_until, description, files, beneficiary:beneficiary_id(full_name)')
+        .select('id, asset_name, asset_type, status, email, password, website, valid_until, description, files, beneficiary:beneficiary_id(id, full_name)')
         .eq('user_id', assets[0]?.user_id);
       setAssets(refreshed || []);
     } catch (e) {
@@ -78,7 +94,7 @@ export default function DigitalAssetsPage() {
       // Refetch data after update
       const { data: refreshed } = await supabase
         .from('digital_assets')
-        .select('id, asset_name, asset_type, status, email, password, website, valid_until, description, files, beneficiary:beneficiary_id(full_name)')
+        .select('id, asset_name, asset_type, status, email, password, website, valid_until, description, files, beneficiary:beneficiary_id(id,full_name)')
         .eq('user_id', assets[0]?.user_id);
       setAssets(refreshed || []);
     } catch (e) {
@@ -87,6 +103,34 @@ export default function DigitalAssetsPage() {
       setLoading(false);
     }
   }
+
+  const openAssignModal = (asset: any) => {
+    console.log('DEBUG: asset', asset);
+    setSelectedAsset(asset);
+    setSelectedBeneficiaryId(asset.beneficiary?.id || null);
+    setAssignModalOpen(true);
+    fetchBeneficiaries();
+  };
+
+  const handleAssignBeneficiary = async () => {
+    if (!selectedAsset || !selectedBeneficiaryId) return;
+    setLoading(true);
+    try {
+      const { error } = await supabase.from('digital_assets').update({
+        beneficiary_id: selectedBeneficiaryId,
+        status: 'assigned',
+      }).eq('id', selectedAsset.id);
+      if (error) throw error;
+      setAssignModalOpen(false);
+      setSelectedAsset(null);
+      setSelectedBeneficiaryId(null);
+      fetchAssets();
+    } catch (e) {
+      alert('Error assigning beneficiary');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="p-8">
@@ -133,13 +177,16 @@ export default function DigitalAssetsPage() {
                   <tr key={asset.id}>
                     <td className="px-6 py-4 whitespace-nowrap text-gray-400">{asset.asset_type}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-gray-100">{asset.asset_name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-100">{asset.beneficiary?.full_name || '-'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-100 rounded-full cursor-pointer" onClick={() => openAssignModal(asset)}>{asset.beneficiary?.full_name || '-'}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-block rounded-full px-4 py-1 text-sm font-medium ${
-                        asset.status === 'assigned' ? 'bg-gray-800 text-gray-100' :
-                        asset.status === 'pending' ? 'bg-yellow-800 text-yellow-200' :
-                        'bg-gray-700 text-gray-300'
-                      }`}>
+                      <span
+                        className={`inline-block rounded-full px-4 py-1 text-sm font-medium ${asset.status === 'assigned' ? 'bg-gray-800 text-gray-100' :
+                            asset.status === 'pending' ? 'bg-yellow-800 text-yellow-200' :
+                              'bg-gray-700 text-gray-300'
+                          }`}
+
+                        title={t('assignBeneficiary')}
+                      >
                         {t(asset.status)}
                       </span>
                     </td>
@@ -172,6 +219,45 @@ export default function DigitalAssetsPage() {
           </table>
         )}
       </div>
+      <Dialog open={assignModalOpen} onOpenChange={(open) => { setAssignModalOpen(open); if (!open) { setSelectedAsset(null); setSelectedBeneficiaryId(null); } }}>
+        <DialogContent className="max-w-lg w-full bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-700">
+          <DialogHeader>
+            <DialogTitle className="text-gray-900 dark:text-white">{t('assignBeneficiary')}</DialogTitle>
+            <DialogClose asChild />
+          </DialogHeader>
+          <div className="mt-4 space-y-2">
+            {beneficiaries.length === 0 ? (
+              <div className="text-gray-400 dark:text-gray-400">{t('noBeneficiaries')}</div>
+            ) : (
+              <div className="grid grid-cols-1 gap-2">
+                {beneficiaries.map(b => (
+                  <button
+                    key={b.id}
+                    className={`flex flex-row items-center justify-between p-4 border rounded-lg transition text-left w-full 
+                      ${selectedBeneficiaryId === b.id
+                        ? 'bg-blue-100 border-blue-500 text-gray-900 dark:bg-blue-900 dark:text-white dark:border-blue-400'
+                        : 'bg-gray-50 border-gray-200 text-gray-900 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700 dark:hover:bg-gray-700'}
+                    `}
+                    onClick={() => setSelectedBeneficiaryId(b.id)}
+                  >
+                    <div>
+                      <span className="font-medium text-gray-900 dark:text-white">{b.full_name}</span>
+                      <span className="block text-sm text-gray-500 dark:text-gray-300">{b.email}</span>
+                    </div>
+                    {selectedBeneficiaryId === b.id && <span className="ml-4 text-xs text-blue-600 dark:text-blue-300">{t('selected')}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="flex justify-end gap-2 mt-6">
+            <Button variant="outline" onClick={() => setAssignModalOpen(false)}>{t('cancel')}</Button>
+            <Button onClick={handleAssignBeneficiary} disabled={!selectedBeneficiaryId || loading}>
+              {loading ? t('saving') : t('save')}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 
