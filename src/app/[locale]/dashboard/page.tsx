@@ -221,9 +221,9 @@ export default function DashboardPage() {
               <CardTitle>{t('yourDigitalAssets')}</CardTitle>
               <CardDescription>{t('overviewDigitalAssets')}</CardDescription>
             </div>
-            <Button variant="outline" size="sm" className="flex items-center gap-2">
+            {/* <Button variant="outline" size="sm" className="flex items-center gap-2">
               <PlusCircle className="h-4 w-4" /> {t('addAsset')}
-            </Button>
+            </Button> */}
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -262,9 +262,9 @@ export default function DashboardPage() {
               <CardTitle>{t('recentBeneficiaries')}</CardTitle>
               <CardDescription>{t('manageBeneficiaries')}</CardDescription>
             </div>
-            <Button variant="outline" size="sm" className="flex items-center gap-2" onClick={() => setShowAddModal(true)}>
+            {/* <Button variant="outline" size="sm" className="flex items-center gap-2" onClick={() => setShowAddModal(true)}>
               <PlusCircle className="h-4 w-4" /> {t('addBeneficiary')}
-            </Button>
+            </Button> */}
           </CardHeader>
           <CardContent>
             {loading ? (
