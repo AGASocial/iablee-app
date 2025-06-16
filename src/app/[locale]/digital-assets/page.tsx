@@ -26,7 +26,7 @@ export default function DigitalAssetsPage() {
       .from('digital_assets')
       .select('id, asset_name, asset_type, status, email, password, website, valid_until, description, files, beneficiary_id, beneficiary:beneficiary_id(id, full_name)')
       .eq('user_id', user?.id)
-      .order('asset_name', { ascending: false });
+      .order('asset_name', { ascending: true });
     setAssets(data || []);
     setLoading(false);
   };
@@ -50,12 +50,7 @@ export default function DigitalAssetsPage() {
     setLoading(true);
     try {
       await supabase.from('digital_assets').delete().eq('id', id);
-      // Refetch data after delete
-      const { data: refreshed } = await supabase
-        .from('digital_assets')
-        .select('id, asset_name, asset_type, status, email, password, website, valid_until, description, files, beneficiary:beneficiary_id(id, full_name)')
-        .eq('user_id', assets[0]?.user_id);
-      setAssets(refreshed || []);
+      fetchAssets();
     } catch (e) {
       alert('Error deleting asset');
     } finally {
@@ -179,8 +174,8 @@ export default function DigitalAssetsPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-gray-100">{asset.asset_name}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-gray-100 rounded-full cursor-pointer" onClick={() => openAssignModal(asset)}>{asset.beneficiary?.full_name || '-'}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`inline-block rounded-full px-4 py-1 text-sm font-medium ${asset.status === 'assigned' ? 'bg-gray-800 text-gray-100' :
+                      <span onClick={() => openAssignModal(asset)}
+                        className={`inline-block rounded-full px-4 py-1 text-sm font-medium cursor-pointer ${asset.status === 'assigned' ? 'bg-gray-800 text-gray-100' :
                             asset.status === 'pending' ? 'bg-yellow-800 text-yellow-200' :
                               'bg-gray-700 text-gray-300'
                           }`}
