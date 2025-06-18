@@ -49,7 +49,8 @@ export default function BeneficiariesPage() {
             const { data } = await supabase
                 .from('beneficiaries')
                 .select('*')
-                .eq('user_id', user.id);
+                .eq('user_id', user.id)
+                .order('full_name', { ascending: true });
             setBeneficiaries(data || []);
             setLoading(false);
         }
@@ -153,7 +154,8 @@ export default function BeneficiariesPage() {
             const { data: beneficiariesData } = await supabase
                 .from('beneficiaries')
                 .select('*')
-                .eq('user_id', user.id);
+                .eq('user_id', user.id)
+                .order('full_name', { ascending: true });
             setBeneficiaries(beneficiariesData || []);
         } catch {
             alert('Error saving beneficiary');
