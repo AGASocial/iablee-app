@@ -229,11 +229,11 @@ export default function BeneficiariesPage() {
                                             <td className="px-6 py-4 whitespace-nowrap hidden sm:table-cell">
                                                 <StatusBadge status={b.status} />
                                             </td>
-                                            <td className="px-6 py-4 whitespace-nowrap flex gap-2 hidden sm:table-cell">
+                                            <td className="px-6 py-4 whitespace-nowrap flex flex-row flex-nowrap gap-2 items-center hidden sm:table-cell">
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
-                                                    className="flex items-center gap-1"
+                                                    className="flex items-center gap-1 px-2 py-1 text-sm float-left mr-2"
                                                     onClick={() => handleEditBeneficiary(b)}
                                                 >
                                                     <Pencil className="w-4 h-4" />
@@ -242,7 +242,7 @@ export default function BeneficiariesPage() {
                                                 <Button
                                                     variant="destructive"
                                                     size="sm"
-                                                    className="flex items-center gap-1"
+                                                    className="flex items-center gap-1 px-2 py-1 text-sm"
                                                     onClick={() => handleDeleteBeneficiary(b.id)}
                                                 >
                                                     <Trash2 className="w-4 h-4" />
