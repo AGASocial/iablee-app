@@ -40,7 +40,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white">iablee</h1>
               <button onClick={() => setSidebarOpen(false)} className="text-gray-900 dark:text-white text-2xl">&times;</button>
             </div>
-            <Navigation />
+            <Navigation closeSidebar={() => setSidebarOpen(false)} />
           </div>
           <div className="flex-1 bg-black bg-opacity-40" onClick={() => setSidebarOpen(false)} />
         </div>
