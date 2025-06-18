@@ -42,7 +42,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
             </div>
             <Navigation closeSidebar={() => setSidebarOpen(false)} />
           </div>
-          <div className="flex-1 bg-black bg-opacity-40" onClick={() => setSidebarOpen(false)} />
+          <div className="flex-1 bg-black/80" onClick={() => setSidebarOpen(false)} />
         </div>
       )}
 

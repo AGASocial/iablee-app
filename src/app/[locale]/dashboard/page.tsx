@@ -280,7 +280,7 @@ export default function DashboardPage() {
       </div>
 
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 px-2">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-2">
           <div className="bg-white dark:bg-gray-900 rounded-lg shadow-lg p-4 sm:p-8 w-full max-w-md">
             <h3 className="text-lg font-bold mb-4">{t('addBeneficiary')}</h3>
             <div className="space-y-4">

@@ -229,11 +229,11 @@ export default function BeneficiariesPage() {
                                             <td className="px-6 py-4 whitespace-nowrap hidden sm:table-cell">
                                                 <StatusBadge status={b.status} />
                                             </td>
-                                            <td className="px-6 py-4 whitespace-nowrap flex flex-row flex-nowrap gap-2 items-center hidden sm:table-cell">
+                                            <td className="px-6 py-4 whitespace-nowrap flex flex-row flex-nowrap gap-2 items-center hidden sm:flex">
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
-                                                    className="flex items-center gap-1 px-2 py-1 text-sm float-left mr-2"
+                                                    className="flex items-center gap-1 px-2 py-1 text-sm"
                                                     onClick={() => handleEditBeneficiary(b)}
                                                 >
                                                     <Pencil className="w-4 h-4" />
@@ -258,7 +258,7 @@ export default function BeneficiariesPage() {
                 )}
             </div>
             {showAddModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 px-2">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-2">
                     <div className="bg-white dark:bg-gray-900 rounded-lg shadow-lg p-4 sm:p-8 w-full max-w-md border border-gray-200 dark:border-gray-700">
                         <h3 className="text-lg font-bold mb-4 text-gray-900 dark:text-white">{t('addBeneficiary')}</h3>
                         <div className="space-y-4">
@@ -282,7 +282,7 @@ export default function BeneficiariesPage() {
                 </div>
             )}
             {selectedBeneficiary && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 px-2 sm:hidden">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-2 sm:hidden">
                     <div className="bg-white dark:bg-gray-900 rounded-lg shadow-lg p-6 w-full max-w-sm border border-gray-200 dark:border-gray-700">
                         <h3 className="text-lg font-bold mb-4 text-gray-900 dark:text-white">{selectedBeneficiary.full_name}</h3>
                         <div className="space-y-2">
