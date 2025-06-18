@@ -98,6 +98,20 @@ export default function DigitalAssetsPage() {
     }
   };
 
+  // Helper for status badge (copied from dashboard)
+  function StatusBadge({ status }: { status: string }) {
+    const statusStyles: Record<string, string> = {
+      active: "bg-green-100 text-green-800",
+      pending: "bg-yellow-100 text-yellow-800",
+      inactive: "bg-red-100 text-red-800",
+    };
+    return (
+      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusStyles[status.toLowerCase()] || "bg-gray-100 text-gray-800"}`}>
+        {status}
+      </span>
+    );
+  }
+
   return (
     <div className="p-8">
       <AddAssetModal
@@ -114,50 +128,43 @@ export default function DigitalAssetsPage() {
         <h1 className="text-4xl font-bold text-gray-900 dark:text-white">{t('digitalAssetsTitle')}</h1>
         <Button className="rounded-full px-6 py-2 text-base font-medium" onClick={() => setModalOpen(true)}>{t('addNewAsset')}</Button>
       </div>
-      <div className="overflow-x-auto rounded-2xl border border-gray-700">
+      <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-gray-700">
         {loading ? (
-          <div className="flex items-center justify-center py-12 text-gray-400">{t('loading') || 'Loading...'}</div>
+          <div className="flex items-center justify-center py-12 text-muted-foreground">{t('loading') || 'Loading...'}</div>
         ) : (
-          <table className="min-w-full divide-y divide-gray-700 bg-gray-900 dark:bg-gray-900">
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-900">
             <thead>
               <tr>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-300">{t('assetType')}</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-300">{t('assetName')}</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-300">{t('assignedBeneficiary')}</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-300">{t('status')}</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-300">{t('validUntil')}</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-300">{t('numberOfFiles')}</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-300">{t('actions')}</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white">{t('assetType')}</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white">{t('assetName')}</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white">{t('assignedBeneficiary')}</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white">{t('status')}</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white">{t('validUntil')}</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white">{t('numberOfFiles')}</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white">{t('actions')}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-800">
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {assets.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-gray-400">
+                  <td colSpan={7} className="py-12 text-center text-muted-foreground">
                     {t('noAssetsFound')}
                     <Button className="mt-2 ml-2 bg-gray-800 text-gray-100" onClick={() => setModalOpen(true)}>{t('addAsset')}</Button>
                   </td>
                 </tr>
               ) : (
                 assets.map(asset => (
-                  <tr key={asset.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-400">{asset.asset_type}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-100">{asset.asset_name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-100 rounded-full cursor-pointer" onClick={() => openAssignModal(asset)}>{asset.beneficiary?.full_name || '-'}</td>
+                  <tr key={asset.id} className="bg-white dark:bg-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-muted-foreground">{asset.asset_type}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white">{asset.asset_name}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white rounded-full cursor-pointer" onClick={() => openAssignModal(asset)}>{asset.beneficiary?.full_name || '-'}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span onClick={() => openAssignModal(asset)}
-                        className={`inline-block rounded-full px-4 py-1 text-sm font-medium cursor-pointer ${asset.status === 'assigned' ? 'bg-gray-800 text-gray-100' :
-                          asset.status === 'pending' ? 'bg-yellow-800 text-yellow-200' :
-                            'bg-gray-700 text-gray-300'
-                          }`}
-
-                        title={t('assignBeneficiary')}
-                      >
-                        {t(asset.status)}
+                      <span onClick={() => openAssignModal(asset)} title={t('assignBeneficiary')}>
+                        <StatusBadge status={asset.status} />
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-100">{asset.valid_until ? new Date(asset.valid_until).toLocaleDateString() : '-'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-100">{asset.number_of_files ?? (Array.isArray(asset.files) ? asset.files.length : (asset.files ? 1 : 0))}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white">{asset.valid_until ? new Date(asset.valid_until).toLocaleDateString() : '-'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white">{asset.number_of_files ?? (Array.isArray(asset.files) ? asset.files.length : (asset.files ? 1 : 0))}</td>
                     <td className="px-6 py-4 whitespace-nowrap flex gap-2">
                       <Button
                         variant="outline"

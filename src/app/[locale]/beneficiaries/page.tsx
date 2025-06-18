@@ -21,6 +21,20 @@ interface Beneficiary {
     user_id: string;
 }
 
+// Helper for status badge (copied from dashboard)
+function StatusBadge({ status }: { status: string | null }) {
+    const statusStyles: Record<string, string> = {
+        active: "bg-green-100 text-green-800",
+        pending: "bg-yellow-100 text-yellow-800",
+        inactive: "bg-red-100 text-red-800",
+    };
+    return (
+        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusStyles[(status || '').toLowerCase()] || "bg-gray-100 text-gray-800"}`}>
+            {status}
+        </span>
+    );
+}
+
 export default function BeneficiariesPage() {
     const t = useTranslations();
     const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
@@ -171,37 +185,39 @@ export default function BeneficiariesPage() {
                 <h1 className="text-4xl font-bold text-gray-900 dark:text-white">{t('beneficiariesTitle')}</h1>
                 <Button className="rounded-full px-6 py-2 text-base font-medium" onClick={() => setShowAddModal(true)}>{t('addBeneficiary')}</Button>
             </div>
-            <div className="overflow-x-auto rounded-2xl border border-gray-700">
+            <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-gray-700">
                 {loading ? (
-                    <div className="flex items-center justify-center py-12 text-gray-400">{t('loading')}</div>
+                    <div className="flex items-center justify-center py-12 text-muted-foreground">{t('loading')}</div>
                 ) : (
-                    <table className="min-w-full divide-y divide-gray-700 bg-gray-900 dark:bg-gray-900">
+                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-900">
                         <thead>
                             <tr>
-                                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-300">{t('name')}</th>
-                                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-300">{t('email')}</th>
-                                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-300">{t('phoneNumber')}</th>
-                                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-300">{t('relationship')}</th>
-                                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-300">{t('status')}</th>
-                                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-300">{t('actions')}</th>
+                                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white">{t('name')}</th>
+                                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white">{t('email')}</th>
+                                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white">{t('phoneNumber')}</th>
+                                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white">{t('relationship')}</th>
+                                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white">{t('status')}</th>
+                                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white">{t('actions')}</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-800">
+                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                             {beneficiaries.length === 0 ? (
                                 <tr>
-                                    <td colSpan={6} className="py-12 text-center text-gray-400">
+                                    <td colSpan={6} className="py-12 text-center text-muted-foreground">
                                         {t('noBeneficiaries')}
                                         <Button className="mt-2 ml-2 bg-gray-800 text-gray-100" onClick={() => setShowAddModal(true)}>{t('addBeneficiary')}</Button>
                                     </td>
                                 </tr>
                             ) : (
                                 beneficiaries.map(b => (
-                                    <tr key={b.id}>
-                                        <td className="px-6 py-4 whitespace-nowrap text-gray-100">{b.full_name}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-gray-400">{b.email}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-gray-100">{b.phone_number}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-gray-100">{b.relationship}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-gray-100">{b.status}</td>
+                                    <tr key={b.id} className="bg-white dark:bg-gray-900">
+                                        <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white">{b.full_name}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-muted-foreground">{b.email}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white">{b.phone_number}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white">{b.relationship}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <StatusBadge status={b.status} />
+                                        </td>
                                         <td className="px-6 py-4 whitespace-nowrap flex gap-2">
                                             <Button
                                                 variant="outline"
