@@ -163,7 +163,7 @@ export default function DigitalAssetsPage() {
                         <StatusBadge status={asset.status} />
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white">{asset.valid_until ? new Date(asset.valid_until).toLocaleDateString() : '-'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white">{asset.valid_until ? new Date(asset.valid_until).toISOString().slice(0, 10) : '-'}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white">{asset.number_of_files ?? (Array.isArray(asset.files) ? asset.files.length : (asset.files ? 1 : 0))}</td>
                     <td className="px-6 py-4 whitespace-nowrap flex gap-2">
                       <Button
