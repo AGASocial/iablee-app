@@ -2,34 +2,12 @@
 import { useTranslations } from 'next-intl';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Shield, Users, Key, Activity } from "lucide-react";
+import { Shield, Users, Key, Activity } from "lucide-react";
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
+import type { Asset, Beneficiary } from '@/models/asset';
 
-interface Asset {
-  id: string;
-  asset_name: string;
-  asset_type: string;
-  status: string;
-  created_at: string;
-  user_id: string;
-}
 
-interface Beneficiary {
-  id: string;
-  full_name: string;
-  email: string | null;
-  phone_number: string | null;
-  relationship: string | null;
-  notes: string | null;
-  notified: boolean | null;
-  status: string | null;
-  last_notified_at: string | null;
-  email_verified: boolean | null;
-  created_at: string | null;
-  updated_at: string | null;
-  user_id: string;
-}
 
 // Helper for status badge
 function StatusBadge({ status }: { status: string }) {
@@ -138,7 +116,7 @@ export default function DashboardPage() {
         .order('created_at', { ascending: false })
         .limit(5);
       setBeneficiaries(beneficiariesData || []);
-    } catch (e) {
+    } catch {
       alert('Error adding beneficiary');
     } finally {
       setSubmitting(false);

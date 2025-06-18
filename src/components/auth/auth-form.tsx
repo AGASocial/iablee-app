@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
+import Link from "next/link"
 
 const formSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -170,16 +171,16 @@ export function AuthForm({ type }: AuthFormProps) {
         {type === "login" ? (
           <>
             Don&apos;t have an account?{" "}
-            <a href="/auth/register" className="underline underline-offset-4 hover:text-primary">
+            <Link href="/auth/register" className="underline underline-offset-4 hover:text-primary">
               Sign up
-            </a>
+            </Link>
           </>
         ) : (
           <>
             Already have an account?{" "}
-            <a href="/auth/login" className="underline underline-offset-4 hover:text-primary">
+            <Link href="/auth/login" className="underline underline-offset-4 hover:text-primary">
               Sign in
-            </a>
+            </Link>
           </>
         )}
       </p>

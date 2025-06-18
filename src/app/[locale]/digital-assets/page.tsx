@@ -7,38 +7,45 @@ import { useState, useEffect } from 'react';
 import { supabase } from "@/lib/supabase";
 import { Pencil, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
+import type { Asset, Beneficiary } from '@/models/asset';
 
 export default function DigitalAssetsPage() {
   const t = useTranslations();
   const [modalOpen, setModalOpen] = useState(false);
-  const [assets, setAssets] = useState<any[]>([]);
+  const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editAsset, setEditAsset] = useState<any | null>(null);
+  const [editAsset, setEditAsset] = useState<Asset | null>(null);
   const [assignModalOpen, setAssignModalOpen] = useState(false);
-  const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
-  const [beneficiaries, setBeneficiaries] = useState<any[]>([]);
+  const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
+  const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
   const [selectedBeneficiaryId, setSelectedBeneficiaryId] = useState<string | null>(null);
 
   const fetchAssets = async () => {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('digital_assets')
       .select('id, asset_name, asset_type, status, email, password, website, valid_until, description, files, beneficiary_id, beneficiary:beneficiary_id(id, full_name)')
       .eq('user_id', user?.id)
       .order('asset_name', { ascending: true });
-    setAssets(data || []);
+    setAssets(((data || []).map((asset: unknown) => {
+      const typedAsset = asset as Asset;
+      return {
+        ...typedAsset,
+        beneficiary: Array.isArray(typedAsset.beneficiary) ? typedAsset.beneficiary[0] || null : typedAsset.beneficiary || null,
+      };
+    }) as Asset[]));
     setLoading(false);
   };
 
   const fetchBeneficiaries = async () => {
     const { data: { user } } = await supabase.auth.getUser();
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('beneficiaries')
       .select('id, full_name, email')
       .eq('user_id', user?.id)
       .order('full_name', { ascending: true });
-    setBeneficiaries(data || []);
+    setBeneficiaries((data || []) as Beneficiary[]);
   };
 
   useEffect(() => {
@@ -51,55 +58,19 @@ export default function DigitalAssetsPage() {
     try {
       await supabase.from('digital_assets').delete().eq('id', id);
       fetchAssets();
-    } catch (e) {
+    } catch {
       alert('Error deleting asset');
     } finally {
       setLoading(false);
     }
   }
 
-  function handleEditAsset(asset: any) {
+  function handleEditAsset(asset: Asset) {
     setEditAsset(asset);
     setModalOpen(true);
   }
 
-  async function handleSaveAsset(updatedAsset: any) {
-    setLoading(true);
-    try {
-      if (editAsset) {
-        // Update
-        const { error } = await supabase.from('digital_assets').update({
-          asset_name: updatedAsset.asset_name,
-          asset_type: updatedAsset.asset_type,
-          status: updatedAsset.status,
-          beneficiary_id: updatedAsset.beneficiary_id,
-          email: updatedAsset.email,
-          password: updatedAsset.password,
-          website: updatedAsset.website,
-          valid_until: updatedAsset.valid_until ? updatedAsset.valid_until : null,
-          description: updatedAsset.description,
-          files: updatedAsset.files,
-        }).eq('id', editAsset.id);
-        if (error) throw error;
-      } else {
-        // Insert (if you want to support add from here)
-      }
-      setModalOpen(false);
-      setEditAsset(null);
-      // Refetch data after update
-      const { data: refreshed } = await supabase
-        .from('digital_assets')
-        .select('id, asset_name, asset_type, status, email, password, website, valid_until, description, files, beneficiary:beneficiary_id(id,full_name)')
-        .eq('user_id', assets[0]?.user_id);
-      setAssets(refreshed || []);
-    } catch (e) {
-      alert('Error saving asset');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  const openAssignModal = (asset: any) => {
+  const openAssignModal = (asset: Asset) => {
     console.log('DEBUG: asset', asset);
     setSelectedAsset(asset);
     setSelectedBeneficiaryId(asset.beneficiary?.id || null);
@@ -120,7 +91,7 @@ export default function DigitalAssetsPage() {
       setSelectedAsset(null);
       setSelectedBeneficiaryId(null);
       fetchAssets();
-    } catch (e) {
+    } catch {
       alert('Error assigning beneficiary');
     } finally {
       setLoading(false);
@@ -136,7 +107,7 @@ export default function DigitalAssetsPage() {
           setModalOpen(open);
           if (!open) setEditAsset(null);
         }}
-        asset={editAsset}
+        asset={editAsset || undefined}
         onAssetAdded={fetchAssets}
       />
       <div className="flex items-center justify-between mb-8">
@@ -176,8 +147,8 @@ export default function DigitalAssetsPage() {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span onClick={() => openAssignModal(asset)}
                         className={`inline-block rounded-full px-4 py-1 text-sm font-medium cursor-pointer ${asset.status === 'assigned' ? 'bg-gray-800 text-gray-100' :
-                            asset.status === 'pending' ? 'bg-yellow-800 text-yellow-200' :
-                              'bg-gray-700 text-gray-300'
+                          asset.status === 'pending' ? 'bg-yellow-800 text-yellow-200' :
+                            'bg-gray-700 text-gray-300'
                           }`}
 
                         title={t('assignBeneficiary')}

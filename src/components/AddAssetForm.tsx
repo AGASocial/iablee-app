@@ -4,8 +4,9 @@ import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase";
+import type { Asset } from "@/models/asset";
 
-export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: { assetType: string, onSuccess: () => void, onCancel: () => void, asset?: any }) {
+export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: { assetType: string, onSuccess: () => void, onCancel: () => void, asset?: Asset }) {
   const t = useTranslations();
   const [form, setForm] = useState({
     asset_name: "",
@@ -60,12 +61,12 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
     });
     try {
       
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
 
       if (!user) throw new Error("Not authenticated");
 
       // Upload files if any
-      let fileUrls: string[] = [];
+      const fileUrls: string[] = [];
       if (form.files.length > 0) {
         for (const file of form.files) {
           // Sanitize file name
@@ -107,8 +108,9 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
         if (insertError) throw insertError;
       }
       onSuccess();
-    } catch (err: any) {
-      setError(err.message || "Error adding asset");
+    } catch (err: unknown) {
+      const error = err as Error;
+      setError(error.message || "Error adding asset");
     } finally {
       setLoading(false);
     }

@@ -3,9 +3,9 @@
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { X, Banknote, Shield, FileText, Home, BarChart, Award, LineChart, PieChart, Bitcoin, Vault, MoreHorizontal } from "lucide-react";
+import { Banknote, Shield, FileText, Home, BarChart, Award, LineChart, PieChart, Bitcoin, Vault, MoreHorizontal } from "lucide-react";
 import AddAssetForm from './AddAssetForm';
+import type { Asset } from "@/models/asset";
 
 const assetTypes = [
   { key: "bank", label: "bankAccount", icon: Banknote },
@@ -22,7 +22,7 @@ const assetTypes = [
   { key: "other", label: "other", icon: MoreHorizontal },
 ];
 
-export default function AddAssetModal({ open, onOpenChange, onAssetAdded, asset }: { open: boolean; onOpenChange: (v: boolean) => void, onAssetAdded?: () => void, asset?: any }) {
+export default function AddAssetModal({ open, onOpenChange, onAssetAdded, asset }: { open: boolean; onOpenChange: (v: boolean) => void, onAssetAdded?: () => void, asset?: Asset }) {
   const t = useTranslations();
   const [step, setStep] = useState(1);
   const [selectedType, setSelectedType] = useState<string | null>(null);

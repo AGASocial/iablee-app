@@ -46,7 +46,7 @@ export default function BeneficiariesPage() {
                 setLoading(false);
                 return;
             }
-            const { data, error } = await supabase
+            const { data } = await supabase
                 .from('beneficiaries')
                 .select('*')
                 .eq('user_id', user.id);
@@ -56,38 +56,38 @@ export default function BeneficiariesPage() {
         fetchBeneficiaries();
     }, []);
 
-    async function handleAddBeneficiary() {
-        setSubmitting(true);
-        try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) throw new Error('No user');
-            const { error } = await supabase.from('beneficiaries').insert({
-                user_id: user.id,
-                full_name: form.full_name,
-                email: form.email,
-                phone_number: form.phone_number,
-                relationship: form.relationship,
-                notes: form.notes,
-                notified: form.notified,
-                status: 'active',
-            });
-            if (error) throw error;
-            setShowAddModal(false);
-            setForm({ full_name: '', email: '', phone_number: '', relationship: '', notes: '', notified: false });
-            setLoading(true);
-            // Refetch data
-            const { data: beneficiariesData } = await supabase
-                .from('beneficiaries')
-                .select('*')
-                .eq('user_id', user.id);
-            setBeneficiaries(beneficiariesData || []);
-        } catch (e) {
-            alert('Error adding beneficiary');
-        } finally {
-            setSubmitting(false);
-            setLoading(false);
-        }
-    }
+    // async function handleAddBeneficiary() {
+    //     setSubmitting(true);
+    //     try {
+    //         const { data: { user } } = await supabase.auth.getUser();
+    //         if (!user) throw new Error('No user');
+    //         const { error } = await supabase.from('beneficiaries').insert({
+    //             user_id: user.id,
+    //             full_name: form.full_name,
+    //             email: form.email,
+    //             phone_number: form.phone_number,
+    //             relationship: form.relationship,
+    //             notes: form.notes,
+    //             notified: form.notified,
+    //             status: 'active',
+    //         });
+    //         if (error) throw error;
+    //         setShowAddModal(false);
+    //         setForm({ full_name: '', email: '', phone_number: '', relationship: '', notes: '', notified: false });
+    //         setLoading(true);
+    //         // Refetch data
+    //         const { data: beneficiariesData } = await supabase
+    //             .from('beneficiaries')
+    //             .select('*')
+    //             .eq('user_id', user.id);
+    //         setBeneficiaries(beneficiariesData || []);
+    //     } catch {
+    //         alert('Error adding beneficiary');
+    //     } finally {
+    //         setSubmitting(false);
+    //         setLoading(false);
+    //     }
+    // }
 
     async function handleDeleteBeneficiary(id: string) {
         if (!confirm(t('deleteConfirmBeneficiary'))) return;
@@ -95,7 +95,7 @@ export default function BeneficiariesPage() {
         try {
             await supabase.from('beneficiaries').delete().eq('id', id);
             setBeneficiaries(beneficiaries.filter(b => b.id !== id));
-        } catch (e) {
+        } catch {
             alert('Error deleting beneficiary');
         } finally {
             setSubmitting(false);
@@ -155,7 +155,7 @@ export default function BeneficiariesPage() {
                 .select('*')
                 .eq('user_id', user.id);
             setBeneficiaries(beneficiariesData || []);
-        } catch (e) {
+        } catch {
             alert('Error saving beneficiary');
         } finally {
             setSubmitting(false);
