@@ -13,12 +13,12 @@ import {
   DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { User, LogOut, Languages } from "lucide-react";
+import { User, LogOut, Languages, Menu } from "lucide-react";
 import { useRouter, usePathname } from '@/i18n/navigation';
 import { useLocale } from 'next-intl';
 import { supabase } from '@/lib/supabase';
 
-export default function Navbar() {
+export default function Navbar({ onMenuClick }: { onMenuClick?: () => void }) {
   const t = useTranslations();
   const router = useRouter();
   const pathname = usePathname();
@@ -35,7 +35,16 @@ export default function Navbar() {
 
   return (
     <div className="border-b dark:border-gray-700">
-      <div className="flex h-16 items-center px-4 justify-end">
+      <div className="flex h-16 items-center px-4 justify-end relative">
+        {onMenuClick && (
+          <button
+            className="absolute left-0 flex items-center justify-center md:hidden h-10 w-10 text-gray-900 dark:text-gray-100"
+            onClick={onMenuClick}
+            aria-label="Open menu"
+          >
+            <Menu className="h-6 w-6" />
+          </button>
+        )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon">

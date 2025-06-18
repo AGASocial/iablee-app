@@ -3,7 +3,7 @@ import { useTranslations } from 'next-intl';
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash2, Plus } from "lucide-react";
 
 interface Beneficiary {
     id: string;
@@ -50,6 +50,7 @@ export default function BeneficiariesPage() {
     });
     const [submitting, setSubmitting] = useState(false);
     const [editId, setEditId] = useState<string | null>(null);
+    const [selectedBeneficiary, setSelectedBeneficiary] = useState<Beneficiary | null>(null);
 
     useEffect(() => {
         async function fetchBeneficiaries() {
@@ -180,74 +181,85 @@ export default function BeneficiariesPage() {
     }
 
     return (
-        <div className="p-8">
+        <div className="p-4 sm:p-8">
             <div className="flex items-center justify-between mb-8">
                 <h1 className="text-4xl font-bold text-gray-900 dark:text-white">{t('beneficiariesTitle')}</h1>
-                <Button className="rounded-full px-6 py-2 text-base font-medium" onClick={() => setShowAddModal(true)}>{t('addBeneficiary')}</Button>
+                <Button className="hidden sm:inline-flex rounded-full px-6 py-2 text-base font-medium" onClick={() => setShowAddModal(true)}>{t('addBeneficiary')}</Button>
             </div>
+            <Button
+                className="sm:hidden w-full mb-4 flex items-center justify-center gap-2"
+                onClick={() => setShowAddModal(true)}
+                aria-label={t('addBeneficiary')}
+            >
+                <Plus className="w-5 h-5" />
+            </Button>
             <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-gray-700">
                 {loading ? (
                     <div className="flex items-center justify-center py-12 text-muted-foreground">{t('loading')}</div>
                 ) : (
-                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-900">
-                        <thead>
-                            <tr>
-                                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white">{t('name')}</th>
-                                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white">{t('email')}</th>
-                                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white">{t('phoneNumber')}</th>
-                                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white">{t('relationship')}</th>
-                                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white">{t('status')}</th>
-                                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white">{t('actions')}</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                            {beneficiaries.length === 0 ? (
+                    <div className="w-full min-w-[200px] sm:min-w-[600px]">
+                        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-900">
+                            <thead>
                                 <tr>
-                                    <td colSpan={6} className="py-12 text-center text-muted-foreground">
-                                        {t('noBeneficiaries')}
-                                        <Button className="mt-2 ml-2 bg-gray-800 text-gray-100" onClick={() => setShowAddModal(true)}>{t('addBeneficiary')}</Button>
-                                    </td>
+                                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white">{t('name')}</th>
+                                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white hidden sm:table-cell">{t('email')}</th>
+                                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white hidden sm:table-cell">{t('phoneNumber')}</th>
+                                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white hidden sm:table-cell">{t('relationship')}</th>
+                                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white hidden sm:table-cell">{t('status')}</th>
+                                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white hidden sm:table-cell">{t('actions')}</th>
                                 </tr>
-                            ) : (
-                                beneficiaries.map(b => (
-                                    <tr key={b.id} className="bg-white dark:bg-gray-900">
-                                        <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white">{b.full_name}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-muted-foreground">{b.email}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white">{b.phone_number}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white">{b.relationship}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <StatusBadge status={b.status} />
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap flex gap-2">
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                className="flex items-center gap-1"
-                                                onClick={() => handleEditBeneficiary(b)}
-                                            >
-                                                <Pencil className="w-4 h-4" />
-                                                {t('edit')}
-                                            </Button>
-                                            <Button
-                                                variant="destructive"
-                                                size="sm"
-                                                className="flex items-center gap-1"
-                                                onClick={() => handleDeleteBeneficiary(b.id)}
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                                {t('delete')}
-                                            </Button>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                {beneficiaries.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={6} className="py-12 text-center text-muted-foreground">
+                                            {t('noBeneficiaries')}
+                                            <Button className="mt-2 ml-2 bg-gray-800 text-gray-100" onClick={() => setShowAddModal(true)}>{t('addBeneficiary')}</Button>
                                         </td>
                                     </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
+                                ) : (
+                                    beneficiaries.map(b => (
+                                        <tr key={b.id} className="bg-white dark:bg-gray-900">
+                                            <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white cursor-pointer" onClick={() => window.innerWidth < 640 ? setSelectedBeneficiary(b) : undefined}>
+                                                {b.full_name}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-muted-foreground hidden sm:table-cell">{b.email}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white hidden sm:table-cell">{b.phone_number}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white hidden sm:table-cell">{b.relationship}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap hidden sm:table-cell">
+                                                <StatusBadge status={b.status} />
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap flex gap-2 hidden sm:table-cell">
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="flex items-center gap-1"
+                                                    onClick={() => handleEditBeneficiary(b)}
+                                                >
+                                                    <Pencil className="w-4 h-4" />
+                                                    {t('edit')}
+                                                </Button>
+                                                <Button
+                                                    variant="destructive"
+                                                    size="sm"
+                                                    className="flex items-center gap-1"
+                                                    onClick={() => handleDeleteBeneficiary(b.id)}
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                    {t('delete')}
+                                                </Button>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 )}
             </div>
             {showAddModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
-                    <div className="bg-white dark:bg-gray-900 rounded-lg shadow-lg p-8 w-full max-w-md border border-gray-200 dark:border-gray-700">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 px-2">
+                    <div className="bg-white dark:bg-gray-900 rounded-lg shadow-lg p-4 sm:p-8 w-full max-w-md border border-gray-200 dark:border-gray-700">
                         <h3 className="text-lg font-bold mb-4 text-gray-900 dark:text-white">{t('addBeneficiary')}</h3>
                         <div className="space-y-4">
                             <input className="w-full p-2 border rounded bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white border-gray-300 dark:border-gray-700 placeholder-gray-400 dark:placeholder-gray-400" placeholder={t('name')} value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} />
@@ -265,6 +277,25 @@ export default function BeneficiariesPage() {
                             <Button onClick={handleSaveBeneficiary} disabled={submitting}>
                                 {submitting ? t('saving') : t('save')}
                             </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {selectedBeneficiary && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 px-2 sm:hidden">
+                    <div className="bg-white dark:bg-gray-900 rounded-lg shadow-lg p-6 w-full max-w-sm border border-gray-200 dark:border-gray-700">
+                        <h3 className="text-lg font-bold mb-4 text-gray-900 dark:text-white">{selectedBeneficiary.full_name}</h3>
+                        <div className="space-y-2">
+                            <div><span className="font-semibold">{t('email')}:</span> {selectedBeneficiary.email}</div>
+                            <div><span className="font-semibold">{t('phoneNumber')}:</span> {selectedBeneficiary.phone_number}</div>
+                            <div><span className="font-semibold">{t('relationship')}:</span> {selectedBeneficiary.relationship}</div>
+                            <div><span className="font-semibold">{t('notes')}:</span> {selectedBeneficiary.notes}</div>
+                            <div><span className="font-semibold">{t('status')}:</span> <StatusBadge status={selectedBeneficiary.status} /></div>
+                        </div>
+                        <div className="flex justify-end gap-2 mt-6">
+                            <Button variant="outline" onClick={() => { setSelectedBeneficiary(null); handleEditBeneficiary(selectedBeneficiary); }}>{t('edit')}</Button>
+                            <Button variant="destructive" onClick={() => { handleDeleteBeneficiary(selectedBeneficiary.id); setSelectedBeneficiary(null); }}>{t('delete')}</Button>
+                            <Button onClick={() => setSelectedBeneficiary(null)}>{t('cancel')}</Button>
                         </div>
                     </div>
                 </div>
