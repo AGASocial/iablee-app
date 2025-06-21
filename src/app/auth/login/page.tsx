@@ -1,6 +1,10 @@
+"use client";
 import { AuthForm } from "@/components/auth/auth-form"
+import { useTranslations } from 'next-intl';
 
 export default function LoginPage() {
+  const t = useTranslations();
+
   return (
     <div className="container relative min-h-screen flex-col items-center justify-center grid lg:max-w-none lg:grid-cols-2 lg:px-0">
       <div className="relative hidden h-full flex-col bg-muted p-10 text-white lg:flex dark:border-r">
@@ -23,9 +27,9 @@ export default function LoginPage() {
         <div className="relative z-20 mt-auto">
           <blockquote className="space-y-2">
             <p className="text-lg">
-              &ldquo;Secure your digital legacy and ensure your loved ones have access to what matters most.&rdquo;
+              &ldquo;{t('loginQuote')}&rdquo;
             </p>
-            <footer className="text-sm">iablee Team</footer>
+            <footer className="text-sm">Sofia Davis</footer>
           </blockquote>
         </div>
       </div>

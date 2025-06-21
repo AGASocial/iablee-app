@@ -18,6 +18,7 @@ import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import Link from "next/link"
+import { useTranslations } from "next-intl"
 
 const formSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -37,7 +38,7 @@ interface AuthFormProps {
 export function AuthForm({ type }: AuthFormProps) {
   const router = useRouter()
   const [isLoading, setIsLoading] = React.useState(false)
-
+  const t = useTranslations()
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -64,18 +65,6 @@ export function AuthForm({ type }: AuthFormProps) {
 
         if (signUpError) throw signUpError
 
-        // Create user profile in the users table
-        const { error: profileError } = await supabase
-          .from("users")
-          .insert([
-            {
-              email: data.email,
-              full_name: data.fullName,
-            },
-          ])
-
-        if (profileError) throw profileError
-
         toast.success("Registration successful! Please check your email to verify your account.")
         router.push("/auth/login")
       } else {
@@ -100,12 +89,12 @@ export function AuthForm({ type }: AuthFormProps) {
     <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
       <div className="flex flex-col space-y-2 text-center">
         <h1 className="text-2xl font-semibold tracking-tight">
-          {type === "login" ? "Welcome back" : "Create an account"}
+          {type === "login" ? t("welcome") : t("createAnAccount")}
         </h1>
         <p className="text-sm text-muted-foreground">
           {type === "login"
-            ? "Enter your credentials to sign in to your account"
-            : "Enter your details to create your account"}
+            ? t("enterYourCredentialsToSignInToYourAccount")
+            : t("enterYourDetailsToCreateYourAccount")}
         </p>
       </div>
 
@@ -117,7 +106,7 @@ export function AuthForm({ type }: AuthFormProps) {
               name="fullName"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Full Name</FormLabel>
+                  <FormLabel>{t("fullName")}</FormLabel>
                   <FormControl>
                     <Input placeholder="John Doe" {...field} />
                   </FormControl>
@@ -131,7 +120,7 @@ export function AuthForm({ type }: AuthFormProps) {
             name="email"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Email</FormLabel>
+                <FormLabel>{t("email")}</FormLabel>
                 <FormControl>
                   <Input placeholder="name@example.com" type="email" {...field} />
                 </FormControl>
@@ -144,7 +133,7 @@ export function AuthForm({ type }: AuthFormProps) {
             name="password"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Password</FormLabel>
+                <FormLabel>{t("password")}</FormLabel>
                 <FormControl>
                   <Input placeholder="••••••••" type="password" {...field} />
                 </FormControl>
@@ -156,12 +145,12 @@ export function AuthForm({ type }: AuthFormProps) {
             {isLoading ? (
               <div className="flex items-center gap-2">
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent" />
-                {type === "login" ? "Signing in..." : "Creating account..."}
+                {type === "login" ? t("signingIn") : t("creatingAccount")}
               </div>
             ) : type === "login" ? (
-              "Sign In"
+              t("signIn")
             ) : (
-              "Create Account"
+              t("createAccount")
             )}
           </Button>
         </form>
@@ -170,16 +159,16 @@ export function AuthForm({ type }: AuthFormProps) {
       <p className="px-8 text-center text-sm text-muted-foreground">
         {type === "login" ? (
           <>
-            Don&apos;t have an account?{" "}
+            {t("dontHaveAnAccount")}
             <Link href="/auth/register" className="underline underline-offset-4 hover:text-primary">
-              Sign up
+              {t("signUp")}
             </Link>
           </>
         ) : (
           <>
-            Already have an account?{" "}
+            {t("alreadyHaveAnAccount")}
             <Link href="/auth/login" className="underline underline-offset-4 hover:text-primary">
-              Sign in
+              {t("signIn")}
             </Link>
           </>
         )}
