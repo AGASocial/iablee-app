@@ -52,6 +52,9 @@ export function AuthForm({ type }: AuthFormProps) {
     setIsLoading(true)
 
     try {
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const emailRedirectTo = `${origin}`;
+
       if (type === "register") {
         const { error: signUpError } = await supabase.auth.signUp({
           email: data.email,
@@ -60,6 +63,7 @@ export function AuthForm({ type }: AuthFormProps) {
             data: {
               full_name: data.fullName,
             },
+            emailRedirectTo
           },
         })
 
