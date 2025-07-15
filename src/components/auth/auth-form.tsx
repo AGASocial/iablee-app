@@ -89,6 +89,16 @@ export function AuthForm({ type }: AuthFormProps) {
     }
   }
 
+  async function handleGoogleSignIn() {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${origin}/auth/callback`
+      }
+    });
+  }
+
   return (
     <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
       <div className="flex flex-col space-y-2 text-center">
@@ -100,6 +110,26 @@ export function AuthForm({ type }: AuthFormProps) {
             ? t("enterYourCredentialsToSignInToYourAccount")
             : t("enterYourDetailsToCreateYourAccount")}
         </p>
+      </div>
+
+      <Button
+        type="button"
+        variant="outline"
+        className="w-full flex items-center justify-center gap-2"
+        onClick={handleGoogleSignIn}
+        disabled={isLoading}
+      >
+        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
+        {t("signInWithGoogle") || "Sign in with Google"}
+      </Button>
+
+      <div className="relative my-4">
+        <div className="absolute inset-0 flex items-center">
+          <span className="w-full border-t" />
+        </div>
+        <div className="relative flex justify-center text-xs uppercase">
+          <span className="bg-background px-2 text-muted-foreground">or</span>
+        </div>
       </div>
 
       <Form {...form}>
