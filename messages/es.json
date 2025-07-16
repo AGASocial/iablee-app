@@ -91,5 +91,30 @@
   "signInWithGoogle": "Iniciar sesión con Google",
   "creatingAccount": "Creando cuenta...",
   "createAccount": "Crear cuenta",
-  "registerQuote": "Únete a iablee hoy y da el primer paso para asegurar tu legado digital para las futuras generaciones."
+  "registerQuote": "Únete a iablee hoy y da el primer paso para asegurar tu legado digital para las futuras generaciones.",
+  "relationships": {
+    "title": "Relaciones",
+    "father": "Padre",
+    "mother": "Madre",
+    "son": "Hijo",
+    "daughter": "Hija",
+    "grandfather": "Abuelo",
+    "grandmother": "Abuela",
+    "brother": "Hermano",
+    "sister": "Hermana",
+    "spouse": "Cónyuge",
+    "father-in-law": "Suegro",
+    "mother-in-law": "Suegra",
+    "stepbrother": "Hermanastro",
+    "stepsister": "Hermanastra",
+    "stepfather": "Padrastro",
+    "stepmother": "Madrastra",
+    "aunt": "Tía",
+    "uncle": "Tío",
+    "niece": "Sobrina",
+    "nephew": "Sobrino",
+    "cousin": "Primo/Prima",
+    "grandchild": "Nieto/Nieta",
+    "other": "Otro"
+  }
 }
