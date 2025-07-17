@@ -18,7 +18,7 @@ import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import Link from "next/link"
-import { useTranslations } from "next-intl"
+import { useTranslations, useLocale } from "next-intl"
 
 const formSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -39,6 +39,7 @@ export function AuthForm({ type }: AuthFormProps) {
   const router = useRouter()
   const [isLoading, setIsLoading] = React.useState(false)
   const t = useTranslations()
+  const locale = useLocale()
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -99,6 +100,21 @@ export function AuthForm({ type }: AuthFormProps) {
     });
   }
 
+  async function handleAppleSignIn() {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    await supabase.auth.signInWithOAuth({
+      provider: "apple",
+      options: {
+        redirectTo: `${origin}/auth/callback`
+      }
+    });
+  }
+
+  const appleButtonUrl =
+    locale === 'es'
+      ? 'https://appleid.cdn-apple.com/appleid/button?height=38&width=300&color=black&locale=es_MX'
+      : 'https://appleid.cdn-apple.com/appleid/button?height=38&width=300&color=black';
+
   return (
     <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
       <div className="flex flex-col space-y-2 text-center">
@@ -115,13 +131,25 @@ export function AuthForm({ type }: AuthFormProps) {
       <Button
         type="button"
         variant="outline"
-        className="w-full flex items-center justify-center gap-2"
+        className="w-[300px] mx-auto flex items-center justify-center gap-2"
         onClick={handleGoogleSignIn}
         disabled={isLoading}
       >
         <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
         {t("signInWithGoogle") || "Sign in with Google"}
       </Button>
+
+      <button
+        type="button"
+        className="mx-auto"
+        onClick={handleAppleSignIn}
+        disabled={isLoading}
+      >
+        <img
+          src={appleButtonUrl}
+          alt={t("signInWithApple") || "Sign in with Apple"}
+        />
+      </button>
 
       <div className="relative my-4">
         <div className="absolute inset-0 flex items-center">
