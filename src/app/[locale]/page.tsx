@@ -23,7 +23,7 @@ export default function LocalePage() {
           router.replace('/dashboard');
           return;
         }
-
+        console.log("Assets in page:", assets);
         // If user has no assets, redirect to wizard
         if (!assets || assets.length === 0) {
           router.replace('/wizard');
