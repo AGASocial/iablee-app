@@ -86,9 +86,34 @@ export function AuthForm({ type }: AuthFormProps) {
         })
 
         if (signInError) throw signInError
-
+        console.log("Sign in successful!")
         toast.success("Login successful!")
-        router.push(`/${locale}/dashboard`)
+        
+        // Check if user has any assets
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: assets, error: assetsError } = await supabase
+            .from('digital_assets')
+            .select('id')
+            .eq('user_id', user.id)
+            .limit(1);
+
+          if (assetsError) {
+            console.error('Error checking assets:', assetsError);
+            router.push(`/${locale}/dashboard`);
+            return;
+          }
+
+          console.log("Assets in auth form:", assets);
+          // If user has no assets, redirect to wizard
+          if (!assets || assets.length === 0) {
+            router.push(`/${locale}/wizard`);
+          } else {
+            router.push(`/${locale}/dashboard`);
+          }
+        } else {
+          router.push(`/${locale}/dashboard`);
+        }
       }
     } catch (error) {
       console.error('Auth error:', error)

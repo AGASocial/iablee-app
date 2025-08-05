@@ -51,10 +51,24 @@ export async function middleware(req: NextRequest) {
   }
 
   // If user is signed in and the current path is /auth/*,
-  // redirect the user to /{locale}/dashboard
+  // check if they have assets and redirect accordingly
   if (session && (pathname.startsWith(`/${locale}/auth`) || pathname.startsWith('/auth'))) {
     const redirectUrl = req.nextUrl.clone()
-    redirectUrl.pathname = `/${locale}/dashboard`
+    
+    // Check if user has any assets
+    const { data: assets } = await supabase
+      .from('digital_assets')
+      .select('id')
+      .eq('user_id', session.user.id)
+      .limit(1);
+    console.log("Assets in middleware:", assets);
+    // If user has no assets, redirect to wizard
+    if (!assets || assets.length === 0) {
+      redirectUrl.pathname = `/${locale}/wizard`
+    } else {
+      redirectUrl.pathname = `/${locale}/dashboard`
+    }
+    
     return NextResponse.redirect(redirectUrl)
   }
 

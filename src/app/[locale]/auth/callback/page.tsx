@@ -17,7 +17,25 @@ export default function AuthCallbackPage() {
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (!error && session) {
-          router.replace(`/${locale}/dashboard`);
+          // Check if user has any assets
+          const { data: assets, error: assetsError } = await supabase
+            .from('digital_assets')
+            .select('id')
+            .eq('user_id', session.user.id)
+            .limit(1);
+
+          if (assetsError) {
+            console.error('Error checking assets:', assetsError);
+            router.replace(`/${locale}/dashboard`);
+            return;
+          }
+
+          // If user has no assets, redirect to wizard
+          if (!assets || assets.length === 0) {
+            router.replace(`/${locale}/wizard`);
+          } else {
+            router.replace(`/${locale}/dashboard`);
+          }
         } else {
           // Handle error (show message, redirect, etc.)
           console.error('Auth callback error:', error);
