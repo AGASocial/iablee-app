@@ -21,20 +21,40 @@ export async function middleware(req: NextRequest) {
 
   console.log("Supabase session in middleware:", session);
 
+  // Get the locale from the URL path
+  const pathname = req.nextUrl.pathname;
+  const pathnameIsMissingLocale = routing.locales.every(
+    (locale) => !pathname.startsWith(`/${locale}/`) && pathname !== `/${locale}`
+  );
+
+  // Get the default locale
+  const defaultLocale = routing.defaultLocale;
+  
+  // Extract locale from pathname or use default
+  let locale = defaultLocale;
+  if (!pathnameIsMissingLocale) {
+    const pathnameLocale = routing.locales.find(
+      (locale) => pathname.startsWith(`/${locale}/`) || pathname === `/${locale}`
+    );
+    if (pathnameLocale) {
+      locale = pathnameLocale;
+    }
+  }
+
   // If user is not signed in and the current path is not / or /auth/*,
-  // redirect the user to /auth/login
-  if (!session && !req.nextUrl.pathname.startsWith('/auth')) {
+  // redirect the user to /{locale}/auth/login
+  if (!session && !pathname.startsWith(`/${locale}/auth`) && !pathname.startsWith('/auth')) {
     const redirectUrl = req.nextUrl.clone()
-    redirectUrl.pathname = '/auth/login'
+    redirectUrl.pathname = `/${locale}/auth/login`
     redirectUrl.searchParams.set(`redirectedFrom`, req.nextUrl.pathname)
     return NextResponse.redirect(redirectUrl)
   }
 
   // If user is signed in and the current path is /auth/*,
-  // redirect the user to /dashboard
-  if (session && req.nextUrl.pathname.startsWith('/auth')) {
+  // redirect the user to /{locale}/dashboard
+  if (session && (pathname.startsWith(`/${locale}/auth`) || pathname.startsWith('/auth'))) {
     const redirectUrl = req.nextUrl.clone()
-    redirectUrl.pathname = '/dashboard'
+    redirectUrl.pathname = `/${locale}/dashboard`
     return NextResponse.redirect(redirectUrl)
   }
 

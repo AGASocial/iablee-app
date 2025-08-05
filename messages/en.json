@@ -116,5 +116,23 @@
     "cousin": "Cousin",
     "grandchild": "Grandchild",
     "other": "Other"
-  }
+  },
+  "wizard-welcome-title": "Welcome, {name}!",
+  "wizard-welcome-description": "We will guide you through creating your first asset to store in your Iablee vault.",
+  "wizard-continue": "Continue",
+  "wizard-create-asset-title": "Let's create your first asset!",
+  "wizard-create-asset-description": "An asset in Iablee is any digital file you want to save for the people you want to receive this information when you're no longer here.",
+  "wizard-select-asset-type": "Select which asset you would like to create",
+  "wizard-complete-asset-title": "Complete the information to save your asset",
+  "wizard-complete-asset-description": "Fill in the required fields to create your asset.",
+  "wizard-next": "Next",
+  "wizard-beneficiary-title": "Who do you want to receive this when you're no longer with us?",
+  "wizard-beneficiary-description": "Let's create a beneficiary to receive the asset you just created. Complete their details below.",
+  "wizard-create-another-beneficiary": "Do you want to create another beneficiary for the same asset?",
+  "wizard-add-beneficiary": "Create a new beneficiary",
+  "wizard-continue-beneficiary": "Continue",
+  "wizard-final-title": "Remember, you can link multiple beneficiaries to an asset, and also link multiple assets or beneficiaries.",
+  "wizard-final-congrats": "Congratulations, you have created your first asset to leave your legacy for the future!",
+  "wizard-finish": "Finish",
+  "setupWizard": "Setup Wizard"
 }

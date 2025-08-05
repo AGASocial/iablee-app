@@ -3,11 +3,33 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
+// Check if the URL is valid before creating the client
+const isValidSupabaseUrl = (url: string) => {
+  try {
+    const urlObj = new URL(url);
+    return urlObj.hostname.endsWith('.supabase.co') && urlObj.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables')
+  console.error('Missing Supabase environment variables:', {
+    NEXT_PUBLIC_SUPABASE_URL: supabaseUrl ? 'set' : 'missing',
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: supabaseAnonKey ? 'set' : 'missing'
+  })
+  throw new Error('Missing Supabase environment variables. Please check your .env.local file.')
 }
 
-export const supabase = createClientComponentClient()
+if (!isValidSupabaseUrl(supabaseUrl)) {
+  console.error('Invalid Supabase URL:', supabaseUrl);
+  throw new Error('Invalid Supabase URL. Please check your NEXT_PUBLIC_SUPABASE_URL in .env.local')
+}
+
+export const supabase = createClientComponentClient({
+  supabaseUrl,
+  supabaseKey: supabaseAnonKey,
+})
 
 export type Database = {
   public: {

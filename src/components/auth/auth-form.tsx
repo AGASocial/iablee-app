@@ -54,7 +54,14 @@ export function AuthForm({ type }: AuthFormProps) {
 
     try {
       const origin = typeof window !== "undefined" ? window.location.origin : "";
-      const emailRedirectTo = `${origin}`;
+      const emailRedirectTo = `${origin}/${locale}`;
+      
+      console.log('Auth redirect URLs:', {
+        origin,
+        locale,
+        emailRedirectTo,
+        currentUrl: window.location.href
+      });
 
       if (type === "register") {
         const { error: signUpError } = await supabase.auth.signUp({
@@ -71,7 +78,7 @@ export function AuthForm({ type }: AuthFormProps) {
         if (signUpError) throw signUpError
 
         toast.success("Registration successful! Please check your email to verify your account.")
-        router.push("/auth/login")
+        router.push(`/${locale}/auth/login`)
       } else {
         const { error: signInError } = await supabase.auth.signInWithPassword({
           email: data.email,
@@ -81,9 +88,10 @@ export function AuthForm({ type }: AuthFormProps) {
         if (signInError) throw signInError
 
         toast.success("Login successful!")
-        router.push("/dashboard")
+        router.push(`/${locale}/dashboard`)
       }
     } catch (error) {
+      console.error('Auth error:', error)
       toast.error(error instanceof Error ? error.message : "An error occurred")
     } finally {
       setIsLoading(false)
@@ -92,20 +100,28 @@ export function AuthForm({ type }: AuthFormProps) {
 
   async function handleGoogleSignIn() {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const redirectTo = `${origin}/${locale}/auth/callback`;
+    
+    console.log('Google OAuth redirect:', redirectTo);
+    
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${origin}/auth/callback`
+        redirectTo
       }
     });
   }
 
   async function handleAppleSignIn() {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const redirectTo = `${origin}/${locale}/auth/callback`;
+    
+    console.log('Apple OAuth redirect:', redirectTo);
+    
     await supabase.auth.signInWithOAuth({
       provider: "apple",
       options: {
-        redirectTo: `${origin}/auth/callback`
+        redirectTo
       }
     });
   }

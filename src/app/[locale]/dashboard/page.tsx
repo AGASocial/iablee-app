@@ -2,11 +2,11 @@
 import { useTranslations } from 'next-intl';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Shield, Users, Key, Activity } from "lucide-react";
+import { Shield, Users, Key, Activity, Sparkles } from "lucide-react";
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import type { Asset, Beneficiary } from '@/models/asset';
-
+import { Link } from '@/i18n/navigation';
 
 
 // Helper for status badge
@@ -211,9 +211,15 @@ export default function DashboardPage() {
             ) : assets.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8">
                 <Key className="h-12 w-12 text-muted-foreground mb-4" />
-                <p className="text-center text-sm text-muted-foreground">
+                <p className="text-center text-sm text-muted-foreground mb-4">
                   {t('noAssets')}
                 </p>
+                <Link href="/wizard">
+                  <Button className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4" />
+                    {t('setupWizard')}
+                  </Button>
+                </Link>
               </div>
             ) : (
               <div className="space-y-4">

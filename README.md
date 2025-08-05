@@ -1,8 +1,39 @@
+# Iablee App
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+1. Node.js (version 18 or higher)
+2. A Supabase project
+
+### Environment Setup
+
+1. Create a `.env.local` file in the root directory with your Supabase credentials:
+
+```bash
+# Supabase Configuration
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
+
+You can find these values in your Supabase project dashboard under Settings > API.
+
+### Installation
+
+1. Install dependencies:
+
+```bash
+npm install
+# or
+yarn install
+# or
+pnpm install
+```
+
+2. Run the development server:
 
 ```bash
 npm run dev
@@ -10,24 +41,41 @@ npm run dev
 yarn dev
 # or
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+3. Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Features
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Internationalization**: Support for English and Spanish
+- **Authentication**: Supabase Auth with email/password and OAuth (Google, Apple)
+- **Protected Routes**: Automatic redirect to login for unauthenticated users
+- **Digital Assets Management**: Secure storage and management of digital assets
+- **Beneficiary Management**: Add and manage beneficiaries for your assets
+
+## Authentication Flow
+
+The app includes automatic authentication redirects:
+
+- Unauthenticated users are redirected to `/auth/login`
+- Authenticated users trying to access auth pages are redirected to `/dashboard`
+- OAuth callbacks are handled automatically
+
+## Project Structure
+
+- `src/app/[locale]/` - Internationalized pages
+- `src/components/` - Reusable UI components
+- `src/lib/supabase.ts` - Supabase client configuration
+- `src/middleware.ts` - Authentication and internationalization middleware
+- `messages/` - Translation files for internationalization
 
 ## Learn More
 
-To learn more about Next.js, take a look at the following resources:
+To learn more about the technologies used:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- [Next.js Documentation](https://nextjs.org/docs)
+- [Supabase Documentation](https://supabase.com/docs)
+- [Next-intl Documentation](https://next-intl-docs.vercel.app/)
 
 ## Deploy on Vercel
 

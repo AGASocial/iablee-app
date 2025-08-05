@@ -117,5 +117,23 @@
     "cousin": "Primo/Prima",
     "grandchild": "Nieto/Nieta",
     "other": "Otro"
-  }
+  },
+  "wizard-welcome-title": "¡Bienvenido, {name}!",
+  "wizard-welcome-description": "Te vamos a guiar en la creación de tu primer activo para que lo guardes en tu bóveda de Iablee.",
+  "wizard-continue": "Continuar",
+  "wizard-create-asset-title": "¡Creemos tu primer activo!",
+  "wizard-create-asset-description": "Un activo en Iablee es cualquier archivo digital que desees guardar para las personas que quieres que le llegue esa información cuando ya no estés.",
+  "wizard-select-asset-type": "Selecciona cuál activo deseas crear",
+  "wizard-complete-asset-title": "Completa la información para guardar tu activo",
+  "wizard-complete-asset-description": "Llena los campos requeridos para crear tu activo.",
+  "wizard-next": "Siguiente",
+  "wizard-beneficiary-title": "¿A quién quieres que le llegue esto cuando ya no estés con nosotros?",
+  "wizard-beneficiary-description": "Vamos a crear un beneficiario que reciba el activo que ya creaste. Completa sus datos a continuación.",
+  "wizard-create-another-beneficiary": "¿Deseas crear otro beneficiario para el mismo activo?",
+  "wizard-add-beneficiary": "Crear un nuevo beneficiario",
+  "wizard-continue-beneficiary": "Continuar",
+  "wizard-final-title": "Recuerda que puedes vincular varios beneficiarios a un activo. De igual manera, puedes vincular varios activos o beneficiarios.",
+  "wizard-final-congrats": "¡Enhorabuena, ya has creado tu primer activo para dejar tu legado hacia el futuro!",
+  "wizard-finish": "Finalizar",
+  "setupWizard": "Asistente de Configuración"
 }
