@@ -77,6 +77,29 @@ To learn more about the technologies used:
 - [Supabase Documentation](https://supabase.com/docs)
 - [Next-intl Documentation](https://next-intl-docs.vercel.app/)
 
+## Development
+
+### Git Hooks
+
+This project includes a pre-commit hook that automatically runs quality checks before each commit:
+
+- **Linting**: Runs `npm run lint` to check for code style and potential issues
+- **Building**: Runs `npm run build` to ensure the code compiles successfully
+
+The hook will prevent commits if either check fails, ensuring code quality.
+
+To manually test the pre-commit hook:
+```bash
+.git/hooks/pre-commit
+```
+
+### Available Scripts
+
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run start` - Start production server
+- `npm run lint` - Run ESLint checks
+
 ## Deploy on Vercel
 
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.

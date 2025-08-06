@@ -18,6 +18,7 @@ import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import Link from "next/link"
+import Image from "next/image"
 import { useTranslations, useLocale } from "next-intl"
 
 const formSchema = z.object({
@@ -176,7 +177,7 @@ export function AuthForm({ type }: AuthFormProps) {
         onClick={handleGoogleSignIn}
         disabled={isLoading}
       >
-        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
+        <Image src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" width={20} height={20} className="w-5 h-5" />
         {t("signInWithGoogle") || "Sign in with Google"}
       </Button>
 
@@ -186,9 +187,11 @@ export function AuthForm({ type }: AuthFormProps) {
         onClick={handleAppleSignIn}
         disabled={isLoading}
       >
-        <img
+        <Image
           src={appleButtonUrl}
           alt={t("signInWithApple") || "Sign in with Apple"}
+          width={300}
+          height={44}
         />
       </button>
 
