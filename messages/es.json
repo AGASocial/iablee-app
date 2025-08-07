@@ -118,6 +118,7 @@
     "grandchild": "Nieto/Nieta",
     "other": "Otro"
   },
+  "wizard-asset-summary": "Resumen del activo",
   "wizard-welcome-title": "¡Bienvenido, {name}!",
   "wizard-welcome-description": "Te vamos a guiar en la creación de tu primer activo para que lo guardes en tu bóveda de Iablee.",
   "wizard-continue": "Continuar",
@@ -135,5 +136,12 @@
   "wizard-final-title": "Recuerda que puedes vincular varios beneficiarios a un activo. De igual manera, puedes vincular varios activos o beneficiarios.",
   "wizard-final-congrats": "¡Enhorabuena, ya has creado tu primer activo para dejar tu legado hacia el futuro!",
   "wizard-finish": "Finalizar",
+  "wizard-enter-asset-name": "Ingrese el nombre del activo",
+  "wizard-describe-asset": "Describa su activo",
+  "wizard-enter-website": "Ingrese el sitio web",
+  "wizard-enter-email": "Ingrese el correo electrónico",
+  "wizard-enter-beneficiary-name": "Ingrese el nombre del beneficiario",
+  "wizard-select-relationship": "Seleccione la relación",
+  "wizard-enter-beneficiary-notes": "Notas adicionales sobre este beneficiario",
   "setupWizard": "Asistente de Configuración"
 }

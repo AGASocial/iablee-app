@@ -192,6 +192,7 @@ export function AuthForm({ type }: AuthFormProps) {
           alt={t("signInWithApple") || "Sign in with Apple"}
           width={300}
           height={44}
+          style={{ width: 'auto', height: 'auto' }}
         />
       </button>
 
@@ -214,7 +215,7 @@ export function AuthForm({ type }: AuthFormProps) {
                 <FormItem>
                   <FormLabel>{t("fullName")}</FormLabel>
                   <FormControl>
-                    <Input placeholder="John Doe" {...field} />
+                    <Input placeholder="John Doe" autoComplete="name" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -227,9 +228,9 @@ export function AuthForm({ type }: AuthFormProps) {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>{t("email")}</FormLabel>
-                <FormControl>
-                  <Input placeholder="name@example.com" type="email" {...field} />
-                </FormControl>
+                                  <FormControl>
+                    <Input placeholder="name@example.com" type="email" autoComplete="email" {...field} />
+                  </FormControl>
                 <FormMessage />
               </FormItem>
             )}
@@ -240,9 +241,9 @@ export function AuthForm({ type }: AuthFormProps) {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>{t("password")}</FormLabel>
-                <FormControl>
-                  <Input placeholder="••••••••" type="password" {...field} />
-                </FormControl>
+                                  <FormControl>
+                    <Input placeholder="••••••••" type="password" autoComplete={type === "login" ? "current-password" : "new-password"} {...field} />
+                  </FormControl>
                 <FormMessage />
               </FormItem>
             )}

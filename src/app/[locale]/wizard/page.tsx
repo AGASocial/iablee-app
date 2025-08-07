@@ -176,7 +176,7 @@ export default function WizardPage() {
       case 'welcome':
         return (
           <div className="text-center px-4 sm:px-0">
-            <h1 className="text-xl sm:text-2xl font-bold mb-4">
+            <h1 className="text-xl sm:text-2xl font-bold mb-4 dark:text-white">
               {t('wizard-welcome-title', { name: user?.user_metadata?.full_name || user?.email || 'User' })}
             </h1>
             <p className="text-sm sm:text-base text-gray-600 dark:text-gray-300 mb-6">
@@ -191,15 +191,15 @@ export default function WizardPage() {
       case 'asset-type':
         return (
           <div className="px-4 sm:px-0">
-            <h1 className="text-xl sm:text-2xl font-bold mb-4">{t('wizard-create-asset-title')}</h1>
+            <h1 className="text-xl sm:text-2xl font-bold mb-4 dark:text-white">{t('wizard-create-asset-title')}</h1>
             <p className="text-sm sm:text-base text-gray-600 dark:text-gray-300 mb-6">
               {t('wizard-create-asset-description')}
             </p>
             <div className="space-y-4">
-              <Label className="text-sm sm:text-base">{t('wizard-select-asset-type')}</Label>
+              <Label className="text-sm sm:text-base dark:text-white">{t('wizard-select-asset-type')}</Label>
               <Select value={assetData.assetType} onValueChange={(value: string) => setAssetData({...assetData, assetType: value})}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder={t('chooseAssetType')} />
+                  <SelectValue placeholder={t('wizard-select-asset-type')} />
                 </SelectTrigger>
                 <SelectContent>
                   {assetTypes.map((type) => (
@@ -224,40 +224,40 @@ export default function WizardPage() {
       case 'asset-details':
         return (
           <div className="px-4 sm:px-0">
-            <h1 className="text-xl sm:text-2xl font-bold mb-4">{t('wizard-complete-asset-title')}</h1>
+            <h1 className="text-xl sm:text-2xl font-bold mb-4 dark:text-white">{t('wizard-complete-asset-title')}</h1>
             <p className="text-sm sm:text-base text-gray-600 dark:text-gray-300 mb-6">
               {t('wizard-complete-asset-description')}
             </p>
             <div className="space-y-4">
               <div>
-                <Label className="text-sm sm:text-base">{t('assetName')}</Label>
+                <Label className="text-sm sm:text-base dark:text-white">{t('assetName')}</Label>
                 <Input
                   value={assetData.assetName}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssetData({...assetData, assetName: e.target.value})}
-                  placeholder="Enter asset name"
+                  placeholder={t('wizard-enter-asset-name')}
                   className="w-full"
                 />
               </div>
               <div>
-                <Label className="text-sm sm:text-base">{t('description')}</Label>
+                <Label className="text-sm sm:text-base dark:text-white">{t('description')}</Label>
                 <Textarea
                   value={assetData.description}
                   onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setAssetData({...assetData, description: e.target.value})}
-                  placeholder="Describe your asset"
+                  placeholder={t('wizard-describe-asset')}
                   className="w-full"
                 />
               </div>
               <div>
-                <Label className="text-sm sm:text-base">{t('website')}</Label>
+                <Label className="text-sm sm:text-base dark:text-white">{t('website')}</Label>
                 <Input
                   value={assetData.website}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssetData({...assetData, website: e.target.value})}
-                  placeholder="https://example.com"
+                  placeholder={t('wizard-enter-website')}
                   className="w-full"
                 />
               </div>
               <div>
-                <Label className="text-sm sm:text-base">{t('validUntil')}</Label>
+                <Label className="text-sm sm:text-base dark:text-white">{t('validUntil')}</Label>
                 <Input
                   type="date"
                   value={assetData.validUntil}
@@ -266,16 +266,16 @@ export default function WizardPage() {
                 />
               </div>
               <div>
-                <Label className="text-sm sm:text-base">{t('email')}</Label>
+                <Label className="text-sm sm:text-base dark:text-white">{t('email')}</Label>
                 <Input
                   value={assetData.email}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssetData({...assetData, email: e.target.value})}
-                  placeholder="email@example.com"
+                  placeholder={t('wizard-enter-email')}
                   className="w-full"
                 />
               </div>
               <div>
-                <Label className="text-sm sm:text-base">{t('password')}</Label>
+                <Label className="text-sm sm:text-base dark:text-white">{t('password')}</Label>
                 <Input
                   type="password"
                   value={assetData.password}
@@ -299,22 +299,22 @@ export default function WizardPage() {
       case 'beneficiary':
         return (
           <div className="px-4 sm:px-0">
-            <h1 className="text-xl sm:text-2xl font-bold mb-4">{t('wizard-beneficiary-title')}</h1>
-            <p className="text-sm sm:text-base text-gray-600 dark:text-gray-300 mb-6">
+            <h1 className="text-xl sm:text-2xl font-bold mb-4 dark:text-white">{t('wizard-beneficiary-title')}</h1>
+            <p className="text-sm sm:text-base text-gray-600 dark:text-white mb-6">
               {t('wizard-beneficiary-description')}
             </p>
             <div className="space-y-4">
               <div>
-                <Label className="text-sm sm:text-base">{t('name')} *</Label>
+                <Label className="text-sm sm:text-base dark:text-white">{t('name')} *</Label>
                 <Input
                   value={beneficiaryData.fullName}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBeneficiaryData({...beneficiaryData, fullName: e.target.value})}
-                  placeholder="Enter beneficiary name"
+                  placeholder={t('wizard-enter-beneficiary-name')}
                   className="w-full"
                 />
               </div>
               <div>
-                <Label className="text-sm sm:text-base">{t('email')}</Label>
+                <Label className="text-sm sm:text-base dark:text-white">{t('email')}</Label>
                 <Input
                   value={beneficiaryData.email}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBeneficiaryData({...beneficiaryData, email: e.target.value})}
@@ -323,10 +323,10 @@ export default function WizardPage() {
                 />
               </div>
               <div>
-                <Label className="text-sm sm:text-base">{t('relationship')} *</Label>
+                <Label className="text-sm sm:text-base dark:text-white">{t('relationship')} *</Label>
                 <Select value={beneficiaryData.relationshipId?.toString() || ''} onValueChange={(value: string) => setBeneficiaryData({...beneficiaryData, relationshipId: value ? parseInt(value) : null})}>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select relationship" />
+                    <SelectValue placeholder={t('wizard-select-relationship')} />
                   </SelectTrigger>
                   <SelectContent>
                     {relationships.map((rel) => (
@@ -338,7 +338,7 @@ export default function WizardPage() {
                 </Select>
               </div>
               <div>
-                <Label className="text-sm sm:text-base">{t('phoneNumber')}</Label>
+                <Label className="text-sm sm:text-base dark:text-white">{t('phoneNumber')}</Label>
                 <Input
                   value={beneficiaryData.phoneNumber}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBeneficiaryData({...beneficiaryData, phoneNumber: e.target.value})}
@@ -347,11 +347,11 @@ export default function WizardPage() {
                 />
               </div>
               <div>
-                <Label className="text-sm sm:text-base">{t('notes')}</Label>
+                <Label className="text-sm sm:text-base dark:text-white">{t('notes')}</Label>
                 <Textarea
                   value={beneficiaryData.notes}
                   onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setBeneficiaryData({...beneficiaryData, notes: e.target.value})}
-                  placeholder="Additional notes about this beneficiary"
+                  placeholder={t('wizard-enter-beneficiary-notes')}
                   className="w-full"
                 />
               </div>
@@ -369,13 +369,13 @@ export default function WizardPage() {
 
       case 'final':
         return (
-          <div className="text-center px-4 sm:px-0">
+          <div className="text-center px-4 sm:px-0 dark:text-white">
             <h1 className="text-xl sm:text-2xl font-bold mb-4">{t('wizard-final-title')}</h1>
-            <p className="text-sm sm:text-base text-gray-600 dark:text-gray-300 mb-6">
+            <p className="text-sm sm:text-base text-gray-600 dark:text-white mb-6">
               {t('wizard-final-congrats')}
             </p>
             <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-6 text-left">
-              <h3 className="font-semibold mb-2 text-sm sm:text-base">Asset Summary:</h3>
+              <h3 className="font-semibold mb-2 text-sm sm:text-base">{t('wizard-asset-summary')}:</h3>
               <div className="space-y-1 text-sm">
                 <p><strong>{t('assetType')}:</strong> {assetTypes.find(t => t.value === assetData.assetType)?.label}</p>
                 <p><strong>{t('assetName')}:</strong> {assetData.assetName}</p>

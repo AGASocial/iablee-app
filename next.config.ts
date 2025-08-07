@@ -7,7 +7,7 @@ const withNextIntl = createNextIntlPlugin();
 const nextConfig: NextConfig = {
   // Optimize image loading
   images: {
-    domains: ['localhost'],
+    domains: ['localhost', 'appleid.cdn-apple.com', 'www.gstatic.com'],
     minimumCacheTTL: 60,
   },
   // Enable React strict mode for better development
