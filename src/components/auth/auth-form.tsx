@@ -173,7 +173,7 @@ export function AuthForm({ type }: AuthFormProps) {
       <Button
         type="button"
         variant="outline"
-        className="w-[300px] mx-auto flex items-center justify-center gap-2"
+        className="w-full max-w-[300px] mx-auto flex items-center justify-center gap-2"
         onClick={handleGoogleSignIn}
         disabled={isLoading}
       >
@@ -183,7 +183,7 @@ export function AuthForm({ type }: AuthFormProps) {
 
       <button
         type="button"
-        className="mx-auto"
+        className="w-full max-w-[300px] mx-auto"
         onClick={handleAppleSignIn}
         disabled={isLoading}
       >
@@ -192,7 +192,7 @@ export function AuthForm({ type }: AuthFormProps) {
           alt={t("signInWithApple") || "Sign in with Apple"}
           width={300}
           height={44}
-          style={{ width: 'auto', height: 'auto' }}
+          className="w-full h-auto"
         />
       </button>
 
