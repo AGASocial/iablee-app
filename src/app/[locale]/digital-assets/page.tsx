@@ -3,9 +3,10 @@
 import { useTranslations } from 'next-intl';
 import { Button } from "@/components/ui/button";
 import AddAssetModal from '@/components/AddAssetModal';
+import AssetAttachmentsModal from '@/components/AssetAttachmentsModal';
 import { useState, useEffect } from 'react';
 import { supabase } from "@/lib/supabase";
-import { Pencil, Trash2, Plus } from "lucide-react";
+import { Pencil, Trash2, Plus, Paperclip } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
 import type { Asset } from '@/models/asset';
 import { Beneficiary } from '@/models/beneficiary';
@@ -22,6 +23,8 @@ export default function DigitalAssetsPage() {
   const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
   const [selectedBeneficiaryId, setSelectedBeneficiaryId] = useState<string | null>(null);
   const [selectedAssetDetails, setSelectedAssetDetails] = useState<Asset | null>(null);
+  const [attachmentsModalOpen, setAttachmentsModalOpen] = useState(false);
+  const [selectedAssetForAttachments, setSelectedAssetForAttachments] = useState<Asset | null>(null);
 
   const fetchAssets = async () => {
     setLoading(true);
@@ -101,6 +104,15 @@ export default function DigitalAssetsPage() {
     }
   };
 
+  const openAttachmentsModal = (asset: Asset) => {
+    setSelectedAssetForAttachments(asset);
+    setAttachmentsModalOpen(true);
+  };
+
+  const getFileCount = (asset: Asset): number => {
+    return asset.number_of_files ?? (Array.isArray(asset.files) ? asset.files.length : (asset.files ? 1 : 0));
+  };
+
   // Helper for status badge (copied from dashboard)
   function StatusBadge({ status }: { status: string }) {
     const statusStyles: Record<string, string> = {
@@ -128,6 +140,17 @@ export default function DigitalAssetsPage() {
           asset={editAsset || undefined}
           onAssetAdded={fetchAssets}
         />
+        {selectedAssetForAttachments && (
+          <AssetAttachmentsModal
+            open={attachmentsModalOpen}
+            onOpenChange={(open) => {
+              setAttachmentsModalOpen(open);
+              if (!open) setSelectedAssetForAttachments(null);
+            }}
+            asset={selectedAssetForAttachments}
+            onFilesUpdated={fetchAssets}
+          />
+        )}
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-4xl font-bold text-gray-900 dark:text-white">{t('digitalAssetsTitle')}</h1>
           <Button className="hidden sm:inline-flex rounded-full px-6 py-2 text-base font-medium bg-gray-800 text-gray-100" onClick={() => setModalOpen(true)}>{t('addNewAsset')}</Button>
@@ -176,7 +199,16 @@ export default function DigitalAssetsPage() {
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white hidden sm:table-cell">{asset.valid_until ? new Date(asset.valid_until).toISOString().slice(0, 10) : '-'}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white hidden sm:table-cell">{asset.number_of_files ?? (Array.isArray(asset.files) ? asset.files.length : (asset.files ? 1 : 0))}</td>
+                        <td className="px-6 py-4 whitespace-nowrap hidden sm:table-cell">
+                          <button
+                            onClick={() => openAttachmentsModal(asset)}
+                            className="flex items-center gap-2 text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                            title={t('viewAttachments')}
+                          >
+                            <Paperclip className="w-4 h-4" />
+                            {getFileCount(asset)}
+                          </button>
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap flex gap-2 hidden sm:flex">
                           <Button
                             variant="outline"
@@ -208,14 +240,26 @@ export default function DigitalAssetsPage() {
         {/* Mobile details modal */}
         {selectedAssetDetails && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-2 sm:hidden">
-            <div className="bg-white dark:bg-gray-900 rounded-lg shadow-lg p-6 w-full max-w-sm border border-gray-200 dark:border-gray-700">
+            <div className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-lg shadow-lg p-6 w-full max-w-sm border border-gray-200 dark:border-gray-700">
               <h3 className="text-lg font-bold mb-4 text-gray-900 dark:text-white">{selectedAssetDetails.asset_name}</h3>
               <div className="space-y-2">
-                <div><span className="font-semibold">{t('assetType')}:</span> {t(selectedAssetDetails.asset_type)}</div>
-                <div><span className="font-semibold">{t('assignedBeneficiary')}:</span> {selectedAssetDetails.beneficiary?.full_name || '-'}</div>
-                <div><span className="font-semibold">{t('status')}:</span> <StatusBadge status={selectedAssetDetails.status} /></div>
-                <div><span className="font-semibold">{t('validUntil')}:</span> {selectedAssetDetails.valid_until ? new Date(selectedAssetDetails.valid_until).toISOString().slice(0, 10) : '-'}</div>
-                <div><span className="font-semibold">{t('numberOfFiles')}:</span> {selectedAssetDetails.number_of_files ?? (Array.isArray(selectedAssetDetails.files) ? selectedAssetDetails.files.length : (selectedAssetDetails.files ? 1 : 0))}</div>
+                <div><span className="font-semibold dark:text-white">{t('assetType')}:</span> {t(selectedAssetDetails.asset_type)}</div>
+                <div><span className="font-semibold dark:text-white">{t('assignedBeneficiary')}:</span> {selectedAssetDetails.beneficiary?.full_name || '-'}</div>
+                <div><span className="font-semibold dark:text-white">{t('status')}:</span> <StatusBadge status={selectedAssetDetails.status} /></div>
+                <div><span className="font-semibold dark:text-white">{t('validUntil')}:</span> {selectedAssetDetails.valid_until ? new Date(selectedAssetDetails.valid_until).toISOString().slice(0, 10) : '-'}</div>
+                <div>
+                  <span className="font-semibold">{t('numberOfFiles')}:</span> 
+                  <button
+                    onClick={() => {
+                      setSelectedAssetDetails(null);
+                      openAttachmentsModal(selectedAssetDetails);
+                    }}
+                    className="ml-2 flex items-center gap-1 text-blue-600 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200"
+                  >
+                    <Paperclip className="w-3 h-3" />
+                    {getFileCount(selectedAssetDetails)}
+                  </button>
+                </div>
               </div>
               <div className="flex justify-end gap-2 mt-6">
                 <Button variant="outline" onClick={() => { setSelectedAssetDetails(null); handleEditAsset(selectedAssetDetails); }}>{t('edit')}</Button>

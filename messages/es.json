@@ -169,5 +169,14 @@
   "wizard-enter-beneficiary-name": "Ingrese el nombre del beneficiario",
   "wizard-select-relationship": "Seleccione la relación",
   "wizard-enter-beneficiary-notes": "Notas adicionales sobre este beneficiario",
-  "setupWizard": "Asistente de Configuración"
+  "setupWizard": "Asistente de Configuración",
+  "assetAttachments": "Archivos Adjuntos del Activo",
+  "viewAttachments": "Ver Archivos Adjuntos",
+  "filesAttached": "archivos adjuntos",
+  "uploading": "Subiendo...",
+  "preview": "Vista Previa",
+  "download": "Descargar",
+  "deleteFileConfirm": "¿Estás seguro de que deseas eliminar este archivo?",
+  "previewNotAvailable": "Vista previa no disponible",
+  "noFilesAttached": "No hay archivos adjuntos"
 }

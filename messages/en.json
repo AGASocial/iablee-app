@@ -168,5 +168,14 @@
   "wizard-select-relationship": "Select relationship",
   "wizard-enter-beneficiary-notes": "Additional notes about this beneficiary",
   "wizard-finish": "Finish",
-  "setupWizard": "Setup Wizard"
+  "setupWizard": "Setup Wizard",
+  "assetAttachments": "Asset Attachments",
+  "viewAttachments": "View Attachments",
+  "filesAttached": "files attached",
+  "uploading": "Uploading...",
+  "preview": "Preview",
+  "download": "Download",
+  "deleteFileConfirm": "Are you sure you want to delete this file?",
+  "previewNotAvailable": "Preview not available",
+  "noFilesAttached": "No files attached"
 }
