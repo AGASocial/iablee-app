@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Shield, Users, Key, Activity, Sparkles } from "lucide-react";
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import type { Asset, Beneficiary } from '@/models/asset';
+import type { Asset } from '@/models/asset';
+import type { Beneficiary } from '@/models/beneficiary';
 import { Link } from '@/i18n/navigation';
 
 

@@ -7,7 +7,8 @@ import { useState, useEffect } from 'react';
 import { supabase } from "@/lib/supabase";
 import { Pencil, Trash2, Plus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
-import type { Asset, Beneficiary } from '@/models/asset';
+import type { Asset } from '@/models/asset';
+import { Beneficiary } from '@/models/beneficiary';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 
 export default function DigitalAssetsPage() {
@@ -27,7 +28,7 @@ export default function DigitalAssetsPage() {
     const { data: { user } } = await supabase.auth.getUser();
     const { data } = await supabase
       .from('digital_assets')
-      .select('id, asset_name, asset_type, status, email, password, website, valid_until, description, files, beneficiary_id, beneficiary:beneficiary_id(id, full_name)')
+      .select('id, asset_name, asset_type, status, email, password, website, valid_until, description, files, custom_fields, beneficiary_id, beneficiary:beneficiary_id(id, full_name)')
       .eq('user_id', user?.id)
       .order('asset_name', { ascending: true });
     setAssets(((data || []).map((asset: unknown) => {
@@ -129,7 +130,7 @@ export default function DigitalAssetsPage() {
         />
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-4xl font-bold text-gray-900 dark:text-white">{t('digitalAssetsTitle')}</h1>
-          <Button className="hidden sm:inline-flex rounded-full px-6 py-2 text-base font-medium" onClick={() => setModalOpen(true)}>{t('addNewAsset')}</Button>
+          <Button className="hidden sm:inline-flex rounded-full px-6 py-2 text-base font-medium bg-gray-800 text-gray-100" onClick={() => setModalOpen(true)}>{t('addNewAsset')}</Button>
         </div>
         <Button
           className="sm:hidden w-full mb-4 flex items-center justify-center gap-2"
@@ -166,7 +167,7 @@ export default function DigitalAssetsPage() {
                   ) : (
                     assets.map(asset => (
                       <tr key={asset.id} className="bg-white dark:bg-gray-900">
-                        <td className="px-6 py-4 whitespace-nowrap text-muted-foreground hidden sm:table-cell">{asset.asset_type}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-muted-foreground hidden sm:table-cell">{t(asset.asset_type)}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white cursor-pointer" onClick={() => window.innerWidth < 640 ? setSelectedAssetDetails(asset) : undefined}>{asset.asset_name}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white rounded-full cursor-pointer hidden sm:table-cell" onClick={() => openAssignModal(asset)}>{asset.beneficiary?.full_name || '-'}</td>
                         <td className="px-6 py-4 whitespace-nowrap hidden sm:table-cell">
@@ -210,7 +211,7 @@ export default function DigitalAssetsPage() {
             <div className="bg-white dark:bg-gray-900 rounded-lg shadow-lg p-6 w-full max-w-sm border border-gray-200 dark:border-gray-700">
               <h3 className="text-lg font-bold mb-4 text-gray-900 dark:text-white">{selectedAssetDetails.asset_name}</h3>
               <div className="space-y-2">
-                <div><span className="font-semibold">{t('assetType')}:</span> {selectedAssetDetails.asset_type}</div>
+                <div><span className="font-semibold">{t('assetType')}:</span> {t(selectedAssetDetails.asset_type)}</div>
                 <div><span className="font-semibold">{t('assignedBeneficiary')}:</span> {selectedAssetDetails.beneficiary?.full_name || '-'}</div>
                 <div><span className="font-semibold">{t('status')}:</span> <StatusBadge status={selectedAssetDetails.status} /></div>
                 <div><span className="font-semibold">{t('validUntil')}:</span> {selectedAssetDetails.valid_until ? new Date(selectedAssetDetails.valid_until).toISOString().slice(0, 10) : '-'}</div>
