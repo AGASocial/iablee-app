@@ -49,47 +49,80 @@ export default function AssetAttachmentsModal({
   }, []);
 
   useEffect(() => {
-    if (open && asset?.files) {
+    if (open) {
       loadFiles();
     }
-  }, [open, asset?.files]);
+  }, [open, asset?.id]);
 
-  const loadFiles = async () => {
-    if (!asset?.files || asset.files.length === 0) {
-      setFiles([]);
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const filesWithMetadata: FileWithMetadata[] = [];
-      
-      for (const filePath of asset.files) {
-        // Get public URL for the file
-        const { data: urlData } = supabase.storage
-          .from('assets')
-          .getPublicUrl(filePath);
-        
-        // Extract filename from path
+  const buildFilesFromPaths = async (paths: string[]): Promise<FileWithMetadata[]> => {
+    return Promise.all(
+      paths.map(async (filePath) => {
         const fileName = filePath.split('/').pop() || filePath;
-        
-        // Determine file type from extension
         const extension = fileName.split('.').pop()?.toLowerCase() || '';
         const fileType = getFileType(extension);
-        
-        filesWithMetadata.push({
-          path: filePath,
-          name: fileName,
-          type: fileType,
-          url: urlData.publicUrl
-        });
-      }
-      
+
+        let url: string | undefined;
+        try {
+          const { data: signedData } = await supabase.storage
+            .from('assets')
+            .createSignedUrl(filePath, 60 * 60);
+          if (signedData?.signedUrl) url = signedData.signedUrl;
+        } catch {}
+        if (!url) {
+          const { data: urlData } = supabase.storage.from('assets').getPublicUrl(filePath);
+          url = urlData.publicUrl;
+        }
+        return { path: filePath, name: fileName, type: fileType, url } as FileWithMetadata;
+      })
+    );
+  };
+
+  const loadFiles = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('digital_assets')
+        .select('files')
+        .eq('id', asset.id)
+        .single();
+      if (error) throw error;
+      const paths = Array.isArray(data?.files) ? (data!.files as string[]) : [];
+      const filesWithMetadata = await buildFilesFromPaths(paths);
       setFiles(filesWithMetadata);
     } catch (error) {
       console.error('Error loading files:', error);
+      setFiles([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openPreview = async (file: FileWithMetadata) => {
+    try {
+      // Prefer a signed URL for preview (works with private buckets)
+      const { data, error } = await supabase.storage
+        .from('assets')
+        .createSignedUrl(file.path, 60 * 60);
+      if (!error && data?.signedUrl) {
+        setPreviewFile({ ...file, url: data.signedUrl });
+        return;
+      }
+      // Fallback: use whatever URL we already have (public)
+      if (file.url) {
+        setPreviewFile(file);
+        return;
+      }
+      // Last resort: download blob and preview locally
+      const dl = await supabase.storage.from('assets').download(file.path);
+      if (dl.data) {
+        const blobUrl = URL.createObjectURL(dl.data);
+        setPreviewFile({ ...file, url: blobUrl });
+        return;
+      }
+      throw error || dl.error;
+    } catch (err) {
+      console.error('Error opening preview:', err);
+      alert('Error loading preview');
     }
   };
 
@@ -131,21 +164,19 @@ export default function AssetAttachmentsModal({
 
   const handleDownload = async (file: FileWithMetadata) => {
     try {
+      // Generate a signed URL that triggers download
       const { data, error } = await supabase.storage
         .from('assets')
-        .download(file.path);
-      
-      if (error) throw error;
-      
-      // Create download link
-      const url = URL.createObjectURL(data);
+        .createSignedUrl(file.path, 60 * 60, { download: true });
+      if (error || !data?.signedUrl) throw error || new Error('No signed url');
+
       const a = document.createElement('a');
-      a.href = url;
+      a.href = data.signedUrl;
       a.download = file.name;
+      a.target = '_blank';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Error downloading file:', error);
       alert('Error downloading file');
@@ -176,7 +207,7 @@ export default function AssetAttachmentsModal({
       if (dbError) throw dbError;
       
       onFilesUpdated();
-      loadFiles();
+      await loadFiles();
     } catch (error) {
       console.error('Error deleting file:', error);
       alert('Error deleting file');
@@ -222,7 +253,7 @@ export default function AssetAttachmentsModal({
       if (dbError) throw dbError;
       
       onFilesUpdated();
-      loadFiles();
+      await loadFiles();
     } catch (error) {
       console.error('Error uploading files:', error);
       alert('Error uploading files');
@@ -417,7 +448,7 @@ export default function AssetAttachmentsModal({
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => setPreviewFile(file)}
+                              onClick={() => openPreview(file)}
                               className="border-gray-300 dark:border-gray-600 whitespace-nowrap"
                             >
                               <Eye className="w-4 h-4 mr-1" />
