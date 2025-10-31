@@ -336,7 +336,7 @@ export class BillingService {
     // Get or create customer
     const customer = await this.getOrCreateCustomer(userId, user.email, user.full_name || undefined);
 
-    // Attach payment method if provided
+    // Attach payment method if provided, or use existing default
     let paymentMethod: PaymentMethodToken | undefined;
     if (paymentMethodToken) {
       paymentMethod = {
@@ -345,6 +345,26 @@ export class BillingService {
       };
       await this.gateway.attachPaymentMethod(customer, paymentMethod);
       await this.gateway.setDefaultPaymentMethod(customer, paymentMethodToken);
+    } else {
+      // Try to get the default payment method from database
+      const { data: defaultPM } = await this.supabase
+        .from('billing_payment_methods')
+        .select('token')
+        .eq('user_id', userId)
+        .eq('provider', this.gateway.getName())
+        .eq('is_default', true)
+        .single();
+
+      if (defaultPM) {
+        paymentMethod = {
+          provider: this.gateway.getName(),
+          token: defaultPM.token,
+        };
+      }
+    }
+
+    if (!paymentMethod) {
+      throw new BillingError('No payment method available', 'PAYMENT_METHOD_REQUIRED');
     }
 
     // Create subscription via gateway
@@ -399,16 +419,33 @@ export class BillingService {
       throw new SubscriptionNotFoundError(subscriptionId);
     }
 
-    // Update via gateway
-    await this.gateway.updateSubscription(subscription.provider_subscription_id, {
-      planId,
+    // Get Stripe price ID if changing plan
+    let stripePriceId: string | undefined;
+    if (planId) {
+      const plan = await this.getPlan(planId);
+      stripePriceId = plan.providerPriceMap?.stripe;
+      if (!stripePriceId) {
+        throw new BillingError('Stripe price ID not configured for this plan', 'PRICE_ID_NOT_FOUND');
+      }
+    }
+
+    // Update via gateway (pass Stripe price ID, not our internal plan ID)
+    const result = await this.gateway.updateSubscription(subscription.provider_subscription_id, {
+      planId: stripePriceId,
       cancelAtPeriodEnd,
     });
 
-    // Update database
+    // Update database with new values from gateway
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (planId) updates.plan_id = planId;
     if (cancelAtPeriodEnd !== undefined) updates.cancel_at_period_end = cancelAtPeriodEnd;
+    // Update the current_period_end with the value from Stripe
+    if (result.currentPeriodEnd) updates.current_period_end = result.currentPeriodEnd.toISOString();
+
+    console.log('Updating subscription in database:', {
+      subscriptionId,
+      updates
+    });
 
     const { error: updateError } = await this.supabase
       .from('billing_subscriptions')

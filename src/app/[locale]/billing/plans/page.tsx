@@ -7,6 +7,7 @@ import { Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
+import type { Subscription, PlanDefinition } from '@/lib/billing/types';
 
 interface PlanFeatures {
   max_assets: number;
@@ -26,6 +27,10 @@ interface Plan {
   features: PlanFeatures;
 }
 
+interface SubscriptionWithPlan extends Subscription {
+  plan?: PlanDefinition;
+}
+
 export default function PlansPage() {
   const t = useTranslations();
   const router = useRouter();
@@ -33,10 +38,26 @@ export default function PlansPage() {
   const [loading, setLoading] = useState(true);
   const [billingCycle, setBillingCycle] = useState<'month' | 'year'>('month');
   const [subscribing, setSubscribing] = useState<string | null>(null);
+  const [currentSubscription, setCurrentSubscription] = useState<SubscriptionWithPlan | null>(null);
 
   useEffect(() => {
     fetchPlans();
+    fetchCurrentSubscription();
   }, []);
+
+  const fetchCurrentSubscription = async () => {
+    try {
+      const response = await fetch('/api/billing/subscriptions', {
+        credentials: 'include'
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setCurrentSubscription(data.subscription);
+      }
+    } catch (error) {
+      console.error('Error fetching current subscription:', error);
+    }
+  };
 
   const fetchPlans = async () => {
     try {
@@ -57,13 +78,70 @@ export default function PlansPage() {
   const handleSubscribe = async (planId: string) => {
     setSubscribing(planId);
     try {
-      // For now, just navigate to billing dashboard
-      // In production, this would integrate with Stripe Checkout or Elements
+      const plan = plans.find(p => p.id === planId);
+
+      // Free plan - users are already on it by default
+      if (plan?.amountCents === 0) {
+        toast.info(t('alreadyOnFreePlan'));
+        router.push('/billing');
+        return;
+      }
+
+      // Check if user has a payment method
+      const pmResponse = await fetch('/api/billing/payment-methods', {
+        credentials: 'include'
+      });
+
+      if (!pmResponse.ok) {
+        toast.error(t('billingError'));
+        return;
+      }
+
+      const { paymentMethods } = await pmResponse.json();
+
+      if (!paymentMethods || paymentMethods.length === 0) {
+        toast.error(t('addPaymentMethodFirst'));
+        router.push('/billing');
+        return;
+      }
+
+      // Check if user has existing subscription (not Free plan)
+      const hasExistingSubscription = currentSubscription &&
+                                      currentSubscription.planId !== 'plan_free' &&
+                                      currentSubscription.id !== 'free';
+
+      let response;
+      if (hasExistingSubscription) {
+        // Update existing subscription
+        response = await fetch('/api/billing/subscriptions', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            subscriptionId: currentSubscription.id,
+            planId
+          }),
+        });
+      } else {
+        // Create new subscription
+        response = await fetch('/api/billing/subscriptions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ planId }),
+        });
+      }
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create subscription');
+      }
+
+      toast.success(hasExistingSubscription ? t('subscriptionUpdatedSuccess') : t('subscriptionCreatedSuccess'));
       router.push('/billing');
-      toast.success(t('subscriptionUpdatedSuccess'));
     } catch (error) {
       console.error('Error subscribing:', error);
-      toast.error(t('billingError'));
+      toast.error(error instanceof Error ? error.message : t('billingError'));
     } finally {
       setSubscribing(null);
     }
@@ -140,7 +218,7 @@ export default function PlansPage() {
       <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto px-4 justify-center items-center">
         {filteredPlans.map((plan) => {
           const isPremium = plan.name === 'Premium';
-          const isFree = plan.amountCents === 0;
+          const isCurrentPlan = currentSubscription?.planId === plan.id;
 
           return (
             <Card
@@ -222,12 +300,12 @@ export default function PlansPage() {
                 <Button
                   className="w-full"
                   variant={isPremium ? 'default' : 'outline'}
-                  disabled={subscribing === plan.id || isFree}
+                  disabled={subscribing === plan.id || isCurrentPlan}
                   onClick={() => handleSubscribe(plan.id)}
                 >
                   {subscribing === plan.id
                     ? t('loading')
-                    : isFree
+                    : isCurrentPlan
                     ? t('currentPlan')
                     : t('subscribe')}
                 </Button>

@@ -139,12 +139,13 @@ export class StripeAdapter implements PaymentGateway {
         customer: customer.providerCustomerId,
         items: [{ price: priceId }],
         metadata: metadata || {},
-        payment_behavior: 'default_incomplete',
+        // Allow automatic payment with default payment method
+        payment_behavior: 'error_if_incomplete',
         payment_settings: { save_default_payment_method: 'on_subscription' },
         expand: ['latest_invoice.payment_intent'],
       };
 
-      // Add default payment method if provided
+      // Add default payment method if provided (required for non-trial subscriptions)
       if (paymentMethod) {
         subscriptionParams.default_payment_method = paymentMethod.token;
       }
@@ -158,19 +159,15 @@ export class StripeAdapter implements PaymentGateway {
 
       // Extract client secret for confirmation
       let clientSecret: string | undefined;
-      const subData = subscription as unknown as Record<string, unknown>;
-      const latestInvoice = subData.latest_invoice || subData.latestInvoice;
-      if (latestInvoice && typeof latestInvoice !== 'string') {
-        const invoiceData = latestInvoice as Record<string, unknown>;
-        const paymentIntent = invoiceData.payment_intent || invoiceData.paymentIntent;
-        if (paymentIntent && typeof paymentIntent !== 'string') {
-          const piData = paymentIntent as Record<string, unknown>;
-          clientSecret = (piData.client_secret || piData.clientSecret) as string | undefined;
+      if (subscription.latest_invoice && typeof subscription.latest_invoice !== 'string') {
+        const invoice = subscription.latest_invoice as Stripe.Invoice & { payment_intent?: Stripe.PaymentIntent | string };
+        if (invoice.payment_intent && typeof invoice.payment_intent !== 'string') {
+          clientSecret = invoice.payment_intent.client_secret ?? undefined;
         }
       }
 
-      // Access period end via the data record to handle snake_case properties
-      const periodEnd = (subData.current_period_end as number) || (subData.currentPeriodEnd as number) || Date.now() / 1000;
+      // Extract current period end from subscription
+      const periodEnd = this.extractPeriodEnd(subscription);
 
       return {
         providerSubscriptionId: subscription.id,
@@ -212,8 +209,22 @@ export class StripeAdapter implements PaymentGateway {
         updateParams
       );
 
-      const subData = subscription as unknown as Record<string, unknown>;
-      const periodEnd = (subData.current_period_end as number) || (subData.currentPeriodEnd as number) || Date.now() / 1000;
+      console.log('Updated subscription from Stripe:', {
+        id: subscription.id,
+        status: subscription.status,
+        current_period_end: (subscription as Stripe.Subscription & { current_period_end?: number }).current_period_end,
+        billing_cycle_anchor: subscription.billing_cycle_anchor,
+        items: subscription.items.data.map(item => ({
+          price: item.price.id,
+          interval: item.price.recurring?.interval,
+          interval_count: item.price.recurring?.interval_count
+        }))
+      });
+
+      const periodEnd = this.extractPeriodEnd(subscription);
+
+      console.log('Calculated period end timestamp:', periodEnd);
+      console.log('Calculated period end date:', new Date(periodEnd * 1000));
 
       return {
         providerSubscriptionId: subscription.id,
@@ -250,8 +261,7 @@ export class StripeAdapter implements PaymentGateway {
         cancel_at_period_end: false,
       });
 
-      const subData = subscription as unknown as Record<string, unknown>;
-      const periodEnd = (subData.current_period_end as number) || (subData.currentPeriodEnd as number) || Date.now() / 1000;
+      const periodEnd = this.extractPeriodEnd(subscription);
 
       return {
         providerSubscriptionId: subscription.id,
@@ -389,6 +399,51 @@ export class StripeAdapter implements PaymentGateway {
     } catch (error) {
       throw this.handleStripeError(error, 'Failed to create portal session');
     }
+  }
+
+  /**
+   * Extract current_period_end from a Stripe subscription
+   * Falls back to calculating from billing_cycle_anchor if not available
+   */
+  private extractPeriodEnd(subscription: Stripe.Subscription): number {
+    // Try to get current_period_end directly
+    let periodEnd = (subscription as Stripe.Subscription & { current_period_end?: number }).current_period_end;
+
+    // If not available, calculate from billing_cycle_anchor
+    if (!periodEnd) {
+      console.warn('current_period_end not found, calculating from billing_cycle_anchor');
+      const billingAnchor = subscription.billing_cycle_anchor;
+      const interval = subscription.items.data[0]?.plan?.interval;
+      const intervalCount = subscription.items.data[0]?.plan?.interval_count || 1;
+
+      if (billingAnchor && interval) {
+        const anchorDate = new Date(billingAnchor * 1000);
+
+        switch (interval) {
+          case 'month':
+            anchorDate.setMonth(anchorDate.getMonth() + intervalCount);
+            break;
+          case 'year':
+            anchorDate.setFullYear(anchorDate.getFullYear() + intervalCount);
+            break;
+          case 'week':
+            anchorDate.setDate(anchorDate.getDate() + (7 * intervalCount));
+            break;
+          case 'day':
+            anchorDate.setDate(anchorDate.getDate() + intervalCount);
+            break;
+        }
+
+        periodEnd = Math.floor(anchorDate.getTime() / 1000);
+      }
+    }
+
+    if (!periodEnd) {
+      console.error('Unable to determine subscription period end:', subscription);
+      throw new Error('Invalid subscription data from Stripe');
+    }
+
+    return periodEnd;
   }
 
   /**
