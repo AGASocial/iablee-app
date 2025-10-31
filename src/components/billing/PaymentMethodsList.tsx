@@ -178,14 +178,16 @@ export default function PaymentMethodsList() {
                       {t('setAsDefault')}
                     </Button>
                   )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDelete(pm.id)}
-                    disabled={deleting === pm.id}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  {!pm.isDefault && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDelete(pm.id)}
+                      disabled={deleting === pm.id}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}

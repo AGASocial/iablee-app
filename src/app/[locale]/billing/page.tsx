@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { FileText, Calendar, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import PaymentMethodsList from '@/components/billing/PaymentMethodsList';
@@ -156,28 +156,31 @@ export default function BillingPage() {
     );
   }
 
-  if (!subscription) {
-    return (
-      <div className="container mx-auto py-10">
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('subscription')}</CardTitle>
-            <CardDescription>{t('noSubscription')}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button onClick={() => router.push('/billing/plans')}>
-              {t('choosePlan')}
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  // No longer needed since API always returns at least the Free plan
+  // if (!subscription) {
+  //   return (
+  //     <div className="container mx-auto py-10">
+  //       <Card>
+  //         <CardHeader>
+  //           <CardTitle>{t('subscription')}</CardTitle>
+  //           <CardDescription>{t('noSubscription')}</CardDescription>
+  //         </CardHeader>
+  //         <CardContent>
+  //           <Button onClick={() => router.push('/billing/plans')}>
+  //             {t('choosePlan')}
+  //           </Button>
+  //         </CardContent>
+  //       </Card>
+  //     </div>
+  //   );
+  // }
+
+  const isFreePlan = subscription?.planId === 'plan_free';
 
   return (
-    <div className="container mx-auto py-10 space-y-8">
+    <div className="container mx-auto py-10 space-y-8 px-2">
       <div>
-        <h1 className="text-3xl font-bold mb-2">{t('billingDashboard')}</h1>
+        <h1 className="text-3xl font-bold mb-2 text-black dark:text-white">{t('billingDashboard')}</h1>
         <p className="text-muted-foreground">{t('manageBilling')}</p>
       </div>
 
@@ -186,8 +189,8 @@ export default function BillingPage() {
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>{t('subscriptionDetails')}</span>
-            <span className={`text-sm font-normal ${getStatusColor(subscription.status)}`}>
-              {t(`subscription${subscription.status.charAt(0).toUpperCase() + subscription.status.slice(1)}`)}
+            <span className={`text-sm font-normal ${getStatusColor(subscription?.status?.toString() || '')}`}>
+              {isFreePlan ? t('freePlan') : t(`subscription${(subscription?.status?.charAt(0).toUpperCase() || '') + (subscription?.status?.slice(1) || '')}`)}
             </span>
           </CardTitle>
         </CardHeader>
@@ -195,26 +198,34 @@ export default function BillingPage() {
           <div className="grid md:grid-cols-2 gap-6">
             <div>
               <h3 className="font-semibold mb-2">{t('currentPlan')}</h3>
-              <p className="text-2xl font-bold">{subscription.plan.name}</p>
+              <p className="text-2xl font-bold">{subscription?.plan?.name}</p>
               <p className="text-muted-foreground">
-                {formatPrice(subscription.plan.amountCents, subscription.plan.currency)} / {subscription.plan.interval === 'month' ? t('perMonth') : t('perYear')}
+                {isFreePlan
+                  ? t('freeForever')
+                  : `${formatPrice(subscription?.plan?.amountCents || 0, subscription?.plan?.currency || '')} / ${subscription?.plan?.interval === 'month' ? t('perMonth') : t('perYear')}`
+                }
               </p>
             </div>
 
             <div>
               <h3 className="font-semibold mb-2 flex items-center gap-2">
                 <Calendar className="h-4 w-4" />
-                {subscription.cancelAtPeriodEnd ? t('willCancelOn') : t('renewalDate')}
+                {isFreePlan
+                  ? t('status')
+                  : subscription?.cancelAtPeriodEnd ? t('willCancelOn') : t('renewalDate')
+                }
               </h3>
               <p className="text-lg">
-                {subscription.currentPeriodEnd
-                  ? format(new Date(subscription.currentPeriodEnd), 'PPP')
-                  : '-'}
+                {isFreePlan
+                  ? t('noExpiration')
+                  : subscription?.currentPeriodEnd
+                    ? format(new Date(subscription?.currentPeriodEnd || ''), 'PPP')
+                    : '-'}
               </p>
             </div>
           </div>
 
-          {subscription.cancelAtPeriodEnd && (
+          {subscription?.cancelAtPeriodEnd && (
             <div className="flex items-center gap-2 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
               <AlertCircle className="h-5 w-5 text-yellow-600" />
               <p className="text-sm">{t('cancelSubscriptionDescription')}</p>
@@ -222,13 +233,17 @@ export default function BillingPage() {
           )}
 
           <div className="flex gap-4">
-            {!subscription.cancelAtPeriodEnd ? (
+            {isFreePlan ? (
+              <Button onClick={() => router.push('/billing/plans')}>
+                {t('upgradeToPremium')}
+              </Button>
+            ) : !subscription?.cancelAtPeriodEnd ? (
               <>
                 <Button
                   variant="outline"
                   onClick={() => router.push('/billing/plans')}
                 >
-                  {t('upgradePlan')}
+                  {t('changePlan')}
                 </Button>
                 <Button
                   variant="destructive"
@@ -252,29 +267,29 @@ export default function BillingPage() {
               <div className="flex justify-between p-2 bg-muted rounded">
                 <span>{t('maxAssets')}</span>
                 <span className="font-semibold">
-                  {subscription.plan.features.max_assets === -1
+                  {subscription?.plan?.features?.max_assets === -1
                     ? t('unlimited')
-                    : subscription.plan.features.max_assets}
+                    : subscription?.plan?.features?.max_assets}
                 </span>
               </div>
               <div className="flex justify-between p-2 bg-muted rounded">
                 <span>{t('maxBeneficiaries')}</span>
                 <span className="font-semibold">
-                  {subscription.plan.features.max_beneficiaries === -1
+                  {subscription?.plan?.features?.max_beneficiaries === -1
                     ? t('unlimited')
-                    : subscription.plan.features.max_beneficiaries}
+                    : subscription?.plan?.features?.max_beneficiaries}
                 </span>
               </div>
               <div className="flex justify-between p-2 bg-muted rounded">
                 <span>{t('maxStorage')}</span>
                 <span className="font-semibold">
-                  {subscription.plan.features.max_storage_mb} MB
+                  {subscription?.plan?.features?.max_storage_mb} MB
                 </span>
               </div>
               <div className="flex justify-between p-2 bg-muted rounded">
                 <span>{t('prioritySupport')}</span>
                 <span className="font-semibold">
-                  {subscription.plan.features.priority_support ? '✓' : '—'}
+                  {subscription?.plan?.features?.priority_support ? t('yes') : t('no')}
                 </span>
               </div>
             </div>
@@ -316,9 +331,8 @@ export default function BillingPage() {
                   </div>
                   <div className="flex items-center gap-4">
                     <span
-                      className={`text-sm font-semibold ${
-                        invoice.status === 'paid' ? 'text-green-600' : 'text-yellow-600'
-                      }`}
+                      className={`text-sm font-semibold ${invoice.status === 'paid' ? 'text-green-600' : 'text-yellow-600'
+                        }`}
                     >
                       {t(`invoice${invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}`)}
                     </span>

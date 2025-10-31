@@ -26,13 +26,30 @@ interface StripeProviderProps {
 
 export default function StripeProvider({ children, clientSecret }: StripeProviderProps) {
   const [stripe, setStripe] = useState<Promise<Stripe | null> | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setStripe(getStripe());
+    const stripeInstance = getStripe();
+    if (!stripeInstance) {
+      setLoading(false);
+      return;
+    }
+    setStripe(stripeInstance);
+    setLoading(false);
   }, []);
 
+  // Show loading while Stripe is initializing
+  if (loading) {
+    return <div className="p-4 text-center">Loading payment form...</div>;
+  }
+
+  // Show error if Stripe failed to load
   if (!stripe) {
-    return <div>{children}</div>;
+    return (
+      <div className="p-4 text-center text-red-600">
+        Failed to load payment processor. Please check configuration.
+      </div>
+    );
   }
 
   const options = clientSecret ? { clientSecret } : {};

@@ -137,7 +137,7 @@ export default function PlansPage() {
       </div>
 
       {/* Plan Cards */}
-      <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+      <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto px-4 justify-center items-center">
         {filteredPlans.map((plan) => {
           const isPremium = plan.name === 'Premium';
           const isFree = plan.amountCents === 0;
@@ -146,11 +146,11 @@ export default function PlansPage() {
             <Card
               key={plan.id}
               className={`relative ${
-                isPremium ? 'border-primary shadow-lg scale-105' : ''
+                isPremium ? 'border-primary shadow-lg' : ''
               }`}
             >
               {isPremium && (
-                <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground px-4 py-1 rounded-full text-sm font-semibold">
+                <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-green-600 text-primary-foreground px-4 py-1 rounded-full text-sm font-semibold">
                   {t('popular')}
                 </div>
               )}
@@ -173,7 +173,7 @@ export default function PlansPage() {
                 </CardDescription>
               </CardHeader>
 
-              <CardContent>
+              <CardContent className="min-h-[300px]">
                 <ul className="space-y-3">
                   <li className="flex items-center gap-2">
                     <Check className="h-5 w-5 text-primary flex-shrink-0" />

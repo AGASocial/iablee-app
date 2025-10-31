@@ -37,8 +37,27 @@ export async function getSubscriptionLimits(
     .eq('status', 'active')
     .single();
 
-  // If no active subscription, return free tier limits
+  // If no active subscription, get the Free plan from database
   if (!subscription || !subscription.plan) {
+    const { data: freePlan } = await supabase
+      .from('billing_plans')
+      .select('*')
+      .eq('id', 'plan_free')
+      .single();
+
+    if (freePlan) {
+      const features = freePlan.features as Record<string, unknown>;
+      return {
+        maxAssets: (features.max_assets as number) || 3,
+        maxBeneficiaries: (features.max_beneficiaries as number) || 2,
+        maxStorageMb: (features.max_storage_mb as number) || 50,
+        maxFileSizeMb: (features.max_file_size_mb as number) || 10,
+        prioritySupport: false,
+        advancedSecurity: false,
+      };
+    }
+
+    // Fallback to hardcoded limits if Free plan not found
     return getFreeTrialLimits();
   }
 
@@ -56,13 +75,13 @@ export async function getSubscriptionLimits(
 }
 
 /**
- * Get free tier/trial limits
+ * Get free tier/trial limits (fallback if Free plan not in database)
  */
 export function getFreeTrialLimits(): SubscriptionLimits {
   return {
-    maxAssets: 5,
+    maxAssets: 3,
     maxBeneficiaries: 2,
-    maxStorageMb: 100,
+    maxStorageMb: 50,
     maxFileSizeMb: 10,
     prioritySupport: false,
     advancedSecurity: false,

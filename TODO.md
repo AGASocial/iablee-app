@@ -14,6 +14,7 @@
 ### Payment Integration
 - [ ] Integrate payment provider (Stripe/PayPal) - set up webhooks, tokenization, and subscription management APIs
 - [ ] Create API endpoints for subscription management - create/update/cancel subscriptions, handle webhooks, manage payment methods
+- [ ] Consider lazy loading Stripe SDK - only load when user clicks "Add Payment Method" to reduce initial page load and telemetry calls
 
 ### User Interface
 - [ ] Build subscription UI components - plan selection, billing dashboard, payment method management, and upgrade/downgrade flows

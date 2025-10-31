@@ -111,6 +111,15 @@ export interface PaymentMethod {
   provider: PaymentProvider;
   providerCustomerId: string;
   token: string;
+  type: string; // Payment method type (e.g., 'card')
+  // Nested card object for UI compatibility
+  card?: {
+    brand: string;
+    last4: string;
+    expMonth: number;
+    expYear: number;
+  };
+  // Flat properties for backward compatibility
   brand?: string;
   last4?: string;
   expMonth?: number;

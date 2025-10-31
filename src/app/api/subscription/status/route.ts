@@ -18,9 +18,23 @@ export async function GET() {
 
     // Get auth token from cookies
     const cookieStore = await cookies();
-    const authToken =
+    const cookieName = 'sb-' + supabaseUrl.split('//')[1]?.split('.')[0] + '-auth-token';
+
+    let authToken =
       cookieStore.get('sb-access-token')?.value ||
-      cookieStore.get('sb-' + supabaseUrl.split('//')[1]?.split('.')[0] + '-auth-token')?.value;
+      cookieStore.get(cookieName)?.value;
+
+    // If the token is JSON-encoded (array), parse it
+    if (authToken && authToken.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(authToken);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          authToken = parsed[0];
+        }
+      } catch (e) {
+        console.error('Failed to parse auth token:', e);
+      }
+    }
 
     if (!authToken) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });

@@ -29,11 +29,26 @@ export async function GET() {
     const billingService = await getBillingService();
     const subscription = await billingService.getUserSubscription(userId);
 
+    // If no subscription, return the Free plan
     if (!subscription) {
-      return successResponse({ subscription: null });
+      const freePlan = await billingService.getPlan('plan_free');
+      return successResponse({
+        subscription: {
+          id: 'free',
+          userId,
+          planId: 'plan_free',
+          status: 'active',
+          currentPeriodStart: new Date(),
+          currentPeriodEnd: null, // Free plan never expires
+          cancelAtPeriodEnd: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          plan: freePlan,
+        },
+      });
     }
 
-    // Also fetch the plan details
+    // Fetch the plan details for paid subscription
     const plan = await billingService.getPlan(subscription.planId);
 
     return successResponse({

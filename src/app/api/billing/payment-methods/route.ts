@@ -111,6 +111,19 @@ export async function DELETE(request: NextRequest) {
     }
 
     const billingService = await getBillingService();
+
+    // Check if the payment method is the default one
+    const paymentMethods = await billingService.getPaymentMethods(userId);
+    const paymentMethod = paymentMethods.find(pm => pm.id === paymentMethodId);
+
+    if (!paymentMethod) {
+      return errorResponse('Payment method not found', 404);
+    }
+
+    if (paymentMethod.isDefault) {
+      return errorResponse('Cannot delete the default payment method. Please set another payment method as default first.', 400);
+    }
+
     await billingService.detachPaymentMethod(userId, paymentMethodId);
 
     return successResponse({ success: true });

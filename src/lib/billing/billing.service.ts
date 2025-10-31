@@ -668,16 +668,30 @@ export class BillingService {
    * Map database payment method to domain model
    */
   private mapPaymentMethodFromDb(data: Record<string, unknown>): PaymentMethod {
+    const brand = data.brand as string | undefined;
+    const last4 = data.last4 as string | undefined;
+    const expMonth = data.exp_month as number | undefined;
+    const expYear = data.exp_year as number | undefined;
+
     return {
       id: data.id as string,
       userId: data.user_id as string,
       provider: data.provider as PaymentMethod['provider'],
       providerCustomerId: data.provider_customer_id as string,
       token: data.token as string,
-      brand: data.brand as string | undefined,
-      last4: data.last4 as string | undefined,
-      expMonth: data.exp_month as number | undefined,
-      expYear: data.exp_year as number | undefined,
+      type: 'card', // Payment type
+      // Include nested card object for UI compatibility
+      card: brand && last4 && expMonth && expYear ? {
+        brand,
+        last4,
+        expMonth,
+        expYear,
+      } : undefined,
+      // Also keep flat properties for backward compatibility
+      brand,
+      last4,
+      expMonth,
+      expYear,
       isDefault: data.is_default as boolean,
       createdAt: new Date(data.created_at as string),
       updatedAt: new Date(data.updated_at as string),
