@@ -1,6 +1,6 @@
 import createMiddleware from 'next-intl/middleware';
 import {routing} from './i18n/routing';
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
+import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
@@ -13,13 +13,36 @@ export async function middleware(req: NextRequest) {
 
   // Then, run your Supabase session logic
   const res = NextResponse.next()
-  const supabase = createMiddlewareClient({ req, res })
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-  console.log("Supabase session in middleware:", session);
+  // Get auth token from cookies
+  let authToken =
+    req.cookies.get('sb-access-token')?.value ||
+    req.cookies.get('sb-' + supabaseUrl.split('//')[1]?.split('.')[0] + '-auth-token')?.value;
+
+  // If the token is JSON-encoded (array), parse it
+  if (authToken && authToken.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(authToken);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        authToken = parsed[0];
+      }
+    } catch (e) {
+      console.error('Failed to parse auth token in middleware:', e);
+    }
+  }
+
+  let session = null;
+  if (authToken && supabaseServiceKey) {
+    // Verify token with service role client
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const { data: { user } } = await supabase.auth.getUser(authToken);
+    if (user) {
+      session = { user };
+    }
+  }
 
   // Get the locale from the URL path
   const pathname = req.nextUrl.pathname;
@@ -54,21 +77,24 @@ export async function middleware(req: NextRequest) {
   // check if they have assets and redirect accordingly
   if (session && (pathname.startsWith(`/${locale}/auth`) || pathname.startsWith('/auth'))) {
     const redirectUrl = req.nextUrl.clone()
-    
-    // Check if user has any assets
-    const { data: assets } = await supabase
-      .from('digital_assets')
-      .select('id')
-      .eq('user_id', session.user.id)
-      .limit(1);
-    console.log("Assets in middleware:", assets);
-    // If user has no assets, redirect to wizard
-    if (!assets || assets.length === 0) {
-      redirectUrl.pathname = `/${locale}/wizard`
-    } else {
-      redirectUrl.pathname = `/${locale}/dashboard`
+
+    // Check if user has any assets using service role client
+    if (authToken && supabaseServiceKey) {
+      const supabase = createClient(supabaseUrl, supabaseServiceKey);
+      const { data: assets } = await supabase
+        .from('digital_assets')
+        .select('id')
+        .eq('user_id', session.user.id)
+        .limit(1);
+
+      // If user has no assets, redirect to wizard
+      if (!assets || assets.length === 0) {
+        redirectUrl.pathname = `/${locale}/wizard`
+      } else {
+        redirectUrl.pathname = `/${locale}/dashboard`
+      }
     }
-    
+
     return NextResponse.redirect(redirectUrl)
   }
 

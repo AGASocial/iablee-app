@@ -25,6 +25,11 @@ export default function Navigation({ closeSidebar }: { closeSidebar?: () => void
           </Link>
         </li>
         <li>
+          <Link href="/billing" className="flex items-center p-2 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg" onClick={closeSidebar}>
+            {t('billing')}
+          </Link>
+        </li>
+        <li>
           <Link href="/wizard" className="flex items-center p-2 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg" onClick={closeSidebar}>
             {t('setupWizard')}
           </Link>

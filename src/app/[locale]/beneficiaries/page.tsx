@@ -1,10 +1,12 @@
 "use client";
 import { useTranslations } from 'next-intl';
+import { useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { Pencil, Trash2, Plus } from "lucide-react";
 import { useRef } from "react";
+import { toast } from 'sonner';
 
 interface Beneficiary {
     id: string;
@@ -39,6 +41,7 @@ function StatusBadge({ status }: { status: string | null }) {
 
 export default function BeneficiariesPage() {
     const t = useTranslations();
+    const router = useRouter();
     const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
     const [loading, setLoading] = useState(true);
     const [showAddModal, setShowAddModal] = useState(false);
@@ -84,6 +87,34 @@ export default function BeneficiariesPage() {
         }
         fetchRelationships();
     }, []);
+
+    const handleAddBeneficiary = async () => {
+        try {
+            // Check if user can create a beneficiary
+            const response = await fetch('/api/subscription/check-limit?type=beneficiary');
+            const result = await response.json();
+
+            if (!result.allowed) {
+                // Show limit reached message with upgrade option
+                toast.error(t('beneficiaryLimitReached'), {
+                    description: t('beneficiaryLimitReachedDescription', { limit: result.limit }),
+                    action: {
+                        label: t('viewPlans'),
+                        onClick: () => router.push('/billing/plans'),
+                    },
+                    duration: 5000,
+                });
+                return;
+            }
+
+            // Open the modal if allowed
+            setShowAddModal(true);
+        } catch (error) {
+            console.error('Error checking beneficiary limit:', error);
+            // On error, allow creation (fail open)
+            setShowAddModal(true);
+        }
+    };
 
     // async function handleAddBeneficiary() {
     //     setSubmitting(true);
@@ -197,11 +228,11 @@ export default function BeneficiariesPage() {
         <div className="p-4 sm:p-8">
             <div className="flex items-center justify-between mb-8">
                 <h1 className="text-4xl font-bold text-gray-900 dark:text-white">{t('beneficiariesTitle')}</h1>
-                <Button className="hidden sm:inline-flex rounded-full px-6 py-2 text-base font-medium" onClick={() => setShowAddModal(true)}>{t('addBeneficiary')}</Button>
+                <Button className="hidden sm:inline-flex rounded-full px-6 py-2 text-base font-medium" onClick={handleAddBeneficiary}>{t('addBeneficiary')}</Button>
             </div>
             <Button
                 className="sm:hidden w-full mb-4 flex items-center justify-center gap-2"
-                onClick={() => setShowAddModal(true)}
+                onClick={handleAddBeneficiary}
                 aria-label={t('addBeneficiary')}
             >
                 <Plus className="w-5 h-5" />
@@ -227,7 +258,7 @@ export default function BeneficiariesPage() {
                                     <tr>
                                         <td colSpan={6} className="py-12 text-center text-muted-foreground">
                                             {t('noBeneficiaries')}
-                                            <Button className="mt-2 ml-2 bg-gray-800 text-gray-100" onClick={() => setShowAddModal(true)}>{t('addBeneficiary')}</Button>
+                                            <Button className="mt-2 ml-2 bg-gray-800 text-gray-100" onClick={handleAddBeneficiary}>{t('addBeneficiary')}</Button>
                                         </td>
                                     </tr>
                                 ) : (

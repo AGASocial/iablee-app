@@ -1,6 +1,7 @@
 "use client";
 
 import { useTranslations } from 'next-intl';
+import { useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import AddAssetModal from '@/components/AddAssetModal';
 import AssetAttachmentsModal from '@/components/AssetAttachmentsModal';
@@ -11,9 +12,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '@
 import type { Asset } from '@/models/asset';
 import { Beneficiary } from '@/models/beneficiary';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
+import { toast } from 'sonner';
 
 export default function DigitalAssetsPage() {
   const t = useTranslations();
+  const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,6 +55,34 @@ export default function DigitalAssetsPage() {
       .eq('user_id', user?.id)
       .order('full_name', { ascending: true });
     setBeneficiaries((data || []) as Beneficiary[]);
+  };
+
+  const handleAddAsset = async () => {
+    try {
+      // Check if user can create an asset
+      const response = await fetch('/api/subscription/check-limit?type=asset');
+      const result = await response.json();
+
+      if (!result.allowed) {
+        // Show limit reached message with upgrade option
+        toast.error(t('assetLimitReached'), {
+          description: t('assetLimitReachedDescription', { limit: result.limit }),
+          action: {
+            label: t('viewPlans'),
+            onClick: () => router.push('/billing/plans'),
+          },
+          duration: 5000,
+        });
+        return;
+      }
+
+      // Open the modal if allowed
+      setModalOpen(true);
+    } catch (error) {
+      console.error('Error checking asset limit:', error);
+      // On error, allow creation (fail open)
+      setModalOpen(true);
+    }
   };
 
   useEffect(() => {
@@ -153,11 +184,11 @@ export default function DigitalAssetsPage() {
         )}
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-4xl font-bold text-gray-900 dark:text-white">{t('digitalAssetsTitle')}</h1>
-          <Button className="hidden sm:inline-flex rounded-full px-6 py-2 text-base font-medium bg-gray-800 text-gray-100" onClick={() => setModalOpen(true)}>{t('addNewAsset')}</Button>
+          <Button className="hidden sm:inline-flex rounded-full px-6 py-2 text-base font-medium bg-gray-800 text-gray-100" onClick={handleAddAsset}>{t('addNewAsset')}</Button>
         </div>
         <Button
           className="sm:hidden w-full mb-4 flex items-center justify-center gap-2"
-          onClick={() => setModalOpen(true)}
+          onClick={handleAddAsset}
           aria-label={t('addNewAsset')}
         >
           <Plus className="w-5 h-5" />
@@ -184,7 +215,7 @@ export default function DigitalAssetsPage() {
                     <tr>
                       <td colSpan={7} className="py-12 text-center text-muted-foreground">
                         {t('noAssetsFound')}
-                        <Button className="mt-2 ml-2 bg-gray-800 text-gray-100" onClick={() => setModalOpen(true)}>{t('addAsset')}</Button>
+                        <Button className="mt-2 ml-2 bg-gray-800 text-gray-100" onClick={handleAddAsset}>{t('addAsset')}</Button>
                       </td>
                     </tr>
                   ) : (
