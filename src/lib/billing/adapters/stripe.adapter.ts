@@ -407,7 +407,7 @@ export class StripeAdapter implements PaymentGateway {
    */
   private extractPeriodEnd(subscription: Stripe.Subscription): number {
     // Try to get current_period_end directly
-    let periodEnd = (subscription as Stripe.Subscription & { current_period_end?: number }).current_period_end;
+    let periodEnd = (subscription as unknown as Stripe.Subscription & { current_period_end?: number }).current_period_end;
 
     // If not available, calculate from billing_cycle_anchor
     if (!periodEnd) {
