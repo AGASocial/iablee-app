@@ -43,6 +43,7 @@ export default function PlansPage() {
   useEffect(() => {
     fetchPlans();
     fetchCurrentSubscription();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchCurrentSubscription = async () => {

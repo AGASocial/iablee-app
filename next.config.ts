@@ -7,7 +7,14 @@ const withNextIntl = createNextIntlPlugin();
 const nextConfig: NextConfig = {
   // Optimize image loading
   images: {
-    domains: ['localhost', 'appleid.cdn-apple.com', 'www.gstatic.com'],
+    domains: ['localhost', 'appleid.cdn-apple.com', 'www.gstatic.com', 'images.unsplash.com'],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'images.unsplash.com',
+        pathname: '/**',
+      },
+    ],
     minimumCacheTTL: 60,
   },
   // Enable React strict mode for better development

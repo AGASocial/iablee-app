@@ -49,10 +49,6 @@ export default function BillingPage() {
   const [loading, setLoading] = useState(true);
   const [canceling, setCanceling] = useState(false);
 
-  useEffect(() => {
-    fetchBillingData();
-  }, []);
-
   const fetchBillingData = async () => {
     try {
       const [subResponse, invoicesResponse] = await Promise.all([
@@ -76,6 +72,11 @@ export default function BillingPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchBillingData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleCancelSubscription = async () => {
     if (!subscription) return;

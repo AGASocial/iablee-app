@@ -8,29 +8,49 @@ export default function Navigation({ closeSidebar }: { closeSidebar?: () => void
   
   return (
     <nav className="flex-1 p-4">
-      <ul className="space-y-2">
+      <ul className="space-y-1">
         <li>
-          <Link href="/dashboard" className="flex items-center p-2 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg" onClick={closeSidebar}>
+          <Link 
+            href="/dashboard" 
+            className="flex items-center p-3 text-foreground hover:bg-accent hover:text-accent-foreground rounded-lg transition-colors font-medium hover-lift" 
+            onClick={closeSidebar}
+          >
             {t('dashboard')}
           </Link>
         </li>
         <li>
-          <Link href="/digital-assets" className="flex items-center p-2 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg" onClick={closeSidebar}>
+          <Link 
+            href="/digital-assets" 
+            className="flex items-center p-3 text-foreground hover:bg-accent hover:text-accent-foreground rounded-lg transition-colors font-medium hover-lift" 
+            onClick={closeSidebar}
+          >
             {t('digitalAssets')}
           </Link>
         </li>
         <li>
-          <Link href="/beneficiaries" className="flex items-center p-2 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg" onClick={closeSidebar}>
+          <Link 
+            href="/beneficiaries" 
+            className="flex items-center p-3 text-foreground hover:bg-accent hover:text-accent-foreground rounded-lg transition-colors font-medium hover-lift" 
+            onClick={closeSidebar}
+          >
             {t('beneficiaries')}
           </Link>
         </li>
         <li>
-          <Link href="/billing" className="flex items-center p-2 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg" onClick={closeSidebar}>
+          <Link 
+            href="/billing" 
+            className="flex items-center p-3 text-foreground hover:bg-accent hover:text-accent-foreground rounded-lg transition-colors font-medium hover-lift" 
+            onClick={closeSidebar}
+          >
             {t('billing')}
           </Link>
         </li>
         <li>
-          <Link href="/wizard" className="flex items-center p-2 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg" onClick={closeSidebar}>
+          <Link 
+            href="/wizard" 
+            className="flex items-center p-3 text-primary hover:bg-primary/10 rounded-lg transition-colors font-medium hover-lift" 
+            onClick={closeSidebar}
+          >
             {t('setupWizard')}
           </Link>
         </li>

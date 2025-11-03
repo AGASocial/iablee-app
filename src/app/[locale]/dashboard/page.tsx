@@ -12,13 +12,14 @@ import { Link } from '@/i18n/navigation';
 
 // Helper for status badge
 function StatusBadge({ status }: { status: string }) {
-  const statusStyles: Record<string, string> = {
-    active: "bg-green-100 text-green-800",
-    pending: "bg-yellow-100 text-yellow-800",
-    inactive: "bg-red-100 text-red-800",
+  const statusClassMap: Record<string, string> = {
+    active: "badge-active",
+    pending: "badge-pending",
+    inactive: "badge-inactive",
+    protected: "badge-protected",
   };
   return (
-    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusStyles[status.toLowerCase()] || "bg-gray-100 text-gray-800"}`}>
+    <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${statusClassMap[status.toLowerCase()] || "bg-muted text-muted-foreground border-border"}`}>
       {status}
     </span>
   );
@@ -128,63 +129,76 @@ export default function DashboardPage() {
   return (
     <div className="flex-1 space-y-8 p-4 sm:p-8 pt-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900 dark:text-white">{t('dashboard')}</h2>
+        <div>
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+            {t('dashboard')}
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">{t('overviewDigitalAssets')}</p>
+        </div>
       </div>
 
       {/* Stats Overview */}
       <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
+        <Card className="card-gradient hover-lift border-border/50">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
+            <CardTitle className="text-sm font-medium text-foreground">
               {t('totalAssets')}
             </CardTitle>
-            <Key className="h-4 w-4 text-muted-foreground" />
+            <div className="p-2 rounded-lg bg-primary/10">
+              <Key className="h-4 w-4 text-primary" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.totalAssets}</div>
-            <p className="text-xs text-muted-foreground">
+            <div className="text-2xl font-bold text-foreground">{stats.totalAssets}</div>
+            <p className="text-xs text-muted-foreground mt-1">
               {t('digitalAssetsRegistered')}
             </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="card-gradient hover-lift border-border/50">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
+            <CardTitle className="text-sm font-medium text-foreground">
               {t('protectedAssets')}
             </CardTitle>
-            <Shield className="h-4 w-4 text-muted-foreground" />
+            <div className="p-2 rounded-lg icon-bg-success">
+              <Shield className="h-4 w-4 icon-success" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.protectedAssets}</div>
-            <p className="text-xs text-muted-foreground">
+            <div className="text-2xl font-bold text-foreground">{stats.protectedAssets}</div>
+            <p className="text-xs text-muted-foreground mt-1">
               {t('assetsWithProtection')}
             </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="card-gradient hover-lift border-border/50">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
+            <CardTitle className="text-sm font-medium text-foreground">
               {t('beneficiariesStat')}
             </CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+            <div className="p-2 rounded-lg icon-bg-accent">
+              <Users className="h-4 w-4 icon-accent" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.totalBeneficiaries}</div>
-            <p className="text-xs text-muted-foreground">
+            <div className="text-2xl font-bold text-foreground">{stats.totalBeneficiaries}</div>
+            <p className="text-xs text-muted-foreground mt-1">
               {t('registeredBeneficiaries')}
             </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="card-gradient hover-lift border-border/50">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
+            <CardTitle className="text-sm font-medium text-foreground">
               {t('recentActivity')}
             </CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
+            <div className="p-2 rounded-lg icon-bg-info">
+              <Activity className="h-4 w-4 icon-info" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.recentActivity}</div>
-            <p className="text-xs text-muted-foreground">
+            <div className="text-2xl font-bold text-foreground">{stats.recentActivity}</div>
+            <p className="text-xs text-muted-foreground mt-1">
               {t('changesLast30Days')}
             </p>
           </CardContent>
@@ -194,7 +208,7 @@ export default function DashboardPage() {
       {/* Main Content Cards */}
       <div className="grid gap-6 grid-cols-1 md:grid-cols-2">
         {/* Digital Assets Card */}
-        <Card className="col-span-1">
+        <Card className="col-span-1 card-gradient hover-lift border-border/50">
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <div>
               <CardTitle>{t('yourDigitalAssets')}</CardTitle>
@@ -216,19 +230,19 @@ export default function DashboardPage() {
                   {t('noAssets')}
                 </p>
                 <Link href="/wizard">
-                  <Button className="flex items-center gap-2">
+                  <Button className="btn-primary-gradient flex items-center gap-2 text-primary-foreground">
                     <Sparkles className="h-4 w-4" />
                     {t('setupWizard')}
                   </Button>
                 </Link>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {assets.map((asset) => (
-                  <div key={asset.id} className="flex items-center justify-between p-4 border rounded-lg">
+                  <div key={asset.id} className="flex items-center justify-between p-4 border rounded-lg bg-card/50 hover:bg-accent/30 transition-colors hover-lift">
                     <div className="flex items-center space-x-4">
                       <div>
-                        <p className="font-medium">{asset.asset_name}</p>
+                        <p className="font-medium text-foreground">{asset.asset_name}</p>
                         <p className="text-sm text-muted-foreground">{asset.asset_type}</p>
                       </div>
                     </div>
@@ -241,7 +255,7 @@ export default function DashboardPage() {
         </Card>
 
         {/* Beneficiaries Card */}
-        <Card className="col-span-1">
+        <Card className="col-span-1 card-gradient hover-lift border-border/50">
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <div>
               <CardTitle>{t('recentBeneficiaries')}</CardTitle>
@@ -264,18 +278,24 @@ export default function DashboardPage() {
                 </p>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {beneficiaries.map((beneficiary) => (
-                  <div key={beneficiary.id} className="flex flex-col md:flex-row md:items-center md:justify-between p-4 border rounded-lg">
+                  <div key={beneficiary.id} className="flex flex-col md:flex-row md:items-center md:justify-between p-4 border rounded-lg bg-card/50 hover:bg-accent/30 transition-colors hover-lift">
                     <div className="flex flex-col space-y-1">
-                      <span className="font-medium">{beneficiary.full_name}</span>
+                      <span className="font-medium text-foreground">{beneficiary.full_name}</span>
                       <span className="text-sm text-muted-foreground">{beneficiary.email}</span>
                       <span className="text-sm text-muted-foreground">{beneficiary.phone_number}</span>
                       <span className="text-sm text-muted-foreground">{beneficiary.relationship}</span>
-                      <span className="text-sm text-muted-foreground">{beneficiary.notes}</span>
-                      <span className="text-xs">{beneficiary.notified ? t('notified') : t('notNotified')}</span>
-                      <span className="text-xs">{beneficiary.email_verified ? t('emailVerified') : t('emailNotVerified')}</span>
-                      <span className="text-xs">{beneficiary.last_notified_at ? `${t('lastNotifiedAt')}: ${beneficiary.last_notified_at}` : ''}</span>
+                      {beneficiary.notes && <span className="text-sm text-muted-foreground">{beneficiary.notes}</span>}
+                      <div className="flex gap-2 flex-wrap mt-1">
+                        <span className={`text-xs px-2 py-0.5 rounded ${beneficiary.notified ? 'badge-active' : 'bg-muted text-muted-foreground'}`}>
+                          {beneficiary.notified ? t('notified') : t('notNotified')}
+                        </span>
+                        <span className={`text-xs px-2 py-0.5 rounded ${beneficiary.email_verified ? 'badge-active' : 'bg-muted text-muted-foreground'}`}>
+                          {beneficiary.email_verified ? t('emailVerified') : t('emailNotVerified')}
+                        </span>
+                      </div>
+                      {beneficiary.last_notified_at && <span className="text-xs text-muted-foreground">{t('lastNotifiedAt')}: {beneficiary.last_notified_at}</span>}
                     </div>
                     <StatusBadge status={beneficiary.status || 'Active'} />
                   </div>
@@ -287,8 +307,8 @@ export default function DashboardPage() {
       </div>
 
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-2">
-          <div className="bg-white dark:bg-gray-900 rounded-lg shadow-lg p-4 sm:p-8 w-full max-w-md">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-2">
+          <div className="bg-card border border-border rounded-lg shadow-xl p-4 sm:p-8 w-full max-w-md card-gradient">
             <h3 className="text-lg font-bold mb-4">{t('addBeneficiary')}</h3>
             <div className="space-y-4">
               <input className="w-full p-2 border rounded" placeholder={t('name')} value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} />

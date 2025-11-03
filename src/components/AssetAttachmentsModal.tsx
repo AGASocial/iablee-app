@@ -52,6 +52,7 @@ export default function AssetAttachmentsModal({
     if (open) {
       loadFiles();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, asset?.id]);
 
   const buildFilesFromPaths = async (paths: string[]): Promise<FileWithMetadata[]> => {
@@ -154,7 +155,7 @@ export default function AssetAttachmentsModal({
 
   const getFileIcon = (fileType: string) => {
     switch (fileType) {
-      case 'image': return <Image className="w-5 h-5" />;
+      case 'image': return <Image className="w-5 h-5" aria-label="Image file" />;
       case 'video': return <Video className="w-5 h-5" />;
       case 'audio': return <Music className="w-5 h-5" />;
       case 'document': return <FileText className="w-5 h-5" />;
@@ -269,6 +270,7 @@ export default function AssetAttachmentsModal({
       case 'image':
         return (
           <div className="flex items-center justify-center p-4">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img 
               src={file.url} 
               alt={file.name}
