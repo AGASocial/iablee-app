@@ -43,7 +43,7 @@ This document gives an AI engineer all essential context to build and ship new f
   - `NEXT_PUBLIC_SUPABASE_URL` — must be an `https://*.supabase.co` URL; validated at startup.
   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` — anon key for the Supabase project.
 - Images: `next.config.ts` allows `localhost`, `appleid.cdn-apple.com`, `www.gstatic.com`.
-- i18n locales: `en`, `es` (default `en`) via `next-intl`.
+- i18n locales: `en`, `es` (default `es`) via `next-intl`.
 
 ### Authentication and Authorization
 
@@ -96,7 +96,7 @@ TypeScript types: `src/lib/supabase.ts` declares a `Database` type that matches 
 ### Internationalization
 
 - Library: `next-intl`.
-- Routing: `src/i18n/routing.ts` defines `locales = ['en','es']`, `defaultLocale = 'en'`.
+- Routing: `src/i18n/routing.ts` defines `locales = ['en','es']`, `defaultLocale = 'es'`.
 - Middleware: negotiates locale from URL and enforces redirects.
 - Content: translation message files are present under `iablee-app/messages/` and `iablee-app/iablee-app/src/messages/`. The user prefers lowercase hyphen-separated keys in `@en.json` and `@es.json` [[memory:3376191]].
 

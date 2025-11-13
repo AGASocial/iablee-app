@@ -56,7 +56,7 @@ export function AuthForm({ type }: AuthFormProps) {
     try {
       const origin = typeof window !== "undefined" ? window.location.origin : "";
       const emailRedirectTo = `${origin}/${locale}`;
-      
+
       console.log('Auth redirect URLs:', {
         origin,
         locale,
@@ -89,7 +89,7 @@ export function AuthForm({ type }: AuthFormProps) {
         if (signInError) throw signInError
         console.log("Sign in successful!")
         toast.success("Login successful!")
-        
+
         // Check if user has any assets
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
@@ -127,9 +127,9 @@ export function AuthForm({ type }: AuthFormProps) {
   async function handleGoogleSignIn() {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
     const redirectTo = `${origin}/${locale}/auth/callback`;
-    
+
     console.log('Google OAuth redirect:', redirectTo);
-    
+
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
@@ -141,9 +141,9 @@ export function AuthForm({ type }: AuthFormProps) {
   async function handleAppleSignIn() {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
     const redirectTo = `${origin}/${locale}/auth/callback`;
-    
+
     console.log('Apple OAuth redirect:', redirectTo);
-    
+
     await supabase.auth.signInWithOAuth({
       provider: "apple",
       options: {
@@ -228,9 +228,9 @@ export function AuthForm({ type }: AuthFormProps) {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>{t("email")}</FormLabel>
-                                  <FormControl>
-                    <Input placeholder="name@example.com" type="email" autoComplete="email" {...field} />
-                  </FormControl>
+                <FormControl>
+                  <Input placeholder="name@example.com" type="email" autoComplete="email" {...field} />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}
@@ -241,9 +241,9 @@ export function AuthForm({ type }: AuthFormProps) {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>{t("password")}</FormLabel>
-                                  <FormControl>
-                    <Input placeholder="••••••••" type="password" autoComplete={type === "login" ? "current-password" : "new-password"} {...field} />
-                  </FormControl>
+                <FormControl>
+                  <Input placeholder="••••••••" type="password" autoComplete={type === "login" ? "current-password" : "new-password"} {...field} />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}
@@ -270,6 +270,7 @@ export function AuthForm({ type }: AuthFormProps) {
             <Link href="/auth/register" className="underline underline-offset-4 hover:text-primary">
               {t("signUp")}
             </Link>
+
           </>
         ) : (
           <>
@@ -279,6 +280,12 @@ export function AuthForm({ type }: AuthFormProps) {
             </Link>
           </>
         )}
+      </p>
+
+      <p className="px-8 text-center text-xs text-muted-foreground">
+        Versión 1.0.2
+        <br />
+        Copyright © 2025
       </p>
     </div>
   )
