@@ -278,5 +278,113 @@
   "upgradeToAddMore": "Mejorar para agregar más",
   "viewPlans": "Ver Planes",
   "yes": "Sí",
-  "no": "No"
+  "no": "No",
+  "loadingAssetType": "Cargando tipo de activo...",
+  "errorLoadingAssetType": "Error al cargar tipo de activo",
+  "assets": {
+    "letter": {
+      "name": "Carta",
+      "description": "Una carta es un mensaje escrito que puedes enviar a tus beneficiarios.",
+      "requiredFields": [
+        "asset_name"
+      ],
+      "optionalFields": [
+        "description"
+      ],
+      "fileAccept": "*",
+      "customFields": [
+        {
+          "key": "message_content",
+          "label": "writeWhatYouWantToSay",
+          "type": "textarea",
+          "required": true
+        }
+      ]
+    },
+    "audio": {
+      "name": "Audio grabado",
+      "description": "Un audio grabado es un audio que puedes enviar a tus beneficiarios.",
+      "requiredFields": [
+        "asset_name"
+      ],
+      "optionalFields": [],
+      "fileAccept": "audio/*",
+      "customFields": [
+        {
+          "key": "audio_note",
+          "label": "recordHereOrUpload",
+          "type": "file",
+          "required": true
+        }
+      ]
+    },
+    "photo": {
+      "name": "Foto",
+      "description": "Una foto es una imagen que puedes enviar a tus beneficiarios.",
+      "requiredFields": [
+        "asset_name"
+      ],
+      "optionalFields": [],
+      "fileAccept": "image/*",
+      "customFields": [
+        {
+          "key": "photo_caption",
+          "label": "photoCaption",
+          "type": "text",
+          "required": false
+        }
+      ]
+    },
+    "video": {
+      "name": "Video grabado",
+      "description": "Un video grabado es un video que puedes enviar a tus beneficiarios.",
+      "requiredFields": [
+        "asset_name"
+      ],
+      "optionalFields": [],
+      "fileAccept": "video/*",
+      "customFields": [
+        {
+          "key": "video_caption",
+          "label": "videoCaption",
+          "type": "text",
+          "required": false
+        }
+      ]
+    },
+    "document": {
+      "name": "Documento",
+      "description": "Un documento es un documento que puedes enviar a tus beneficiarios.",
+      "requiredFields": [
+        "asset_name"
+      ],
+      "optionalFields": [
+        "description"
+      ],
+      "fileAccept": "*",
+      "customFields": [
+        {
+          "key": "document_type",
+          "label": "documentType",
+          "type": "select",
+          "required": true,
+          "options": [
+            "identification",
+            "passport",
+            "certificate",
+            "contract",
+            "invoice",
+            "receipt",
+            "other"
+          ]
+        },
+        {
+          "key": "observations",
+          "label": "observaciones",
+          "type": "textarea",
+          "required": false
+        }
+      ]
+    }
+  }
 }

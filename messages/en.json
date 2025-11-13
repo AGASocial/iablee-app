@@ -197,7 +197,6 @@
   "choosePlan": "Choose Plan",
   "subscribe": "Subscribe",
   "subscribed": "Subscribed",
-  "freePlan": "Free",
   "necessaryPlan": "Necessary",
   "premiumPlan": "Premium",
   "perMonth": "per month",
@@ -277,5 +276,60 @@
   "upgradeToAddMore": "Upgrade to add more",
   "viewPlans": "View Plans",
   "yes": "Yes",
-  "no": "No"
+  "no": "No",
+  "loadingAssetType": "Loading asset type...",
+  "errorLoadingAssetType": "Error loading asset type",
+  "assets": {
+    "letter": {
+      "name": "Letter",
+      "description": "A letter is a written message that you can send to your beneficiaries.",
+      "requiredFields": ["asset_name"],
+      "optionalFields": ["description"],
+      "fileAccept": "*",
+      "customFields": [
+        { "key": "message_content", "label": "writeWhatYouWantToSay", "type": "textarea", "required": true }
+      ]
+    },
+    "audio": {
+      "name": "Audio",
+      "description": "An audio is a recorded message that you can send to your beneficiaries.",
+      "requiredFields": ["asset_name"],
+      "optionalFields": [],
+      "fileAccept": "audio/*",
+      "customFields": [
+        { "key": "audio_note", "label": "recordHereOrUpload", "type": "file", "required": true }
+      ]
+    },
+    "photo": {
+      "name": "Photo",
+      "description": "A photo is an image that you can send to your beneficiaries.",
+      "requiredFields": ["asset_name"],
+      "optionalFields": [],
+      "fileAccept": "image/*",
+      "customFields": [
+        { "key": "photo_caption", "label": "photoCaption", "type": "text", "required": false }
+      ]
+    },
+    "video": {
+      "name": "Video",
+      "description": "A video is a video that you can send to your beneficiaries.",
+      "requiredFields": ["asset_name"],
+      "optionalFields": [],
+      "fileAccept": "video/*",
+      "customFields": [
+        { "key": "video_caption", "label": "videoCaption", "type": "text", "required": false }
+      ]
+    },
+    "document": {
+      "name": "Document",
+      "description": "A document is a document that you can send to your beneficiaries.",
+      "requiredFields": ["asset_name"],
+      "optionalFields": ["description"],
+      "fileAccept": "*",
+      "customFields": [
+        { "key": "document_type", "label": "documentType", "type": "select", "required": true, "options": ["identification", "passport", "certificate", "contract", "invoice", "receipt", "other"] },
+        { "key": "observations", "label": "observations", "type": "textarea", "required": false }
+      ]
+    }
+  }
 }

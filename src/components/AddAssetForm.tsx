@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase";
 import type { Asset } from "@/models/asset";
-import { getAssetType } from "@/constants/assetTypes";
+import { getAssetType, type AssetType } from "@/lib/assetTypes";
 
 export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: { assetType: string, onSuccess: () => void, onCancel: () => void, asset?: Asset }) {
   const t = useTranslations();
@@ -21,8 +21,8 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const currentAssetType = getAssetType(assetType);
+  const [currentAssetType, setCurrentAssetType] = useState<AssetType | null>(null);
+  const [assetTypeLoading, setAssetTypeLoading] = useState(true);
 
   useEffect(() => {
     if (asset) {
@@ -38,6 +38,24 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
       });
     }
   }, [asset]);
+
+  // Fetch asset type information
+  useEffect(() => {
+    async function fetchAssetType() {
+      try {
+        setAssetTypeLoading(true);
+        const assetTypeData = await getAssetType(assetType);
+        setCurrentAssetType(assetTypeData || null);
+      } catch (error) {
+        console.error('Error fetching asset type:', error);
+        setError('Failed to load asset type information');
+      } finally {
+        setAssetTypeLoading(false);
+      }
+    }
+
+    fetchAssetType();
+  }, [assetType]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -152,7 +170,7 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
 
   // Helper function to check if a field should be shown
   const shouldShowField = (fieldName: string): boolean => {
-    if (!currentAssetType) return true;
+    if (assetTypeLoading || !currentAssetType) return true;
 
     const isRequired = currentAssetType.requiredFields?.includes(fieldName);
     const isOptional = currentAssetType.optionalFields?.includes(fieldName);
@@ -162,7 +180,7 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
 
   // Helper function to check if a field is required
   const isFieldRequired = (fieldName: string): boolean => {
-    if (!currentAssetType) return false;
+    if (assetTypeLoading || !currentAssetType) return false;
     return currentAssetType.requiredFields?.includes(fieldName) || false;
   };
 

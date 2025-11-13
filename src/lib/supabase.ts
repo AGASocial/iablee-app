@@ -63,30 +63,51 @@ export type Database = {
           user_id: string
           asset_type: string
           asset_name: string
-          asset_value: string
-          access_instructions: string
-          created_at: string
-          updated_at: string
+          beneficiary_id: string | null
+          status: string | null
+          email: string | null
+          password: string | null
+          website: string | null
+          valid_until: string | null
+          description: string | null
+          files: Record<string, unknown> | null
+          number_of_files: number | null
+          created_at: string | null
+          updated_at: string | null
         }
         Insert: {
           id?: string
           user_id: string
           asset_type: string
           asset_name: string
-          asset_value: string
-          access_instructions: string
-          created_at?: string
-          updated_at?: string
+          beneficiary_id?: string | null
+          status?: string | null
+          email?: string | null
+          password?: string | null
+          website?: string | null
+          valid_until?: string | null
+          description?: string | null
+          files?: Record<string, unknown> | null
+          number_of_files?: number | null
+          created_at?: string | null
+          updated_at?: string | null
         }
         Update: {
           id?: string
           user_id?: string
           asset_type?: string
           asset_name?: string
-          asset_value?: string
-          access_instructions?: string
-          created_at?: string
-          updated_at?: string
+          beneficiary_id?: string | null
+          status?: string | null
+          email?: string | null
+          password?: string | null
+          website?: string | null
+          valid_until?: string | null
+          description?: string | null
+          files?: Record<string, unknown> | null
+          number_of_files?: number | null
+          created_at?: string | null
+          updated_at?: string | null
         }
       }
       beneficiaries: {
@@ -95,12 +116,12 @@ export type Database = {
           user_id: string
           full_name: string
           email: string | null
-          relationship: string | null
           phone_number: string | null
           notes: string | null
-          notified: boolean | null
+          relationship_id: number | null
           status: string | null
           last_notified_at: string | null
+          notified: boolean | null
           email_verified: boolean | null
           created_at: string | null
           updated_at: string | null
@@ -110,12 +131,12 @@ export type Database = {
           user_id: string
           full_name: string
           email?: string | null
-          relationship?: string | null
           phone_number?: string | null
           notes?: string | null
-          notified?: boolean | null
+          relationship_id?: number | null
           status?: string | null
           last_notified_at?: string | null
+          notified?: boolean | null
           email_verified?: boolean | null
           created_at?: string | null
           updated_at?: string | null
@@ -125,12 +146,12 @@ export type Database = {
           user_id?: string
           full_name?: string
           email?: string | null
-          relationship?: string | null
           phone_number?: string | null
           notes?: string | null
-          notified?: boolean | null
+          relationship_id?: number | null
           status?: string | null
           last_notified_at?: string | null
+          notified?: boolean | null
           email_verified?: boolean | null
           created_at?: string | null
           updated_at?: string | null
@@ -339,6 +360,73 @@ export type Database = {
           handled?: boolean
           handled_at?: string | null
           error?: string | null
+        }
+      }
+      asset_types: {
+        Row: {
+          id: string
+          key: string
+          name: string
+          description: string | null
+          icon: string
+          is_active: boolean
+          required_fields: Record<string, unknown>
+          optional_fields: Record<string, unknown>
+          file_accept: string | null
+          custom_fields: Record<string, unknown>
+          display_order: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          key: string
+          name: string
+          description?: string | null
+          icon: string
+          is_active?: boolean
+          required_fields?: Record<string, unknown>
+          optional_fields?: Record<string, unknown>
+          file_accept?: string | null
+          custom_fields?: Record<string, unknown>
+          display_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          key?: string
+          name?: string
+          description?: string | null
+          icon?: string
+          is_active?: boolean
+          required_fields?: Record<string, unknown>
+          optional_fields?: Record<string, unknown>
+          file_accept?: string | null
+          custom_fields?: Record<string, unknown>
+          display_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      asset_type_billing_plans: {
+        Row: {
+          id: string
+          asset_type_id: string
+          billing_plan_id: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          asset_type_id: string
+          billing_plan_id: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          asset_type_id?: string
+          billing_plan_id?: string
+          created_at?: string
         }
       }
     }

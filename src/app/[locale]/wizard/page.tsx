@@ -13,6 +13,7 @@ import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
+import { getAvailableAssetTypes, getAssetType, type AssetType as DatabaseAssetType } from '@/lib/assetTypes';
 
 type WizardStep = 'welcome' | 'asset-type' | 'asset-details' | 'beneficiary' | 'final';
 
@@ -22,8 +23,11 @@ export default function WizardPage() {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState<WizardStep>('welcome');
   const [loading, setLoading] = useState(false);
+  const [assetTypesLoading, setAssetTypesLoading] = useState(true);
   const [relationships, setRelationships] = useState<Array<{id: number, key: string}>>([]);
-  
+  const [assetTypes, setAssetTypes] = useState<DatabaseAssetType[]>([]);
+  const [currentAssetType, setCurrentAssetType] = useState<DatabaseAssetType | null>(null);
+
   // Asset form data
   const [assetData, setAssetData] = useState({
     assetType: '',
@@ -32,7 +36,9 @@ export default function WizardPage() {
     website: '',
     validUntil: '',
     email: '',
-    password: ''
+    password: '',
+    files: [] as File[],
+    customFields: {} as Record<string, string | number | boolean | string[]>,
   });
 
   // Beneficiary form data
@@ -44,29 +50,48 @@ export default function WizardPage() {
     notes: ''
   });
 
-  const assetTypes = [
-    { value: 'bankAccount', label: t('bankAccount') },
-    { value: 'lifeInsurance', label: t('lifeInsurance') },
-    { value: 'insurance', label: t('insurance') },
-    { value: 'retirementPlan', label: t('retirementPlan') },
-    { value: 'realEstate', label: t('realEstate') },
-    { value: 'companyStocks', label: t('companyStocks') },
-    { value: 'rsus', label: t('rsus') },
-    { value: 'stockOptions', label: t('stockOptions') },
-    { value: 'companyShares', label: t('companyShares') },
-    { value: 'cryptocurrency', label: t('cryptocurrency') },
-    { value: 'safetyBox', label: t('safetyBox') },
-    { value: 'other', label: t('other') }
-  ];
-
-  // Fetch relationships from database
+  // Fetch relationships and asset types from database
   useEffect(() => {
     async function fetchRelationships() {
       const { data, error } = await supabase.from('relationships').select('id, key').order('generation_level, key');
       if (!error && data) setRelationships(data);
     }
+
+    async function fetchAssetTypes() {
+      try {
+        setAssetTypesLoading(true);
+        const availableAssetTypes = await getAvailableAssetTypes();
+        setAssetTypes(availableAssetTypes);
+      } catch (error) {
+        console.error('Error fetching asset types:', error);
+        toast.error('Failed to load asset types');
+      } finally {
+        setAssetTypesLoading(false);
+      }
+    }
+
     fetchRelationships();
+    fetchAssetTypes();
   }, []);
+
+  // Fetch current asset type when asset type changes
+  useEffect(() => {
+    async function fetchCurrentAssetType() {
+      if (assetData.assetType) {
+        try {
+          const assetTypeData = await getAssetType(assetData.assetType);
+          setCurrentAssetType(assetTypeData || null);
+        } catch (error) {
+          console.error('Error fetching asset type:', error);
+          setCurrentAssetType(null);
+        }
+      } else {
+        setCurrentAssetType(null);
+      }
+    }
+
+    fetchCurrentAssetType();
+  }, [assetData.assetType]);
 
   const handleNext = () => {
     switch (currentStep) {
@@ -105,9 +130,58 @@ export default function WizardPage() {
     }
   };
 
+  // Helper function to check if a field should be shown
+  const shouldShowField = (fieldName: string): boolean => {
+    if (!currentAssetType) return true;
+
+    const isRequired = currentAssetType.requiredFields?.includes(fieldName);
+    const isOptional = currentAssetType.optionalFields?.includes(fieldName);
+
+    return isRequired || isOptional || false;
+  };
+
+  // Helper function to check if a field is required
+  const isFieldRequired = (fieldName: string): boolean => {
+    if (!currentAssetType) return false;
+    return currentAssetType.requiredFields?.includes(fieldName) || false;
+  };
+
+  const handleCustomFieldChange = (fieldKey: string, value: string | number | boolean | string[]) => {
+    setAssetData(prev => ({
+      ...prev,
+      customFields: {
+        ...prev.customFields,
+        [fieldKey]: value
+      }
+    }));
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const files = Array.from(e.target.files).slice(0, 5);
+      setAssetData(prev => ({ ...prev, files }));
+    }
+  };
+
   const handleFinish = async () => {
     setLoading(true);
     try {
+      // Upload files if any
+      const fileUrls: string[] = [];
+      if (assetData.files.length > 0) {
+        for (const file of assetData.files) {
+          // Sanitize file name
+          const safeFileName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+          const filePath = `${user?.id}/${Date.now()}-${safeFileName}`;
+          const { data, error } = await supabase.storage.from('assets').upload(filePath, file);
+          if (error) {
+            console.error('Upload error:', error);
+            throw error;
+          }
+          fileUrls.push(data.path);
+        }
+      }
+
       // Create the asset
       const { data: asset, error: assetError } = await supabase
         .from('digital_assets')
@@ -120,6 +194,8 @@ export default function WizardPage() {
           valid_until: assetData.validUntil || null,
           email: assetData.email || null,
           password: assetData.password || null,
+          files: fileUrls.length > 0 ? fileUrls : null,
+          custom_fields: Object.keys(assetData.customFields).length > 0 ? assetData.customFields : null,
           status: 'unassigned'
         })
         .select()
@@ -202,11 +278,17 @@ export default function WizardPage() {
                   <SelectValue placeholder={t('wizard-select-asset-type')} />
                 </SelectTrigger>
                 <SelectContent>
-                  {assetTypes.map((type) => (
-                    <SelectItem key={type.value} value={type.value}>
-                      {type.label}
+                  {assetTypesLoading ? (
+                    <SelectItem value="" disabled>
+                      Loading asset types...
                     </SelectItem>
-                  ))}
+                  ) : (
+                    assetTypes.map((type) => (
+                      <SelectItem key={type.key} value={type.key}>
+                        {t(type.label)}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -229,61 +311,159 @@ export default function WizardPage() {
               {t('wizard-complete-asset-description')}
             </p>
             <div className="space-y-4">
+              {/* Asset Name - always required */}
               <div>
-                <Label className="text-sm sm:text-base dark:text-white">{t('assetName')}</Label>
+                <Label className="text-sm sm:text-base dark:text-white">{t('assetName')} *</Label>
                 <Input
                   value={assetData.assetName}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssetData({...assetData, assetName: e.target.value})}
                   placeholder={t('wizard-enter-asset-name')}
                   className="w-full"
+                  required
                 />
               </div>
-              <div>
-                <Label className="text-sm sm:text-base dark:text-white">{t('description')}</Label>
-                <Textarea
-                  value={assetData.description}
-                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setAssetData({...assetData, description: e.target.value})}
-                  placeholder={t('wizard-describe-asset')}
-                  className="w-full"
-                />
-              </div>
-              <div>
-                <Label className="text-sm sm:text-base dark:text-white">{t('website')}</Label>
-                <Input
-                  value={assetData.website}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssetData({...assetData, website: e.target.value})}
-                  placeholder={t('wizard-enter-website')}
-                  className="w-full"
-                />
-              </div>
-              <div>
-                <Label className="text-sm sm:text-base dark:text-white">{t('validUntil')}</Label>
-                <Input
-                  type="date"
-                  value={assetData.validUntil}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssetData({...assetData, validUntil: e.target.value})}
-                  className="w-full"
-                />
-              </div>
-              <div>
-                <Label className="text-sm sm:text-base dark:text-white">{t('email')}</Label>
-                <Input
-                  value={assetData.email}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssetData({...assetData, email: e.target.value})}
-                  placeholder={t('wizard-enter-email')}
-                  className="w-full"
-                />
-              </div>
-              <div>
-                <Label className="text-sm sm:text-base dark:text-white">{t('password')}</Label>
-                <Input
-                  type="password"
-                  value={assetData.password}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssetData({...assetData, password: e.target.value})}
-                  placeholder="••••••••"
-                  className="w-full"
-                />
-              </div>
+
+              {/* Conditional fields based on asset type */}
+              {shouldShowField('email') && (
+                <div>
+                  <Label className="text-sm sm:text-base dark:text-white">
+                    {t('email')}{isFieldRequired('email') ? ' *' : ''}
+                  </Label>
+                  <Input
+                    value={assetData.email}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssetData({...assetData, email: e.target.value})}
+                    placeholder={t('wizard-enter-email')}
+                    type="email"
+                    className="w-full"
+                    required={isFieldRequired('email')}
+                  />
+                </div>
+              )}
+
+              {shouldShowField('password') && (
+                <div>
+                  <Label className="text-sm sm:text-base dark:text-white">
+                    {t('password')}{isFieldRequired('password') ? ' *' : ''}
+                  </Label>
+                  <Input
+                    value={assetData.password}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssetData({...assetData, password: e.target.value})}
+                    placeholder="••••••••"
+                    type="password"
+                    className="w-full"
+                    required={isFieldRequired('password')}
+                  />
+                </div>
+              )}
+
+              {shouldShowField('website') && (
+                <div>
+                  <Label className="text-sm sm:text-base dark:text-white">
+                    {t('website')}{isFieldRequired('website') ? ' *' : ''}
+                  </Label>
+                  <Input
+                    value={assetData.website}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssetData({...assetData, website: e.target.value})}
+                    placeholder={t('wizard-enter-website')}
+                    className="w-full"
+                    required={isFieldRequired('website')}
+                  />
+                </div>
+              )}
+
+              {shouldShowField('valid_until') && (
+                <div>
+                  <Label className="text-sm sm:text-base dark:text-white">
+                    {t('validUntil')}{isFieldRequired('valid_until') ? ' *' : ''}
+                  </Label>
+                  <Input
+                    type="date"
+                    value={assetData.validUntil}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssetData({...assetData, validUntil: e.target.value})}
+                    className="w-full"
+                    required={isFieldRequired('valid_until')}
+                  />
+                </div>
+              )}
+
+              {shouldShowField('description') && (
+                <div>
+                  <Label className="text-sm sm:text-base dark:text-white">
+                    {t('description')}{isFieldRequired('description') ? ' *' : ''}
+                  </Label>
+                  <Textarea
+                    value={assetData.description}
+                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setAssetData({...assetData, description: e.target.value})}
+                    placeholder={t('wizard-describe-asset')}
+                    className="w-full"
+                    required={isFieldRequired('description')}
+                  />
+                </div>
+              )}
+
+              {/* Custom fields for new asset types */}
+              {currentAssetType?.customFields?.map((field) => (
+                <div key={field.key}>
+                  <Label className="text-sm sm:text-base dark:text-white">
+                    {t(field.label)}{field.required ? ' *' : ''}
+                  </Label>
+                  {field.type === 'text' && (
+                    <Input
+                      type="text"
+                      value={String(assetData.customFields[field.key] || '')}
+                      onChange={(e) => handleCustomFieldChange(field.key, e.target.value)}
+                      required={field.required}
+                      className="w-full"
+                    />
+                  )}
+                  {field.type === 'textarea' && (
+                    <Textarea
+                      value={String(assetData.customFields[field.key] || '')}
+                      onChange={(e) => handleCustomFieldChange(field.key, e.target.value)}
+                      required={field.required}
+                      className="w-full"
+                      rows={3}
+                    />
+                  )}
+                  {field.type === 'select' && (
+                    <Select
+                      value={String(assetData.customFields[field.key] || '')}
+                      onValueChange={(value) => handleCustomFieldChange(field.key, value)}
+                      required={field.required}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Seleccionar..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {field.options?.map((option) => (
+                          <SelectItem key={option} value={option}>{option}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+              ))}
+
+              {/* File upload for assets that support it */}
+              {currentAssetType?.fileAccept && (
+                <div>
+                  <Label className="text-sm sm:text-base dark:text-white">
+                    {assetData.assetType === 'letter' ? t('attachAnImage') :
+                     assetData.assetType === 'photo' ? t('cameraPhotos') :
+                     assetData.assetType === 'video' ? t('cameraVideos') :
+                     assetData.assetType === 'audio' ? t('recordHereOrUpload') :
+                     assetData.assetType === 'document' ? t('uploadFiles') :
+                        t('uploadFiles')}
+                  </Label>
+                  <input
+                    type="file"
+                    multiple
+                    accept={currentAssetType?.fileAccept || '*'}
+                    onChange={handleFileChange}
+                    className="w-full rounded border px-3 py-2"
+                  />
+                </div>
+              )}
             </div>
             <div className="flex flex-col sm:flex-row gap-2 mt-6">
               <Button variant="outline" onClick={handleBack} className="flex-1">
@@ -377,7 +557,7 @@ export default function WizardPage() {
             <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-6 text-left">
               <h3 className="font-semibold mb-2 text-sm sm:text-base">{t('wizard-asset-summary')}:</h3>
               <div className="space-y-1 text-sm">
-                <p><strong>{t('assetType')}:</strong> {assetTypes.find(t => t.value === assetData.assetType)?.label}</p>
+                <p><strong>{t('assetType')}:</strong> {assetTypes.find(t => t.key === assetData.assetType)?.label ? t(assetTypes.find(t => t.key === assetData.assetType)!.label) : assetData.assetType}</p>
                 <p><strong>{t('assetName')}:</strong> {assetData.assetName}</p>
                 <p><strong>{t('description')}:</strong> {assetData.description}</p>
                 <p><strong>{t('website')}:</strong> {assetData.website}</p>

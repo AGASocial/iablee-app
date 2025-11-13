@@ -4,17 +4,35 @@ import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Loader2, Mail, Mic, Camera, Video, File, LucideIcon } from "lucide-react";
 import AddAssetForm from './AddAssetForm';
 import type { Asset } from "@/models/asset";
-import { ASSET_TYPES } from '@/constants/assetTypes';
+import { getAvailableAssetTypes, type AssetType as DatabaseAssetType } from '@/lib/assetTypes';
 
 export default function AddAssetModal({ open, onOpenChange, onAssetAdded, asset }: { open: boolean; onOpenChange: (v: boolean) => void, onAssetAdded?: () => void, asset?: Asset }) {
   const t = useTranslations();
   const [step, setStep] = useState(1);
   const [selectedType, setSelectedType] = useState<string | null>(null);
+  const [assetTypes, setAssetTypes] = useState<DatabaseAssetType[]>([]);
+  const [assetTypesLoading, setAssetTypesLoading] = useState(true);
 
   useEffect(() => {
+    async function fetchAssetTypes() {
+      try {
+        setAssetTypesLoading(true);
+        const availableAssetTypes = await getAvailableAssetTypes();
+        setAssetTypes(availableAssetTypes);
+      } catch (error) {
+        console.error('Error fetching asset types:', error);
+      } finally {
+        setAssetTypesLoading(false);
+      }
+    }
+
+    if (open) {
+      fetchAssetTypes();
+    }
+
     if (asset) {
       setSelectedType(asset.asset_type);
       setStep(2);
@@ -69,21 +87,37 @@ export default function AddAssetModal({ open, onOpenChange, onAssetAdded, asset 
         </DialogHeader>
         {step === 1 && (
           <div className="grid grid-cols-3 gap-4 mt-4">
-            {ASSET_TYPES.map((type) => {
-              const Icon = type.icon;
-              const isSelected = selectedType === type.key;
-              return (
-                <button
-                  key={type.key}
-                  className={`flex flex-col items-center justify-center p-4 border rounded-lg transition ${isSelected ? 'bg-blue-100 dark:bg-blue-900 border-blue-500' : 'hover:bg-gray-100 dark:hover:bg-gray-800'}`}
-                  onClick={() => handleTypeSelect(type.key)}
-                >
-                  <Icon className="w-10 h-10 mb-2 text-blue-500" />
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-900">{t(type.key)}</span>
-                  {isSelected && <span className="mt-1 text-xs text-blue-600">{t('selectedType')}</span>}
-                </button>
-              );
-            })}
+            {assetTypesLoading ? (
+              <div className="col-span-3 flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+                <span className="ml-2 text-sm text-gray-500">Loading asset types...</span>
+              </div>
+            ) : (
+              assetTypes.map((type) => {
+                // Icon mapping - same as in constants/assetTypes.ts
+                const iconMap: Record<string, LucideIcon> = {
+                  Mail,
+                  Mic,
+                  Camera,
+                  Video,
+                  File,
+                };
+                const Icon = iconMap[type.icon] || File;
+                const isSelected = selectedType === type.key;
+
+                return (
+                  <button
+                    key={type.key}
+                    className={`flex flex-col items-center justify-center p-4 border rounded-lg transition ${isSelected ? 'bg-blue-100 dark:bg-blue-900 border-blue-500' : 'hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+                    onClick={() => handleTypeSelect(type.key)}
+                  >
+                    <Icon className="w-10 h-10 mb-2 text-blue-500" />
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-900">{t(type.label)}</span>
+                    {isSelected && <span className="mt-1 text-xs text-blue-600">{t('selectedType')}</span>}
+                  </button>
+                );
+              })
+            )}
           </div>
         )}
         {step === 2 && selectedType && (
