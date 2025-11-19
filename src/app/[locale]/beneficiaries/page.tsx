@@ -27,6 +27,7 @@ interface Beneficiary {
 
 // Helper for status badge (copied from dashboard)
 function StatusBadge({ status }: { status: string | null }) {
+    const t = useTranslations();
     const statusStyles: Record<string, string> = {
         active: "bg-green-100 text-green-800",
         pending: "bg-yellow-100 text-yellow-800",
@@ -34,7 +35,7 @@ function StatusBadge({ status }: { status: string | null }) {
     };
     return (
         <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusStyles[(status || '').toLowerCase()] || "bg-gray-100 text-gray-800"}`}>
-            {status}
+            {t('status')}
         </span>
     );
 }

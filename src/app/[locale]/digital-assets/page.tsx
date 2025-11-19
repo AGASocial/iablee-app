@@ -7,7 +7,7 @@ import AddAssetModal from '@/components/AddAssetModal';
 import AssetAttachmentsModal from '@/components/AssetAttachmentsModal';
 import { useState, useEffect } from 'react';
 import { supabase } from "@/lib/supabase";
-import { Pencil, Trash2, Plus, Paperclip } from "lucide-react";
+import { Pencil, Trash2, Plus, Paperclip, Eye, LucideIcon, Mail, Mic, Camera, Video, File } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
 import type { Asset } from '@/models/asset';
 import { Beneficiary } from '@/models/beneficiary';
@@ -34,9 +34,10 @@ export default function DigitalAssetsPage() {
     const { data: { user } } = await supabase.auth.getUser();
     const { data } = await supabase
       .from('digital_assets')
-      .select('id, asset_name, asset_type, status, email, password, website, valid_until, description, files, custom_fields, beneficiary_id, beneficiary:beneficiary_id(id, full_name)')
+      .select('id, asset_name, asset_type, status, email, password, website, valid_until, description, files, custom_fields, beneficiary_id, beneficiary:beneficiary_id(id, full_name), asset_type_details:asset_type(id, name, description, icon)')
       .eq('user_id', user?.id)
       .order('asset_name', { ascending: true });
+    console.log('DEBUG: data', data);
     setAssets(((data || []).map((asset: unknown) => {
       const typedAsset = asset as Asset;
       return {
@@ -108,28 +109,36 @@ export default function DigitalAssetsPage() {
   }
 
   const openAssignModal = (asset: Asset) => {
-    console.log('DEBUG: asset', asset);
     setSelectedAsset(asset);
     setSelectedBeneficiaryId(asset.beneficiary?.id || null);
     setAssignModalOpen(true);
     fetchBeneficiaries();
   };
 
-  const handleAssignBeneficiary = async () => {
-    if (!selectedAsset || !selectedBeneficiaryId) return;
+  const handleAssignBeneficiary = async (beneficiaryId: string | null = selectedBeneficiaryId) => {
+    console.log('DEBUG: handleAssignBeneficiary', selectedBeneficiaryId, selectedAsset);
+    if (!selectedAsset) return;
     setLoading(true);
     try {
-      const { error } = await supabase.from('digital_assets').update({
-        beneficiary_id: selectedBeneficiaryId,
-        status: 'assigned',
-      }).eq('id', selectedAsset.id);
+      console.log('DEBUG: selectedBeneficiaryId', selectedBeneficiaryId);
+
+      // Determine if we're assigning or removing a beneficiary
+      const isRemoving = beneficiaryId === null;
+      const updateData = {
+        beneficiary_id: beneficiaryId,
+        status: isRemoving ? 'unassigned' : 'assigned',
+      };
+      console.log('DEBUG: updateData', updateData);
+      const { error } = await supabase.from('digital_assets').update(updateData).eq('id', selectedAsset.id);
+      console.log('DEBUG: error', error);
       if (error) throw error;
+
       setAssignModalOpen(false);
       setSelectedAsset(null);
       setSelectedBeneficiaryId(null);
       fetchAssets();
     } catch {
-      alert('Error assigning beneficiary');
+      alert('Error updating beneficiary assignment');
     } finally {
       setLoading(false);
     }
@@ -144,19 +153,6 @@ export default function DigitalAssetsPage() {
     return asset.number_of_files ?? (Array.isArray(asset.files) ? asset.files.length : (asset.files ? 1 : 0));
   };
 
-  // Helper for status badge (copied from dashboard)
-  function StatusBadge({ status }: { status: string }) {
-    const statusStyles: Record<string, string> = {
-      active: "bg-green-100 text-green-800",
-      pending: "bg-yellow-100 text-yellow-800",
-      inactive: "bg-red-100 text-red-800",
-    };
-    return (
-      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusStyles[status.toLowerCase()] || "bg-gray-100 text-gray-800"}`}>
-        {status}
-      </span>
-    );
-  }
 
   return (
     <ProtectedRoute>
@@ -204,7 +200,7 @@ export default function DigitalAssetsPage() {
                     <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white hidden sm:table-cell">{t('assetType')}</th>
                     <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white">{t('assetName')}</th>
                     <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white hidden sm:table-cell">{t('assignedBeneficiary')}</th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white hidden sm:table-cell">{t('status')}</th>
+                    {/* <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white hidden sm:table-cell">{t('status')}</th> */}
                     <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white hidden sm:table-cell">{t('validUntil')}</th>
                     <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white hidden sm:table-cell">{t('numberOfFiles')}</th>
                     <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white hidden sm:table-cell">{t('actions')}</th>
@@ -219,16 +215,26 @@ export default function DigitalAssetsPage() {
                       </td>
                     </tr>
                   ) : (
-                    assets.map(asset => (
+                    assets.map(asset => {
+                      const iconMap: Record<string, LucideIcon> = {
+                        Mail,
+                        Mic,
+                        Camera,
+                        Video,
+                        File,
+                      };
+                      const Icon = iconMap[asset.asset_type_details.icon] || File;
+                      return (
                       <tr key={asset.id} className="bg-white dark:bg-gray-900">
-                        <td className="px-6 py-4 whitespace-nowrap text-muted-foreground hidden sm:table-cell">{t(asset.asset_type)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-muted-foreground hidden sm:table-cell" title={t(asset.asset_type_details.name)}> <Icon className="w-4 h-4" /> 
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white cursor-pointer" onClick={() => window.innerWidth < 640 ? setSelectedAssetDetails(asset) : undefined}>{asset.asset_name}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white rounded-full cursor-pointer hidden sm:table-cell" onClick={() => openAssignModal(asset)}>{asset.beneficiary?.full_name || '-'}</td>
-                        <td className="px-6 py-4 whitespace-nowrap hidden sm:table-cell">
+                        {/* <td className="px-6 py-4 whitespace-nowrap hidden sm:table-cell">
                           <span onClick={() => openAssignModal(asset)} title={t('assignBeneficiary')}>
                             <StatusBadge status={asset.status} />
                           </span>
-                        </td>
+                        </td> */}
                         <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white hidden sm:table-cell">{asset.valid_until ? new Date(asset.valid_until).toISOString().slice(0, 10) : '-'}</td>
                         <td className="px-6 py-4 whitespace-nowrap hidden sm:table-cell">
                           <button
@@ -241,15 +247,16 @@ export default function DigitalAssetsPage() {
                           </button>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap flex gap-2 hidden sm:flex">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="flex items-center gap-1"
-                            onClick={() => handleEditAsset(asset)}
-                          >
+                          <Button variant="outline" size="sm" className="flex items-center gap-1" onClick={() => openAttachmentsModal(asset)}>
+                            <Paperclip className="w-4 h-4" />
+                            {t('files')}</Button>
+                          <Button variant="outline" size="sm" className="flex items-center gap-1" onClick={() => openAssignModal(asset)}>
+                            <Eye className="w-4 h-4" />
+                            {t('beneficiaries')}</Button>
+                          <Button variant="outline" size="sm" className="flex items-center gap-1" onClick={() => handleEditAsset(asset)}>
                             <Pencil className="w-4 h-4" />
-                            {t('edit')}
-                          </Button>
+                            {t('edit')}</Button>
+                          
                           <Button
                             variant="destructive"
                             size="sm"
@@ -259,9 +266,10 @@ export default function DigitalAssetsPage() {
                             <Trash2 className="w-4 h-4" />
                             {t('delete')}
                           </Button>
-                        </td>
-                      </tr>
-                    ))
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -276,7 +284,7 @@ export default function DigitalAssetsPage() {
               <div className="space-y-2">
                 <div><span className="font-semibold dark:text-white">{t('assetType')}:</span> {t(selectedAssetDetails.asset_type)}</div>
                 <div><span className="font-semibold dark:text-white">{t('assignedBeneficiary')}:</span> {selectedAssetDetails.beneficiary?.full_name || '-'}</div>
-                <div><span className="font-semibold dark:text-white">{t('status')}:</span> <StatusBadge status={selectedAssetDetails.status} /></div>
+                {/* <div><span className="font-semibold dark:text-white">{t('status')}:</span> <StatusBadge status={selectedAssetDetails.status} /></div> */}
                 <div><span className="font-semibold dark:text-white">{t('validUntil')}:</span> {selectedAssetDetails.valid_until ? new Date(selectedAssetDetails.valid_until).toISOString().slice(0, 10) : '-'}</div>
                 <div>
                   <span className="font-semibold">{t('numberOfFiles')}:</span> 
@@ -332,9 +340,12 @@ export default function DigitalAssetsPage() {
               )}
             </div>
             <div className="flex justify-end gap-2 mt-6">
+              <Button variant="destructive" onClick={() => handleAssignBeneficiary(null)} disabled={selectedBeneficiaryId === null || loading}>
+                {loading ? t('saving') : t('removeBeneficiary')}
+              </Button>
               <Button variant="outline" onClick={() => setAssignModalOpen(false)}>{t('cancel')}</Button>
-              <Button onClick={handleAssignBeneficiary} disabled={!selectedBeneficiaryId || loading}>
-                {loading ? t('saving') : t('save')}
+              <Button onClick={() => handleAssignBeneficiary(selectedBeneficiaryId)} disabled={!selectedBeneficiaryId || loading}>
+                {loading ? t('saving') : t('assignBeneficiary')}
               </Button>
             </div>
           </DialogContent>

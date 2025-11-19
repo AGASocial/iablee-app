@@ -1,9 +1,18 @@
 import { Beneficiary } from "./beneficiary";
 
+
+export interface AssetTypeDetails {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+}
+
 export interface Asset {
   id: string;
   user_id: string;
   asset_type: string;
+  asset_type_details: AssetTypeDetails;
   asset_name: string;
   beneficiary?: Beneficiary;
   beneficiary_id?: string;
