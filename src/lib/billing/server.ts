@@ -6,7 +6,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { BillingService } from './billing.service';
-import { StripeAdapter } from './adapters/stripe.adapter';
+import { StripeAdapter, PayUAdapter } from './adapters';
 import type { PaymentGateway } from './gateway.interface';
 
 /**
@@ -23,9 +23,31 @@ export function getPaymentGateway(): PaymentGateway {
       }
       return new StripeAdapter(secretKey);
     }
-    // Add other providers here as needed
-    // case 'paypal':
-    //   return new PayPalAdapter(...)
+    case 'payu': {
+      const apiKey = process.env.PAYU_API_KEY;
+      const apiLogin = process.env.PAYU_API_LOGIN;
+      const merchantId = process.env.PAYU_MERCHANT_ID;
+      const accountId = process.env.PAYU_ACCOUNT_ID;
+      const paymentUrl = process.env.PAYU_PAYMENT_URL;
+      const responseUrl = process.env.PAYU_RESPONSE_URL;
+      const confirmationUrl = process.env.PAYU_CONFIRMATION_URL;
+
+      if (!apiKey || !apiLogin || !merchantId || !accountId || !paymentUrl || !responseUrl || !confirmationUrl) {
+        throw new Error('PayU environment variables are required when PAYMENT_GATEWAY=payu');
+      }
+
+      return new PayUAdapter({
+        apiKey,
+        apiLogin,
+        merchantId,
+        accountId,
+        paymentUrl,
+        responseUrl,
+        confirmationUrl,
+        environment: (process.env.PAYU_ENV as 'sandbox' | 'production') || 'sandbox',
+        language: process.env.PAYU_LANGUAGE || 'es',
+      });
+    }
     default:
       throw new Error(`Unsupported payment gateway: ${gateway}`);
   }

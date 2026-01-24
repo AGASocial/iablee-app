@@ -30,12 +30,15 @@ export default function StripeProvider({ children, clientSecret }: StripeProvide
 
   useEffect(() => {
     const stripeInstance = getStripe();
-    if (!stripeInstance) {
+    // Use setTimeout to avoid synchronous setState in effect
+    setTimeout(() => {
+      if (!stripeInstance) {
+        setLoading(false);
+        return;
+      }
+      setStripe(stripeInstance);
       setLoading(false);
-      return;
-    }
-    setStripe(stripeInstance);
-    setLoading(false);
+    }, 0);
   }, []);
 
   // Show loading while Stripe is initializing

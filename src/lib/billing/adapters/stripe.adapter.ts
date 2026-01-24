@@ -347,7 +347,12 @@ export class StripeAdapter implements PaymentGateway {
     successUrl: string;
     cancelUrl: string;
     metadata?: Record<string, string>;
-  }): Promise<{ sessionId: string; url: string }> {
+    customerData?: {
+      email?: string;
+      name?: string;
+      userId?: string;
+    };
+  }): Promise<{ sessionId: string; url: string; formFields?: Record<string, string> }> {
     try {
       const { customer, plan, successUrl, cancelUrl, metadata } = params;
 

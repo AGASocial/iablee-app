@@ -83,7 +83,7 @@ export default function BeneficiariesPage() {
 
     useEffect(() => {
         async function fetchRelationships() {
-            const { data, error } = await supabase.from('relationships').select('id, key').order('generation_level, key');
+            const { data, error } = await supabase.from('relationships').select('id, key, generation_level').gte('generation_level', 3).order('generation_level, key');
             if (!error && data) setRelationships(data);
         }
         fetchRelationships();

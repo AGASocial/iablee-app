@@ -7,7 +7,9 @@ import { Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
-import type { Subscription, PlanDefinition } from '@/lib/billing/types';
+import type { Subscription, PlanDefinition, CheckoutSessionDetails } from '@/lib/billing/types';
+
+const PAYMENT_GATEWAY = process.env.NEXT_PUBLIC_PAYMENT_GATEWAY || 'stripe';
 
 interface PlanFeatures {
   max_assets: number;
@@ -88,22 +90,24 @@ export default function PlansPage() {
         return;
       }
 
-      // Check if user has a payment method
-      const pmResponse = await fetch('/api/billing/payment-methods', {
-        credentials: 'include'
-      });
+      if (PAYMENT_GATEWAY !== 'payu') {
+        // Check if user has a payment method
+        const pmResponse = await fetch('/api/billing/payment-methods', {
+          credentials: 'include'
+        });
 
-      if (!pmResponse.ok) {
-        toast.error(t('billingError'));
-        return;
-      }
+        if (!pmResponse.ok) {
+          toast.error(t('billingError'));
+          return;
+        }
 
-      const { paymentMethods } = await pmResponse.json();
+        const { paymentMethods } = await pmResponse.json();
 
-      if (!paymentMethods || paymentMethods.length === 0) {
-        toast.error(t('addPaymentMethodFirst'));
-        router.push('/billing');
-        return;
+        if (!paymentMethods || paymentMethods.length === 0) {
+          toast.error(t('addPaymentMethodFirst'));
+          router.push('/billing');
+          return;
+        }
       }
 
       // Check if user has existing subscription (not Free plan)
@@ -133,9 +137,14 @@ export default function PlansPage() {
         });
       }
 
+      const result = await response.json();
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to create subscription');
+        throw new Error(result.error || 'Failed to create subscription');
+      }
+
+      if (PAYMENT_GATEWAY === 'payu' && result.checkoutSession) {
+        startPayuCheckout(result.checkoutSession);
+        return;
       }
 
       toast.success(hasExistingSubscription ? t('subscriptionUpdatedSuccess') : t('subscriptionCreatedSuccess'));
@@ -146,6 +155,29 @@ export default function PlansPage() {
     } finally {
       setSubscribing(null);
     }
+  };
+
+  const startPayuCheckout = (session: CheckoutSessionDetails) => {
+    if (!session.formFields || !session.url) {
+      toast.error(t('billingError'));
+      return;
+    }
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = session.url;
+    form.style.display = 'none';
+
+    Object.entries(session.formFields).forEach(([key, value]) => {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = key;
+      input.value = value;
+      form.appendChild(input);
+    });
+
+    document.body.appendChild(form);
+    form.submit();
   };
 
   const formatPrice = (amountCents: number, currency: string) => {

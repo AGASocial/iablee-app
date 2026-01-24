@@ -1,3 +1,6 @@
+# Callback URL
+http://localhost:3000/en/payments/payu/return?merchantId=508029&merchant_name=Test+PayU&merchant_address=Av+123+Calle+12&telephone=7512354&merchant_url=http%3A%2F%2Fpruebaslapv.xtrweb.com&transactionState=4&lapTransactionState=APPROVED&message=APPROVED&referenceCode=payu_48508890-08ea-40bc-8dc6-4a0860f6bc6a_1769218748365&reference_pol=2156386850&transactionId=cc22397e-6cd6-4c58-9157-a4ab28b7c490&description=Premium&trazabilityCode=102038074500&cus=102038074500&orderLanguage=es&extra1=48508890-08ea-40bc-8dc6-4a0860f6bc6a&extra2=plan_premium_month&extra3=&polTransactionState=4&signature=84bb03c751a39677aae937dd7220494a&polResponseCode=1&lapResponseCode=APPROVED&risk=&polPaymentMethod=1074&lapPaymentMethod=MASTERCARD&polPaymentMethodType=2&lapPaymentMethodType=CREDIT_CARD&installmentsNumber=1&TX_VALUE=19.99&TX_TAX=.00&currency=USD&lng=es&pseCycle=&buyerEmail=gaveho%40gmail.com&pseBank=&pseReference1=&pseReference2=&pseReference3=&authorizationCode=654321&authorizationCode=654321&khipuBank=&TX_ADMINISTRATIVE_FEE=.00&TX_TAX_ADMINISTRATIVE_FEE=.00&TX_TAX_ADMINISTRATIVE_FEE_RETURN_BASE=.00&processingDate=2026-01-23
+
 # Billing & Subscription System - Setup Guide
 
 This document provides a comprehensive guide for the newly implemented billing and subscription system.
@@ -48,6 +51,7 @@ The billing system is **provider-agnostic** and currently supports Stripe, with 
 - `POST /api/billing/payment-methods` - Add payment method
 - `GET /api/billing/invoices` - List invoices
 - `POST /api/webhooks/stripe` - Stripe webhook endpoint
+- `POST /api/webhooks/payu` - PayU confirmation webhook endpoint (WebCheckout)
 
 ### 5. Database Types ✅
 - Updated `src/lib/supabase.ts` with all billing table types
@@ -60,11 +64,23 @@ Add the following to your `.env.local`:
 
 ```bash
 # Payment Gateway Configuration
-PAYMENT_GATEWAY=stripe  # Currently only 'stripe' is implemented
+PAYMENT_GATEWAY=stripe  # Set to 'payu' to use PayU WebCheckout
+NEXT_PUBLIC_PAYMENT_GATEWAY=stripe # Client-side hint for rendering the correct UI
 
 # Stripe Configuration (Server-side only)
 STRIPE_SECRET_KEY=sk_test_...  # Your Stripe secret key
 STRIPE_WEBHOOK_SECRET=whsec_...  # Your Stripe webhook signing secret
+
+# PayU WebCheckout (example sandbox credentials)
+PAYU_ENV=sandbox
+PAYU_API_KEY=p4yu_s4ndb0x_k3y
+PAYU_API_LOGIN=p4yu_s4ndb0x_l0gin
+PAYU_MERCHANT_ID=508029
+PAYU_ACCOUNT_ID=512321
+PAYU_PAYMENT_URL=https://sandbox.checkout.payulatam.com/ppp-web-gateway-payu
+PAYU_RESPONSE_URL=https://example.com/payments/payu/return
+PAYU_CONFIRMATION_URL=https://example.com/api/webhooks/payu
+PAYU_LANGUAGE=es
 
 # Supabase Service Role Key (needed for server-side operations)
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
@@ -128,6 +144,15 @@ stripe listen --forward-to localhost:3000/api/webhooks/stripe
 # In another terminal, trigger test events
 stripe trigger customer.subscription.created
 ```
+
+### Step 5: Configure PayU WebCheckout (optional)
+
+1. Update `.env.local` with the PayU variables listed above (replace the placeholder sandbox values with real credentials).
+2. In the PayU dashboard, configure:
+   - **Response URL**: `https://your-domain.com/payments/payu/return`
+   - **Confirmation URL**: `https://your-domain.com/api/webhooks/payu`
+3. Set `PAYMENT_GATEWAY=payu` and `NEXT_PUBLIC_PAYMENT_GATEWAY=payu` in `.env.local`. The checkout UI now generates a signed PayU form instead of Stripe Elements.
+4. Use PayU sandbox cards to test the flow. The webhook updates `billing_subscriptions` and `billing_invoices` when the transaction state is `APPROVED`, `DECLINED`, or `PENDING`.
 
 ## Usage Examples
 
