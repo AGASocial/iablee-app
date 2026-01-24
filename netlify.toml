@@ -1,0 +1,12 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  # Configure secrets scanning to ignore intentionally public keys
+  # NEXT_PUBLIC_* variables are intentionally public and embedded in client bundles by Next.js
+  # These keys are safe to expose - they're publishable/public keys by design
+  SECRETS_SCAN_OMIT_KEYS = "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,NEXT_PUBLIC_SUPABASE_ANON_KEY,NEXT_PUBLIC_SUPABASE_URL"
+  # Omit build output directories from scanning
+  SECRETS_SCAN_OMIT_PATHS = ".next/**,.netlify/**"
+

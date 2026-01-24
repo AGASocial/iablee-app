@@ -3,31 +3,36 @@
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
-import { Banknote, Shield, FileText, Home, BarChart, Award, LineChart, PieChart, Bitcoin, Vault, MoreHorizontal } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft, Loader2, Mail, Mic, Camera, Video, File, LucideIcon } from "lucide-react";
 import AddAssetForm from './AddAssetForm';
 import type { Asset } from "@/models/asset";
-
-const assetTypes = [
-  { key: "bank", label: "bankAccount", icon: Banknote },
-  { key: "life", label: "lifeInsurance", icon: Shield },
-  { key: "insurance", label: "insurance", icon: Shield },
-  { key: "retirement", label: "retirementPlan", icon: FileText },
-  { key: "realestate", label: "realEstate", icon: Home },
-  { key: "stocks", label: "companyStocks", icon: BarChart },
-  { key: "rsus", label: "rsus", icon: Award },
-  { key: "stockoptions", label: "stockOptions", icon: LineChart },
-  { key: "shares", label: "companyShares", icon: PieChart },
-  { key: "crypto", label: "cryptocurrency", icon: Bitcoin },
-  { key: "safety", label: "safetyBox", icon: Vault },
-  { key: "other", label: "other", icon: MoreHorizontal },
-];
+import { getAvailableAssetTypes, type AssetType as DatabaseAssetType } from '@/lib/assetTypes';
 
 export default function AddAssetModal({ open, onOpenChange, onAssetAdded, asset }: { open: boolean; onOpenChange: (v: boolean) => void, onAssetAdded?: () => void, asset?: Asset }) {
   const t = useTranslations();
   const [step, setStep] = useState(1);
   const [selectedType, setSelectedType] = useState<string | null>(null);
+  const [assetTypes, setAssetTypes] = useState<DatabaseAssetType[]>([]);
+  const [assetTypesLoading, setAssetTypesLoading] = useState(true);
 
   useEffect(() => {
+    async function fetchAssetTypes() {
+      try {
+        setAssetTypesLoading(true);
+        const availableAssetTypes = await getAvailableAssetTypes();
+        setAssetTypes(availableAssetTypes);
+      } catch (error) {
+        console.error('Error fetching asset types:', error);
+      } finally {
+        setAssetTypesLoading(false);
+      }
+    }
+
+    if (open) {
+      fetchAssetTypes();
+    }
+
     if (asset) {
       setSelectedType(asset.asset_type);
       setStep(2);
@@ -53,33 +58,66 @@ export default function AddAssetModal({ open, onOpenChange, onAssetAdded, asset 
     if (onAssetAdded) onAssetAdded();
   };
 
+  const handleBack = () => {
+    setStep(1);
+    setSelectedType(null);
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-lg w-full">
         <DialogHeader>
-          <DialogTitle>
-            {step === 1 ? t("chooseAssetType") : t("addAssetDetails")}
-          </DialogTitle>
+          <div className="flex items-center gap-2">
+            {step === 2 && !asset && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleBack}
+                className="p-1 h-auto"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </Button>
+            )}
+            <DialogTitle className="flex-1">
+              {step === 1 ? t("chooseAssetType") : t("addAssetDetails")}
+            </DialogTitle>
+          </div>
           <DialogClose asChild>
           </DialogClose>
         </DialogHeader>
         {step === 1 && (
           <div className="grid grid-cols-3 gap-4 mt-4">
-            {assetTypes.map((type) => {
-              const Icon = type.icon;
-              const isSelected = selectedType === type.key;
-              return (
-                <button
-                  key={type.key}
-                  className={`flex flex-col items-center justify-center p-4 border rounded-lg transition ${isSelected ? 'bg-blue-100 dark:bg-blue-900 border-blue-500' : 'hover:bg-gray-100 dark:hover:bg-gray-800'}`}
-                  onClick={() => handleTypeSelect(type.key)}
-                >
-                  <Icon className="w-10 h-10 mb-2 text-blue-500" />
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-900">{t(type.label)}</span>
-                  {isSelected && <span className="mt-1 text-xs text-blue-600">{t('selectedType')}</span>}
-                </button>
-              );
-            })}
+            {assetTypesLoading ? (
+              <div className="col-span-3 flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+                <span className="ml-2 text-sm text-gray-500">Loading asset types...</span>
+              </div>
+            ) : (
+              assetTypes.map((type) => {
+                // Icon mapping - same as in constants/assetTypes.ts
+                const iconMap: Record<string, LucideIcon> = {
+                  Mail,
+                  Mic,
+                  Camera,
+                  Video,
+                  File,
+                };
+                const Icon = iconMap[type.icon] || File;
+                const isSelected = selectedType === type.key;
+
+                return (
+                  <button
+                    key={type.key}
+                    className={`flex flex-col items-center justify-center p-4 border rounded-lg transition ${isSelected ? 'bg-blue-100 dark:bg-blue-900 border-blue-500' : 'hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+                    onClick={() => handleTypeSelect(type.key)}
+                  >
+                    <Icon className="w-10 h-10 mb-2 text-blue-500" />
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-900">{t(type.label)}</span>
+                    {isSelected && <span className="mt-1 text-xs text-blue-600">{t('selectedType')}</span>}
+                  </button>
+                );
+              })
+            )}
           </div>
         )}
         {step === 2 && selectedType && (

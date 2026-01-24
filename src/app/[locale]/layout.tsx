@@ -4,6 +4,7 @@ import "../globals.css";
 import { NextIntlClientProvider } from 'next-intl';
 import { notFound } from 'next/navigation';
 import ClientLayout from "@/components/ClientLayout";
+import ThemeRegistry from "@/components/ThemeRegistry";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -14,11 +15,13 @@ export const metadata: Metadata = {
 
 export default async function RootLayout({
   children,
-  params: { locale }
+  params
 }: {
   children: React.ReactNode;
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }) {
+  const { locale } = await params;
+  
   let messages;
   try {
     messages = (await import(`../../../messages/${locale}.json`)).default;
@@ -28,12 +31,14 @@ export default async function RootLayout({
 
   return (
     <html lang={locale} suppressHydrationWarning>
-      <body className={inter.className}>
-        <NextIntlClientProvider locale={locale} messages={messages}>
-          <ClientLayout>
-            {children}
-          </ClientLayout>
-        </NextIntlClientProvider>
+      <body className={inter.className} suppressHydrationWarning>
+        <ThemeRegistry>
+          <NextIntlClientProvider locale={locale} messages={messages}>
+            <ClientLayout>
+              {children}
+            </ClientLayout>
+          </NextIntlClientProvider>
+        </ThemeRegistry>
       </body>
     </html>
   );

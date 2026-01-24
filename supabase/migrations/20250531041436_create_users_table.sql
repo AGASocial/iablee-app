@@ -7,9 +7,14 @@
    );
 
    -- Enable RLS
-   ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+   ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 
-   -- Allow inserts for anon users (for testing)
-   CREATE POLICY "Allow anon insert" ON users
+   -- Allow users to insert their own profile
+   CREATE POLICY "Allow individual user inserts" ON public.users
      FOR INSERT
-     USING (true);
+     WITH CHECK (auth.uid() = id);
+
+   -- Allow users to read their own profile
+   CREATE POLICY "Allow individual user access" ON public.users
+     FOR SELECT
+     USING (auth.uid() = id);

@@ -18,6 +18,8 @@ import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import Link from "next/link"
+import Image from "next/image"
+import { useTranslations, useLocale } from "next-intl"
 
 const formSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -37,7 +39,8 @@ interface AuthFormProps {
 export function AuthForm({ type }: AuthFormProps) {
   const router = useRouter()
   const [isLoading, setIsLoading] = React.useState(false)
-
+  const t = useTranslations()
+  const locale = useLocale()
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -51,6 +54,16 @@ export function AuthForm({ type }: AuthFormProps) {
     setIsLoading(true)
 
     try {
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const emailRedirectTo = `${origin}/${locale}`;
+
+      console.log('Auth redirect URLs:', {
+        origin,
+        locale,
+        emailRedirectTo,
+        currentUrl: window.location.href
+      });
+
       if (type === "register") {
         const { error: signUpError } = await supabase.auth.signUp({
           email: data.email,
@@ -59,25 +72,14 @@ export function AuthForm({ type }: AuthFormProps) {
             data: {
               full_name: data.fullName,
             },
+            emailRedirectTo
           },
         })
 
         if (signUpError) throw signUpError
 
-        // Create user profile in the users table
-        const { error: profileError } = await supabase
-          .from("users")
-          .insert([
-            {
-              email: data.email,
-              full_name: data.fullName,
-            },
-          ])
-
-        if (profileError) throw profileError
-
         toast.success("Registration successful! Please check your email to verify your account.")
-        router.push("/auth/login")
+        router.push(`/${locale}/auth/login`)
       } else {
         const { error: signInError } = await supabase.auth.signInWithPassword({
           email: data.email,
@@ -85,28 +87,122 @@ export function AuthForm({ type }: AuthFormProps) {
         })
 
         if (signInError) throw signInError
-
+        console.log("Sign in successful!")
         toast.success("Login successful!")
-        router.push("/dashboard")
+
+        // Check if user has any assets
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: assets, error: assetsError } = await supabase
+            .from('digital_assets')
+            .select('id')
+            .eq('user_id', user.id)
+            .limit(1);
+
+          if (assetsError) {
+            console.error('Error checking assets:', assetsError);
+            router.push(`/${locale}/dashboard`);
+            return;
+          }
+
+          console.log("Assets in auth form:", assets);
+          // If user has no assets, redirect to wizard
+          if (!assets || assets.length === 0) {
+            router.push(`/${locale}/wizard`);
+          } else {
+            router.push(`/${locale}/dashboard`);
+          }
+        } else {
+          router.push(`/${locale}/dashboard`);
+        }
       }
     } catch (error) {
+      console.error('Auth error:', error)
       toast.error(error instanceof Error ? error.message : "An error occurred")
     } finally {
       setIsLoading(false)
     }
   }
 
+  async function handleGoogleSignIn() {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const redirectTo = `${origin}/${locale}/auth/callback`;
+
+    console.log('Google OAuth redirect:', redirectTo);
+
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo
+      }
+    });
+  }
+
+  async function handleAppleSignIn() {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const redirectTo = `${origin}/${locale}/auth/callback`;
+
+    console.log('Apple OAuth redirect:', redirectTo);
+
+    await supabase.auth.signInWithOAuth({
+      provider: "apple",
+      options: {
+        redirectTo
+      }
+    });
+  }
+
+  const appleButtonUrl =
+    locale === 'es'
+      ? 'https://appleid.cdn-apple.com/appleid/button?height=38&width=300&color=black&locale=es_MX'
+      : 'https://appleid.cdn-apple.com/appleid/button?height=38&width=300&color=black';
+
   return (
     <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
       <div className="flex flex-col space-y-2 text-center">
         <h1 className="text-2xl font-semibold tracking-tight">
-          {type === "login" ? "Welcome back" : "Create an account"}
+          {type === "login" ? t("welcome") : t("createAnAccount")}
         </h1>
         <p className="text-sm text-muted-foreground">
           {type === "login"
-            ? "Enter your credentials to sign in to your account"
-            : "Enter your details to create your account"}
+            ? t("enterYourCredentialsToSignInToYourAccount")
+            : t("enterYourDetailsToCreateYourAccount")}
         </p>
+      </div>
+
+      <Button
+        type="button"
+        variant="outline"
+        className="w-full max-w-[300px] mx-auto flex items-center justify-center gap-2"
+        onClick={handleGoogleSignIn}
+        disabled={isLoading}
+      >
+        <Image src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" width={20} height={20} className="w-5 h-5" />
+        {t("signInWithGoogle") || "Sign in with Google"}
+      </Button>
+
+      <button
+        type="button"
+        className="w-full max-w-[300px] mx-auto"
+        onClick={handleAppleSignIn}
+        disabled={isLoading}
+      >
+        <Image
+          src={appleButtonUrl}
+          alt={t("signInWithApple") || "Sign in with Apple"}
+          width={300}
+          height={44}
+          className="w-full h-auto"
+        />
+      </button>
+
+      <div className="relative my-4">
+        <div className="absolute inset-0 flex items-center">
+          <span className="w-full border-t" />
+        </div>
+        <div className="relative flex justify-center text-xs uppercase">
+          <span className="bg-background px-2 text-muted-foreground">or</span>
+        </div>
       </div>
 
       <Form {...form}>
@@ -117,9 +213,9 @@ export function AuthForm({ type }: AuthFormProps) {
               name="fullName"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Full Name</FormLabel>
+                  <FormLabel>{t("fullName")}</FormLabel>
                   <FormControl>
-                    <Input placeholder="John Doe" {...field} />
+                    <Input placeholder="John Doe" autoComplete="name" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -131,9 +227,9 @@ export function AuthForm({ type }: AuthFormProps) {
             name="email"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Email</FormLabel>
+                <FormLabel>{t("email")}</FormLabel>
                 <FormControl>
-                  <Input placeholder="name@example.com" type="email" {...field} />
+                  <Input placeholder="name@example.com" type="email" autoComplete="email" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -144,9 +240,9 @@ export function AuthForm({ type }: AuthFormProps) {
             name="password"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Password</FormLabel>
+                <FormLabel>{t("password")}</FormLabel>
                 <FormControl>
-                  <Input placeholder="••••••••" type="password" {...field} />
+                  <Input placeholder="••••••••" type="password" autoComplete={type === "login" ? "current-password" : "new-password"} {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -156,12 +252,12 @@ export function AuthForm({ type }: AuthFormProps) {
             {isLoading ? (
               <div className="flex items-center gap-2">
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent" />
-                {type === "login" ? "Signing in..." : "Creating account..."}
+                {type === "login" ? t("signingIn") : t("creatingAccount")}
               </div>
             ) : type === "login" ? (
-              "Sign In"
+              t("signIn")
             ) : (
-              "Create Account"
+              t("createAccount")
             )}
           </Button>
         </form>
@@ -170,19 +266,26 @@ export function AuthForm({ type }: AuthFormProps) {
       <p className="px-8 text-center text-sm text-muted-foreground">
         {type === "login" ? (
           <>
-            Don&apos;t have an account?{" "}
+            {t("dontHaveAnAccount")}
             <Link href="/auth/register" className="underline underline-offset-4 hover:text-primary">
-              Sign up
+              {t("signUp")}
             </Link>
+
           </>
         ) : (
           <>
-            Already have an account?{" "}
+            {t("alreadyHaveAnAccount")}
             <Link href="/auth/login" className="underline underline-offset-4 hover:text-primary">
-              Sign in
+              {t("signIn")}
             </Link>
           </>
         )}
+      </p>
+
+      <p className="px-8 text-center text-xs text-muted-foreground">
+        Versión 1.0.2
+        <br />
+        Copyright © 2025
       </p>
     </div>
   )

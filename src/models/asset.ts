@@ -1,39 +1,59 @@
-export interface Beneficiary {
-    id: string;
-    full_name: string;
-    email: string | null;
-    phone_number: string | null;
-    relationship: string | null;
-    notes: string | null;
-    notified: boolean | null;
-    status: string | null;
-    last_notified_at: string | null;
-    email_verified: boolean | null;
-    created_at: string | null;
-    updated_at: string | null;
-    user_id: string;
-}
+import { Beneficiary } from "./beneficiary";
 
-export interface AssetFile {
-    url: string;
-    name: string;
-    type: string;
-    size: number;
+
+export interface AssetTypeDetails {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
 }
 
 export interface Asset {
-    id: string;
-    asset_name: string;
-    asset_type: string;
-    status: string;
-    email?: string;
-    password?: string;
-    website?: string;
-    valid_until?: string | null;
-    description?: string;
-    files?: AssetFile[] | null;
-    beneficiary_id?: string | null;
-    beneficiary?: Beneficiary | null;
-    number_of_files?: number;
-    user_id?: string;
-} 
+  id: string;
+  user_id: string;
+  asset_type: string;
+  asset_type_details: AssetTypeDetails;
+  asset_name: string;
+  beneficiary?: Beneficiary;
+  beneficiary_id?: string;
+  status: 'active' | 'inactive' | 'pending' | 'assigned';
+  email?: string;
+  password?: string;
+  website?: string;
+  valid_until?: string;
+  number_of_files?: number;
+  description?: string;
+  files?: string[];
+  custom_fields?: Record<string, string | number | boolean | string[]>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateAssetData {
+  user_id: string;
+  asset_type: string;
+  asset_name: string;
+  beneficiary_id?: string;
+  status?: 'active' | 'inactive' | 'pending' | 'assigned';
+  email?: string;
+  password?: string;
+  website?: string;
+  valid_until?: string;
+  description?: string;
+  files?: string[];
+  custom_fields?: Record<string, string | number | boolean | string[]>;
+}
+
+export interface UpdateAssetData {
+  asset_type?: string;
+  asset_name?: string;
+  beneficiary_id?: string;
+  status?: 'active' | 'inactive' | 'pending' | 'assigned';
+  email?: string;
+  password?: string;
+  website?: string;
+  valid_until?: string;
+  description?: string;
+  files?: string[];
+  custom_fields?: Record<string, string | number | boolean | string[]>;
+}

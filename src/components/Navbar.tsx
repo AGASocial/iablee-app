@@ -34,11 +34,11 @@ export default function Navbar({ onMenuClick }: { onMenuClick?: () => void }) {
   };
 
   return (
-    <div className="border-b dark:border-gray-700">
+    <div className="border-b border-border bg-card/50 backdrop-blur-sm">
       <div className="flex h-16 items-center px-4 justify-end relative">
         {onMenuClick && (
           <button
-            className="absolute left-0 flex items-center justify-center md:hidden h-10 w-10 text-gray-900 dark:text-gray-100"
+            className="absolute left-0 flex items-center justify-center md:hidden h-10 w-10 rounded-lg text-foreground hover:bg-accent transition-colors"
             onClick={onMenuClick}
             aria-label="Open menu"
           >
@@ -47,8 +47,8 @@ export default function Navbar({ onMenuClick }: { onMenuClick?: () => void }) {
         )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon">
-              <User className="h-5 w-5 dark:text-gray-100 text-gray-900" />
+            <Button variant="ghost" size="icon" className="hover:bg-accent/50">
+              <User className="h-5 w-5" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -72,7 +72,7 @@ export default function Navbar({ onMenuClick }: { onMenuClick?: () => void }) {
               </DropdownMenuSubContent>
             </DropdownMenuSub>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleSignOut} className="text-red-600">
+            <DropdownMenuItem onClick={handleSignOut} className="text-destructive focus:text-destructive focus:bg-destructive/10">
               <LogOut className="mr-2 h-4 w-4" />
               <span>{t('signOut')}</span>
             </DropdownMenuItem>
