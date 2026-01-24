@@ -132,7 +132,7 @@ export default function BillingPage() {
   const formatPrice = (amountCents: number, currency: string) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: currency,
+      currency: currency || 'USD',
     }).format(amountCents / 100);
   };
 
@@ -176,7 +176,7 @@ export default function BillingPage() {
   //   );
   // }
 
-  const isFreePlan = subscription?.planId === 'plan_free';
+  const isFreePlan = !subscription || subscription.planId === 'plan_free';
 
   return (
     <div className="container mx-auto py-10 space-y-8 px-2">

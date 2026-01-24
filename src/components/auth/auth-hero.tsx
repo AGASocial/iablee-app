@@ -25,43 +25,54 @@ const IMAGE_SOURCES = [
   'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=1200&h=1600&fit=crop&q=80', // Planning
 ];
 
+// Calculate initial random indices once at module load time
+const getInitialIndices = () => {
+  const initialIndex = Math.floor(Math.random() * IMAGE_SOURCES.length);
+  return {
+    current: initialIndex,
+    next: (initialIndex + 1) % IMAGE_SOURCES.length,
+    preload: (initialIndex + 2) % IMAGE_SOURCES.length,
+  };
+};
+
+const INITIAL_INDICES = getInitialIndices();
+
 export function AuthHero({ quote, author, children }: { quote: string; author: string; children?: React.ReactNode }) {
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [nextImageIndex, setNextImageIndex] = useState(1);
+  const [currentImageIndex, setCurrentImageIndex] = useState(INITIAL_INDICES.current);
+  const [nextImageIndex, setNextImageIndex] = useState(INITIAL_INDICES.next);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [nextImageLoaded, setNextImageLoaded] = useState(false);
-  const [preloadImageIndex, setPreloadImageIndex] = useState(2);
+  const [preloadImageIndex, setPreloadImageIndex] = useState(INITIAL_INDICES.preload);
 
   // Calculate image URLs from indices (must be before useEffects that use them)
   const currentImage = IMAGE_SOURCES[currentImageIndex];
   const nextImage = IMAGE_SOURCES[nextImageIndex];
   const preloadImage = IMAGE_SOURCES[preloadImageIndex];
 
-  // Rotate images every 6 seconds for better viewing experience
-  useEffect(() => {
-    // Randomize initial image for variety
-    const initialIndex = Math.floor(Math.random() * IMAGE_SOURCES.length);
-    setCurrentImageIndex(initialIndex);
-    const nextIdx = (initialIndex + 1) % IMAGE_SOURCES.length;
-    setNextImageIndex(nextIdx);
-    setPreloadImageIndex((nextIdx + 1) % IMAGE_SOURCES.length);
-  }, []);
-
   // Check if next image is loaded (including cached images)
   useEffect(() => {
-    // Reset loaded state when nextImageIndex changes
-    setNextImageLoaded(false);
-    
     // Get the next image URL
     const nextImageUrl = IMAGE_SOURCES[nextImageIndex];
+    
+    // Reset loaded state when nextImageIndex changes - use setTimeout to avoid synchronous setState
+    let isMounted = true;
+    const resetTimeout = setTimeout(() => {
+      if (isMounted) {
+        setNextImageLoaded(false);
+      }
+    }, 0);
     
     // Preload the next image to check if it's cached or needs loading
     const img = new window.Image();
     img.onload = () => {
-      setNextImageLoaded(true);
+      if (isMounted) {
+        setNextImageLoaded(true);
+      }
     };
     img.onerror = () => {
-      setNextImageLoaded(true); // Allow transition even if image fails
+      if (isMounted) {
+        setNextImageLoaded(true); // Allow transition even if image fails
+      }
     };
     
     // Start loading the image
@@ -70,12 +81,16 @@ export function AuthHero({ quote, author, children }: { quote: string; author: s
     // If image is already cached and loaded, onload might not fire
     // Check after a short delay
     const timeout = setTimeout(() => {
-      if (img.complete && img.naturalWidth > 0) {
+      if (isMounted && img.complete && img.naturalWidth > 0) {
         setNextImageLoaded(true);
       }
     }, 100);
     
-    return () => clearTimeout(timeout);
+    return () => {
+      isMounted = false;
+      clearTimeout(resetTimeout);
+      clearTimeout(timeout);
+    };
   }, [nextImageIndex]);
 
   // Handle image transitions timer

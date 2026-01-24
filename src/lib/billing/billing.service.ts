@@ -172,6 +172,10 @@ export class BillingService {
       throw new BillingError('User not found', 'USER_NOT_FOUND');
     }
 
+    if (this.gateway.getName() === 'payu') {
+      throw new BillingError('PayU WebCheckout does not support stored payment methods', 'PAYMENT_METHOD_UNSUPPORTED');
+    }
+
     // Get or create customer
     const customer = await this.getOrCreateCustomer(userId, user.email, user.full_name || undefined);
 
@@ -333,6 +337,17 @@ export class BillingService {
       throw new BillingError('User not found', 'USER_NOT_FOUND');
     }
 
+    const providerName = this.gateway.getName();
+
+    if (providerName === 'payu') {
+      return this.createPayuCheckout({
+        userId,
+        plan,
+        email: user.email,
+        name: user.full_name || undefined,
+      });
+    }
+
     // Get or create customer
     const customer = await this.getOrCreateCustomer(userId, user.email, user.full_name || undefined);
 
@@ -340,7 +355,7 @@ export class BillingService {
     let paymentMethod: PaymentMethodToken | undefined;
     if (paymentMethodToken) {
       paymentMethod = {
-        provider: this.gateway.getName(),
+        provider: providerName,
         token: paymentMethodToken,
       };
       await this.gateway.attachPaymentMethod(customer, paymentMethod);
@@ -351,13 +366,13 @@ export class BillingService {
         .from('billing_payment_methods')
         .select('token')
         .eq('user_id', userId)
-        .eq('provider', this.gateway.getName())
+        .eq('provider', providerName)
         .eq('is_default', true)
         .single();
 
       if (defaultPM) {
         paymentMethod = {
-          provider: this.gateway.getName(),
+          provider: providerName,
           token: defaultPM.token,
         };
       }
@@ -382,7 +397,7 @@ export class BillingService {
         user_id: userId,
         plan_id: planId,
         status: result.status as Subscription['status'],
-        provider: this.gateway.getName(),
+        provider: providerName,
         provider_subscription_id: result.providerSubscriptionId,
         provider_customer_id: customer.providerCustomerId,
         current_period_end: result.currentPeriodEnd?.toISOString(),
@@ -399,6 +414,87 @@ export class BillingService {
       providerSubscriptionId: result.providerSubscriptionId,
       status: result.status as Subscription['status'],
       clientSecret: result.clientSecret,
+    };
+  }
+
+  /**
+   * Create a PayU checkout session and persist pending records
+   */
+  private async createPayuCheckout(params: {
+    userId: string;
+    plan: PlanDefinition;
+    email: string;
+    name?: string;
+  }): Promise<CreateSubscriptionResponse> {
+    const createCheckoutSession = this.gateway.createCheckoutSession?.bind(this.gateway);
+
+    if (!createCheckoutSession) {
+      throw new BillingError('PayU checkout session is not available', 'PAYU_CHECKOUT_UNAVAILABLE');
+    }
+
+    const referenceCode = `payu_${params.userId}_${Date.now()}`;
+    const checkoutSession = await createCheckoutSession({
+      plan: params.plan,
+      successUrl: process.env.PAYU_RESPONSE_URL || '',
+      cancelUrl: process.env.PAYU_RESPONSE_URL || '',
+      metadata: {
+        user_id: params.userId,
+        plan_id: params.plan.id,
+        reference_code: referenceCode,
+      },
+      customerData: {
+        email: params.email,
+        name: params.name,
+        userId: params.userId,
+      },
+    });
+
+    if (!checkoutSession.formFields) {
+      throw new BillingError('PayU checkout session is missing form fields', 'PAYU_CHECKOUT_MALFORMED');
+    }
+
+    const { data: subscription, error: subscriptionError } = await this.supabase
+      .from('billing_subscriptions')
+      .insert({
+        user_id: params.userId,
+        plan_id: params.plan.id,
+        status: 'incomplete',
+        provider: 'payu',
+        provider_subscription_id: referenceCode,
+        provider_customer_id: params.userId,
+      })
+      .select()
+      .single();
+
+    if (subscriptionError || !subscription) {
+      throw new BillingError('Failed to create PayU subscription placeholder', 'PAYU_SUBSCRIPTION_FAILED');
+    }
+
+    const { error: invoiceError } = await this.supabase.from('billing_invoices').insert({
+      user_id: params.userId,
+      subscription_id: subscription.id,
+      provider: 'payu',
+      provider_invoice_id: referenceCode,
+      amount_cents: params.plan.amountCents,
+      currency: params.plan.currency,
+      status: 'open',
+      issued_at: new Date().toISOString(),
+    });
+
+    if (invoiceError) {
+      throw new BillingError('Failed to create PayU invoice placeholder', 'PAYU_INVOICE_FAILED');
+    }
+
+    return {
+      subscriptionId: subscription.id,
+      providerSubscriptionId: referenceCode,
+      status: 'incomplete',
+      checkoutSession: {
+        provider: 'payu',
+        sessionId: checkoutSession.sessionId,
+        url: checkoutSession.url,
+        formFields: checkoutSession.formFields,
+      },
     };
   }
 
@@ -546,35 +642,44 @@ export class BillingService {
    * Handle subscription created/updated events
    */
   private async handleSubscriptionEvent(data: SubscriptionEventData): Promise<void> {
-    // Find user by customer ID
-    const { data: paymentMethod } = await this.supabase
-      .from('billing_payment_methods')
-      .select('user_id')
-      .eq('provider_customer_id', data.customerId)
-      .limit(1)
-      .maybeSingle();
+    let userId = data.userId;
 
-    if (!paymentMethod) {
-      console.error('No user found for customer:', data.customerId);
-      return;
+    if (!userId) {
+      const { data: paymentMethod } = await this.supabase
+        .from('billing_payment_methods')
+        .select('user_id')
+        .eq('provider_customer_id', data.customerId)
+        .limit(1)
+        .maybeSingle();
+
+      if (!paymentMethod) {
+        console.error('No user found for customer:', data.customerId);
+        return;
+      }
+
+      userId = paymentMethod.user_id;
     }
 
-    const userId = paymentMethod.user_id;
-
     // Upsert subscription
+    const upsertPayload: Record<string, unknown> = {
+      user_id: userId,
+      provider_subscription_id: data.subscriptionId,
+      status: data.status,
+      current_period_start: data.currentPeriodStart,
+      current_period_end: data.currentPeriodEnd,
+      cancel_at_period_end: data.cancelAtPeriodEnd || false,
+      provider: this.gateway.getName(),
+      provider_customer_id: data.customerId,
+    };
+
+    if (data.planId) {
+      upsertPayload.plan_id = data.planId;
+    }
+
     await this.supabase
       .from('billing_subscriptions')
       .upsert(
-        {
-          user_id: userId,
-          provider_subscription_id: data.subscriptionId,
-          status: data.status,
-          current_period_start: data.currentPeriodStart,
-          current_period_end: data.currentPeriodEnd,
-          cancel_at_period_end: data.cancelAtPeriodEnd || false,
-          provider: this.gateway.getName(),
-          provider_customer_id: data.customerId,
-        },
+        upsertPayload,
         { onConflict: 'provider_subscription_id' }
       );
   }
@@ -596,20 +701,23 @@ export class BillingService {
    * Handle invoice paid event
    */
   private async handleInvoicePaid(data: InvoiceEventData): Promise<void> {
-    // Find user by customer ID
-    const { data: paymentMethod } = await this.supabase
-      .from('billing_payment_methods')
-      .select('user_id')
-      .eq('provider_customer_id', data.customerId)
-      .limit(1)
-      .maybeSingle();
+    let userId = data.userId;
 
-    if (!paymentMethod) {
-      console.error('No user found for customer:', data.customerId);
-      return;
+    if (!userId) {
+      const { data: paymentMethod } = await this.supabase
+        .from('billing_payment_methods')
+        .select('user_id')
+        .eq('provider_customer_id', data.customerId)
+        .limit(1)
+        .maybeSingle();
+
+      if (!paymentMethod) {
+        console.error('No user found for customer:', data.customerId);
+        return;
+      }
+
+      userId = paymentMethod.user_id;
     }
-
-    const userId = paymentMethod.user_id;
 
     // Find subscription if provided
     let subscriptionId: string | undefined;
@@ -638,6 +746,22 @@ export class BillingService {
       },
       { onConflict: 'provider_invoice_id' }
     );
+
+    if (data.subscriptionId) {
+      const updates: Record<string, unknown> = {
+        status: 'active',
+        updated_at: new Date().toISOString(),
+      };
+
+      if (data.planId) {
+        updates.plan_id = data.planId;
+      }
+
+      await this.supabase
+        .from('billing_subscriptions')
+        .update(updates)
+        .eq('provider_subscription_id', data.subscriptionId);
+    }
   }
 
   /**

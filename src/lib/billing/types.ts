@@ -179,6 +179,9 @@ export interface InvoiceEventData {
   status: InvoiceStatus;
   issuedAt: string;
   paidAt?: string;
+  userId?: string;
+  planId?: string;
+  rawStatus?: string;
 }
 
 export interface PaymentMethodEventData {
@@ -210,6 +213,14 @@ export interface CreateSubscriptionResponse {
   providerSubscriptionId: string;
   status: SubscriptionStatus;
   clientSecret?: string; // For confirmation flows (like Stripe)
+  checkoutSession?: CheckoutSessionDetails;
+}
+
+export interface CheckoutSessionDetails {
+  provider: PaymentProvider;
+  sessionId: string;
+  url: string;
+  formFields?: Record<string, string>;
 }
 
 export interface UpdateSubscriptionRequest {

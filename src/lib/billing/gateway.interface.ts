@@ -150,9 +150,15 @@ export interface PaymentGateway {
     successUrl: string;
     cancelUrl: string;
     metadata?: Record<string, string>;
+    customerData?: {
+      email?: string;
+      name?: string;
+      userId?: string;
+    };
   }): Promise<{
     sessionId: string;
     url: string;
+    formFields?: Record<string, string>;
   }>;
 
   /**
