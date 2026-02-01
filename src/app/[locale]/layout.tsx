@@ -6,7 +6,11 @@ import { notFound } from 'next/navigation';
 import ClientLayout from "@/components/ClientLayout";
 import ThemeRegistry from "@/components/ThemeRegistry";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "iablee - Digital Inheritance Platform",
@@ -21,7 +25,7 @@ export default async function RootLayout({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
-  
+
   let messages;
   try {
     messages = (await import(`../../../messages/${locale}.json`)).default;
@@ -31,7 +35,7 @@ export default async function RootLayout({
 
   return (
     <html lang={locale} suppressHydrationWarning>
-      <body className={inter.className} suppressHydrationWarning>
+      <body className={`${inter.variable} font-sans antialiased`} suppressHydrationWarning>
         <ThemeRegistry>
           <NextIntlClientProvider locale={locale} messages={messages}>
             <ClientLayout>

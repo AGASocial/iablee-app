@@ -1,6 +1,8 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
+import Image from 'next/image';
+import Link from 'next/link';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,50 +36,79 @@ export default function Navbar({ onMenuClick }: { onMenuClick?: () => void }) {
   };
 
   return (
-    <div className="border-b border-border bg-card/50 backdrop-blur-sm">
-      <div className="flex h-16 items-center px-4 justify-end relative">
-        {onMenuClick && (
-          <button
-            className="absolute left-0 flex items-center justify-center md:hidden h-10 w-10 rounded-lg text-foreground hover:bg-accent transition-colors"
-            onClick={onMenuClick}
-            aria-label="Open menu"
-          >
-            <Menu className="h-6 w-6" />
-          </button>
-        )}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="hover:bg-accent/50">
-              <User className="h-5 w-5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>{t('profile')}</DropdownMenuLabel>
-            <DropdownMenuItem>
-              <User className="mr-2 h-4 w-4" />
-              <span>{t('profileSettings')}</span>
-            </DropdownMenuItem>
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <Languages className="mr-2 h-4 w-4" />
-                <span>{t('language')}</span>
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                <DropdownMenuItem onClick={() => switchLocale('en')}>
-                  <span className={locale === 'en' ? 'font-bold' : ''}>English</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => switchLocale('es')}>
-                  <span className={locale === 'es' ? 'font-bold' : ''}>Español</span>
-                </DropdownMenuItem>
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleSignOut} className="text-destructive focus:text-destructive focus:bg-destructive/10">
-              <LogOut className="mr-2 h-4 w-4" />
-              <span>{t('signOut')}</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+    <div className="sticky top-0 z-40 w-full border-b border-white/10 bg-white/60 backdrop-blur-xl transition-all dark:bg-black/40 supports-[backdrop-filter]:bg-white/60">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center gap-4">
+          {onMenuClick && (
+            <button
+              className="group flex items-center justify-center rounded-lg p-2 text-foreground/70 hover:bg-accent hover:text-foreground md:hidden transition-colors"
+              onClick={onMenuClick}
+              aria-label="Open menu"
+            >
+              <Menu className="h-5 w-5 transition-transform group-active:scale-95" />
+            </button>
+          )}
+
+          {/* Logo Section */}
+          <Link href="/dashboard" className="flex md:hidden items-center gap-2 transition-opacity hover:opacity-90">
+            <div className="relative h-16 w-32 overflow-hidden rounded-lg">
+              <Image
+                src="/logo-iablee.png"
+                alt="iablee"
+                fill
+                className="object-contain dark:hidden"
+                priority
+                unoptimized
+              />
+              <Image
+                src="/logo-iablee-dark.png"
+                alt="iablee"
+                fill
+                className="object-contain hidden dark:block"
+                priority
+                unoptimized
+              />
+            </div>
+          </Link>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-9 w-9 p-0 rounded-full border border-transparent hover:border-border hover:bg-secondary/50 transition-all">
+                <User className="h-4 w-4 text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56 p-2">
+              <DropdownMenuLabel className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                {t('profile')}
+              </DropdownMenuLabel>
+              <DropdownMenuItem className="cursor-pointer rounded-md px-2 py-2 text-sm font-medium transition-colors focus:bg-accent focus:text-accent-foreground">
+                <User className="mr-2 h-4 w-4 opacity-70" />
+                <span>{t('profileSettings')}</span>
+              </DropdownMenuItem>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="cursor-pointer rounded-md px-2 py-2 text-sm font-medium transition-colors focus:bg-accent focus:text-accent-foreground">
+                  <Languages className="mr-2 h-4 w-4 opacity-70" />
+                  <span>{t('language')}</span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="p-1">
+                  <DropdownMenuItem onClick={() => switchLocale('en')} className="cursor-pointer">
+                    <span className={locale === 'en' ? 'font-bold text-primary' : ''}>English</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => switchLocale('es')} className="cursor-pointer">
+                    <span className={locale === 'es' ? 'font-bold text-primary' : ''}>Español</span>
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              <DropdownMenuSeparator className="my-2 bg-border/50" />
+              <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer rounded-md px-2 py-2 text-sm font-medium text-destructive focus:bg-destructive/10 focus:text-destructive">
+                <LogOut className="mr-2 h-4 w-4" />
+                <span>{t('signOut')}</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
     </div>
   );
