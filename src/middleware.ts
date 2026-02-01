@@ -1,12 +1,13 @@
 import createMiddleware from 'next-intl/middleware';
-import {routing} from './i18n/routing';
+import { routing } from './i18n/routing';
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 const intlMiddleware = createMiddleware(routing);
 
-export async function proxy(req: NextRequest) {
+// function name changed to middleware for Next.js convention
+export async function middleware(req: NextRequest) {
   // First, run next-intl middleware for locale negotiation
   const intlResponse = await intlMiddleware(req);
   if (intlResponse) return intlResponse;
@@ -52,7 +53,7 @@ export async function proxy(req: NextRequest) {
 
   // Get the default locale
   const defaultLocale = routing.defaultLocale;
-  
+
   // Extract locale from pathname or use default
   let locale = defaultLocale;
   if (!pathnameIsMissingLocale) {
@@ -102,5 +103,5 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
 } 
