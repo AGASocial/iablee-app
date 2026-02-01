@@ -244,12 +244,14 @@ export default function BillingPage() {
               </Button>
             ) : !subscription?.cancelAtPeriodEnd ? (
               <>
-                <Button
-                  variant="outline"
-                  onClick={() => router.push('/billing/plans')}
-                >
-                  {t('changePlan')}
-                </Button>
+                {provider !== 'payu' && (
+                  <Button
+                    variant="outline"
+                    onClick={() => router.push('/billing/plans')}
+                  >
+                    {t('changePlan')}
+                  </Button>
+                )}
                 <Button
                   variant="destructive"
                   onClick={handleCancelSubscription}
