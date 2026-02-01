@@ -28,13 +28,21 @@ import {
   BillingError,
   SubscriptionNotFoundError,
   PlanNotFoundError,
+  PaymentGatewayError,
 } from './types';
 
 export class BillingService {
   constructor(
     private supabase: SupabaseClient,
     private gateway: PaymentGateway
-  ) {}
+  ) { }
+
+  /**
+   * Get the name of the current payment provider
+   */
+  getProviderName(): PaymentProvider {
+    return this.gateway.getName();
+  }
 
   /**
    * Get all available billing plans
@@ -526,17 +534,39 @@ export class BillingService {
     }
 
     // Update via gateway (pass Stripe price ID, not our internal plan ID)
-    const result = await this.gateway.updateSubscription(subscription.provider_subscription_id, {
-      planId: stripePriceId,
-      cancelAtPeriodEnd,
-    });
+    let result;
+    try {
+      result = await this.gateway.updateSubscription(subscription.provider_subscription_id, {
+        planId: stripePriceId,
+        cancelAtPeriodEnd,
+      });
+    } catch (error) {
+      // If we are trying to change plans, we can't bypass the gateway
+      if (planId) {
+        throw error;
+      }
+
+      // If just toggling cancel status (resume/cancel) and gateway doesn't support it (PayU),
+      // we update local state only.
+      if (error instanceof PaymentGatewayError || (error instanceof Error && error.message.includes('not supported'))) {
+        console.warn('Gateway update not supported or failed, proceeding with local update:', error);
+        // Mock result for local update only
+        result = {
+          providerSubscriptionId: subscription.provider_subscription_id,
+          status: subscription.status,
+          currentPeriodEnd: subscription.current_period_end ? new Date(subscription.current_period_end as string) : undefined
+        };
+      } else {
+        throw error;
+      }
+    }
 
     // Update database with new values from gateway
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (planId) updates.plan_id = planId;
     if (cancelAtPeriodEnd !== undefined) updates.cancel_at_period_end = cancelAtPeriodEnd;
     // Update the current_period_end with the value from Stripe
-    if (result.currentPeriodEnd) updates.current_period_end = result.currentPeriodEnd.toISOString();
+    if (result && result.currentPeriodEnd) updates.current_period_end = result.currentPeriodEnd.toISOString();
 
     console.log('Updating subscription in database:', {
       subscriptionId,
@@ -571,7 +601,17 @@ export class BillingService {
     }
 
     // Cancel via gateway
-    await this.gateway.cancelSubscription(subscription.provider_subscription_id, atPeriodEnd);
+    try {
+      await this.gateway.cancelSubscription(subscription.provider_subscription_id, atPeriodEnd);
+    } catch (error) {
+      // If the gateway doesn't support cancellation (e.g. PayU), we still want to 
+      // update our local state to stop future renewals/access.
+      if (error instanceof PaymentGatewayError || (error instanceof Error && error.message.includes('not supported'))) {
+        console.warn('Gateway cancellation not supported or failed, proceeding with local cancellation:', error);
+      } else {
+        throw error;
+      }
+    }
 
     // Update database
     const updates: Record<string, unknown> = {

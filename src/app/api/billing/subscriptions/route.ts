@@ -45,6 +45,9 @@ export async function GET() {
           updatedAt: new Date(),
           plan: freePlan,
         },
+        config: {
+          provider: billingService.getProviderName(),
+        },
       });
     }
 
@@ -55,6 +58,9 @@ export async function GET() {
       subscription: {
         ...subscription,
         plan,
+      },
+      config: {
+        provider: billingService.getProviderName(),
       },
     });
   } catch (error) {
