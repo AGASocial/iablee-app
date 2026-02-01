@@ -48,6 +48,7 @@ export default function BillingPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [canceling, setCanceling] = useState(false);
+  const [provider, setProvider] = useState<string | null>(null);
 
   const fetchBillingData = async () => {
     try {
@@ -59,6 +60,9 @@ export default function BillingPage() {
       if (subResponse.ok) {
         const subData = await subResponse.json();
         setSubscription(subData.subscription);
+        if (subData.config?.provider) {
+          setProvider(subData.config.provider);
+        }
       }
 
       if (invoicesResponse.ok) {
@@ -240,12 +244,14 @@ export default function BillingPage() {
               </Button>
             ) : !subscription?.cancelAtPeriodEnd ? (
               <>
-                <Button
-                  variant="outline"
-                  onClick={() => router.push('/billing/plans')}
-                >
-                  {t('changePlan')}
-                </Button>
+                {provider !== 'payu' && (
+                  <Button
+                    variant="outline"
+                    onClick={() => router.push('/billing/plans')}
+                  >
+                    {t('changePlan')}
+                  </Button>
+                )}
                 <Button
                   variant="destructive"
                   onClick={handleCancelSubscription}
@@ -299,7 +305,7 @@ export default function BillingPage() {
       </Card>
 
       {/* Payment Methods */}
-      <PaymentMethodsList />
+      {provider !== 'payu' && <PaymentMethodsList />}
 
       {/* Billing History */}
       <Card>

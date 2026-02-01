@@ -21,13 +21,14 @@ interface FileWithMetadata {
   type: string;
   size?: number;
   url?: string;
+  error?: string;
 }
 
-export default function AssetAttachmentsModal({ 
-  open, 
-  onOpenChange, 
-  asset, 
-  onFilesUpdated 
+export default function AssetAttachmentsModal({
+  open,
+  onOpenChange,
+  asset,
+  onFilesUpdated
 }: AssetAttachmentsModalProps) {
   const t = useTranslations();
   const [files, setFiles] = useState<FileWithMetadata[]>([]);
@@ -68,7 +69,9 @@ export default function AssetAttachmentsModal({
             .from('assets')
             .createSignedUrl(filePath, 60 * 60);
           if (signedData?.signedUrl) url = signedData.signedUrl;
-        } catch {}
+        } catch (err) {
+          console.error('Error creating signed URL for preview in list', err);
+        }
         if (!url) {
           const { data: urlData } = supabase.storage.from('assets').getPublicUrl(filePath);
           url = urlData.publicUrl;
@@ -104,6 +107,15 @@ export default function AssetAttachmentsModal({
       const { data, error } = await supabase.storage
         .from('assets')
         .createSignedUrl(file.path, 60 * 60);
+
+      if (error) {
+        console.error('Error creating signed URL for preview modal:', error);
+        if (error.message?.includes('Object not found') || error.message?.includes('The resource was not found')) {
+          setPreviewFile({ ...file, error: 'not_found' });
+          return;
+        }
+      }
+
       if (!error && data?.signedUrl) {
         setPreviewFile({ ...file, url: data.signedUrl });
         return;
@@ -121,9 +133,17 @@ export default function AssetAttachmentsModal({
         return;
       }
       throw error || dl.error;
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Error opening preview:', err);
-      alert('Error loading preview');
+
+      const errorMessage = err instanceof Error ? err.message : String(err);
+
+      // Ensure we still show something if it fails
+      if (errorMessage?.includes('Object not found') || errorMessage?.includes('The resource was not found')) {
+        setPreviewFile({ ...file, error: 'not_found' });
+      } else {
+        alert('Error loading preview');
+      }
     }
   };
 
@@ -145,7 +165,7 @@ export default function AssetAttachmentsModal({
     const videoTypes = ['mp4', 'avi', 'mov', 'wmv', 'flv', 'webm', 'mkv'];
     const audioTypes = ['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a'];
     const documentTypes = ['pdf', 'doc', 'docx', 'txt', 'rtf'];
-    
+
     if (imageTypes.includes(extension)) return 'image';
     if (videoTypes.includes(extension)) return 'video';
     if (audioTypes.includes(extension)) return 'audio';
@@ -186,27 +206,27 @@ export default function AssetAttachmentsModal({
 
   const handleDelete = async (file: FileWithMetadata) => {
     if (!confirm(t('deleteFileConfirm'))) return;
-    
+
     try {
       // Remove from storage
       const { error: storageError } = await supabase.storage
         .from('assets')
         .remove([file.path]);
-      
+
       if (storageError) throw storageError;
-      
+
       // Update asset files array
       const updatedFiles = asset?.files?.filter(f => f !== file.path) || [];
       const { error: dbError } = await supabase
         .from('digital_assets')
-        .update({ 
+        .update({
           files: updatedFiles.length > 0 ? updatedFiles : null,
           number_of_files: updatedFiles.length
         })
         .eq('id', asset?.id);
-      
+
       if (dbError) throw dbError;
-      
+
       onFilesUpdated();
       await loadFiles();
     } catch (error) {
@@ -218,41 +238,41 @@ export default function AssetAttachmentsModal({
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files;
     if (!selectedFiles || selectedFiles.length === 0) return;
-    
+
     setUploading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
-      
+
       const newFilePaths: string[] = [];
-      
+
       for (const file of Array.from(selectedFiles)) {
         // Sanitize file name
         const safeFileName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
         const filePath = `${user.id}/${Date.now()}-${safeFileName}`;
-        
+
         const { data, error } = await supabase.storage
           .from('assets')
           .upload(filePath, file);
-        
+
         if (error) throw error;
         newFilePaths.push(data.path);
       }
-      
+
       // Update asset with new files
       const existingFiles = asset?.files || [];
       const allFiles = [...existingFiles, ...newFilePaths];
-      
+
       const { error: dbError } = await supabase
         .from('digital_assets')
-        .update({ 
+        .update({
           files: allFiles,
           number_of_files: allFiles.length
         })
         .eq('id', asset?.id);
-      
+
       if (dbError) throw dbError;
-      
+
       onFilesUpdated();
       await loadFiles();
     } catch (error) {
@@ -263,16 +283,28 @@ export default function AssetAttachmentsModal({
     }
   };
 
+  /* eslint-disable @next/next/no-img-element */
   const renderPreview = (file: FileWithMetadata) => {
+    if (file.error === 'not_found') {
+      return (
+        <div className="flex items-center justify-center p-8 text-center bg-gray-50 dark:bg-gray-800 rounded-lg h-64">
+          <div>
+            <File className="w-16 h-16 mx-auto mb-4 text-red-500" />
+            <p className="text-red-600 font-medium mb-2">{t('fileNotFound')}</p>
+            <p className="text-sm text-gray-500 mb-4">{t('fileNotFoundDesc') || "The file could not be found in storage. It may have been deleted."}</p>
+          </div>
+        </div>
+      );
+    }
+
     if (!file.url) return null;
-    
+
     switch (file.type) {
       case 'image':
         return (
           <div className="flex items-center justify-center p-4">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img 
-              src={file.url} 
+            <img
+              src={file.url}
               alt={file.name}
               className="max-w-full max-h-96 object-contain rounded-lg shadow-lg"
             />
@@ -281,7 +313,7 @@ export default function AssetAttachmentsModal({
       case 'video':
         return (
           <div className="flex items-center justify-center p-4">
-            <video 
+            <video
               src={file.url}
               controls
               className="max-w-full max-h-96 rounded-lg shadow-lg"
@@ -293,7 +325,7 @@ export default function AssetAttachmentsModal({
       case 'audio':
         return (
           <div className="flex items-center justify-center p-4">
-            <audio 
+            <audio
               src={file.url}
               controls
               className="w-full max-w-md"
@@ -306,7 +338,7 @@ export default function AssetAttachmentsModal({
         if (file.name.toLowerCase().endsWith('.pdf')) {
           return (
             <div className="w-full h-96">
-              <iframe 
+              <iframe
                 src={file.url}
                 className="w-full h-full border-0 rounded-lg"
                 title={file.name}
@@ -319,7 +351,7 @@ export default function AssetAttachmentsModal({
             <div>
               <FileText className="w-16 h-16 mx-auto mb-4 text-gray-400" />
               <p className="text-gray-600">{t('previewNotAvailable')}</p>
-              <Button 
+              <Button
                 onClick={() => handleDownload(file)}
                 className="mt-4"
               >
@@ -335,7 +367,7 @@ export default function AssetAttachmentsModal({
             <div>
               <File className="w-16 h-16 mx-auto mb-4 text-gray-400" />
               <p className="text-gray-600">{t('previewNotAvailable')}</p>
-              <Button 
+              <Button
                 onClick={() => handleDownload(file)}
                 className="mt-4"
               >
@@ -357,7 +389,7 @@ export default function AssetAttachmentsModal({
           </DialogTitle>
           <DialogClose asChild />
         </DialogHeader>
-        
+
         <div className="flex flex-col h-full bg-white dark:bg-gray-800">
           {/* Upload Section */}
           <div className="p-6 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
@@ -371,8 +403,8 @@ export default function AssetAttachmentsModal({
                 accept="*"
               />
               <label htmlFor="file-upload">
-                <Button 
-                  asChild 
+                <Button
+                  asChild
                   disabled={uploading}
                   className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-white dark:bg-gray-700 dark:hover:bg-gray-600"
                 >
@@ -427,7 +459,7 @@ export default function AssetAttachmentsModal({
                 <div className="p-6">
                   <div className="space-y-3">
                     {files.map((file, index) => (
-                      <div 
+                      <div
                         key={index}
                         className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-shadow bg-white dark:bg-gray-700"
                       >
@@ -436,7 +468,7 @@ export default function AssetAttachmentsModal({
                             {getFileIcon(file.type)}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p 
+                            <p
                               className="text-sm font-medium text-gray-900 dark:text-white truncate"
                               title={file.name}
                             >

@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { toast } from 'sonner';
 import type { Subscription, PlanDefinition, CheckoutSessionDetails } from '@/lib/billing/types';
 
-const PAYMENT_GATEWAY = process.env.NEXT_PUBLIC_PAYMENT_GATEWAY || 'stripe';
+const PAYMENT_GATEWAY = process.env.NEXT_PUBLIC_PAYMENT_GATEWAY || 'payu';
 
 interface PlanFeatures {
   max_assets: number;

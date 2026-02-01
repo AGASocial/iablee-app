@@ -179,6 +179,8 @@
   "deleteFileConfirm": "Are you sure you want to delete this file?",
   "previewNotAvailable": "Preview not available",
   "noFilesAttached": "No files attached",
+  "fileNotFound": "File not found",
+  "fileNotFoundDesc": "The file could not be found in storage. It may have been deleted.",
   "billing": "Billing",
   "subscription": "Subscription",
   "plans": "Plans",
@@ -284,52 +286,105 @@
     "letter": {
       "name": "Letter",
       "description": "A letter is a written message that you can send to your beneficiaries.",
-      "requiredFields": ["asset_name"],
-      "optionalFields": ["description"],
+      "requiredFields": [
+        "asset_name"
+      ],
+      "optionalFields": [
+        "description"
+      ],
       "fileAccept": "*",
       "customFields": [
-        { "key": "message_content", "label": "writeWhatYouWantToSay", "type": "textarea", "required": true }
+        {
+          "key": "message_content",
+          "label": "writeWhatYouWantToSay",
+          "type": "textarea",
+          "required": true
+        }
       ]
     },
     "audio": {
       "name": "Audio",
       "description": "An audio is a recorded message that you can send to your beneficiaries.",
-      "requiredFields": ["asset_name"],
+      "requiredFields": [
+        "asset_name"
+      ],
       "optionalFields": [],
       "fileAccept": "audio/*",
       "customFields": [
-        { "key": "audio_note", "label": "recordHereOrUpload", "type": "file", "required": true }
+        {
+          "key": "audio_note",
+          "label": "recordHereOrUpload",
+          "type": "file",
+          "required": true
+        }
       ]
     },
     "photo": {
       "name": "Photo",
       "description": "A photo is an image that you can send to your beneficiaries.",
-      "requiredFields": ["asset_name"],
+      "requiredFields": [
+        "asset_name"
+      ],
       "optionalFields": [],
       "fileAccept": "image/*",
       "customFields": [
-        { "key": "photo_caption", "label": "photoCaption", "type": "text", "required": false }
+        {
+          "key": "photo_caption",
+          "label": "photoCaption",
+          "type": "text",
+          "required": false
+        }
       ]
     },
     "video": {
       "name": "Video",
       "description": "A video is a video that you can send to your beneficiaries.",
-      "requiredFields": ["asset_name"],
+      "requiredFields": [
+        "asset_name"
+      ],
       "optionalFields": [],
       "fileAccept": "video/*",
       "customFields": [
-        { "key": "video_caption", "label": "videoCaption", "type": "text", "required": false }
+        {
+          "key": "video_caption",
+          "label": "videoCaption",
+          "type": "text",
+          "required": false
+        }
       ]
     },
     "document": {
       "name": "Document",
       "description": "A document is a document that you can send to your beneficiaries.",
-      "requiredFields": ["asset_name"],
-      "optionalFields": ["description"],
+      "requiredFields": [
+        "asset_name"
+      ],
+      "optionalFields": [
+        "description"
+      ],
       "fileAccept": "*",
       "customFields": [
-        { "key": "document_type", "label": "documentType", "type": "select", "required": true, "options": ["identification", "passport", "certificate", "contract", "invoice", "receipt", "other"] },
-        { "key": "observations", "label": "observations", "type": "textarea", "required": false }
+        {
+          "key": "document_type",
+          "label": "documentType",
+          "type": "select",
+          "required": true,
+          "options": [
+            "identification",
+            "passport",
+            "certificate",
+            "contract",
+            "invoice",
+            "receipt",
+            "other"
+          ]
+        },
+        {
+          "key": "observations",
+          "label": "observations",
+          "type": "textarea",
+          "required": false
+        }
       ]
     }
   }

@@ -13,7 +13,7 @@ import type { PaymentGateway } from './gateway.interface';
  * Get the configured payment gateway based on environment
  */
 export function getPaymentGateway(): PaymentGateway {
-  const gateway = process.env.PAYMENT_GATEWAY || 'stripe';
+  const gateway = process.env.PAYMENT_GATEWAY || 'payu';
 
   switch (gateway) {
     case 'stripe': {
