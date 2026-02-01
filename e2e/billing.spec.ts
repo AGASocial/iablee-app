@@ -111,7 +111,6 @@ test.describe('Billing', () => {
       const method = route.request().method();
 
       if (method === 'GET') {
-        const url = route.request().url();
         // Since we are not doing a real reload check here efficiently without intricate mocking,
         // we mainly trust the button click and the patch request.
 
