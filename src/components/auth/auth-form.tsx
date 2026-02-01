@@ -283,9 +283,9 @@ export function AuthForm({ type }: AuthFormProps) {
       </p>
 
       <p className="px-8 text-center text-xs text-muted-foreground">
-        Versión 1.0.2
+        Versión 1.1.0
         <br />
-        Copyright © 2025
+        Copyright © 2026
       </p>
     </div>
   )
