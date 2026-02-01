@@ -16,6 +16,8 @@
   "removeBeneficiary": "Remove Beneficiary",
   "profile": "Profile",
   "profileSettings": "Profile Settings",
+  "manageAccountSettings": "Manage your account settings",
+  "accountSettingsComingSoon": "Account settings page content coming soon...",
   "language": "Language",
   "signOut": "Sign Out",
   "totalAssets": "Total Assets",

@@ -1,18 +1,46 @@
 "use client";
 
-import { usePathname } from 'next/navigation';
+
 import Image from 'next/image';
 import Navigation from "@/components/Navigation";
 import Navbar from "@/components/Navbar";
 import { Toaster } from "sonner";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { useTranslations, useLocale } from 'next-intl';
+import { useRouter, usePathname, Link } from '@/i18n/navigation';
+import { supabase } from '@/lib/supabase';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+} from "@/components/ui/dropdown-menu";
+import { User, LogOut, Languages } from "lucide-react";
 
 export default function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isAuthPage = pathname?.includes('/auth');
+
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const t = useTranslations();
+  const router = useRouter();
+  const locale = useLocale();
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.push('/auth/login');
+  };
+
+  const switchLocale = (newLocale: string) => {
+    router.replace(pathname, { locale: newLocale });
+  };
 
   if (isAuthPage) {
     return (
@@ -85,10 +113,64 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
           </button>
 
           {/* User Profile / Footer Area (Optional if needed later) */}
+          {/* User Profile / Footer Area */}
           <div className="p-4 border-t border-border dark:border-white/5 bg-muted/20 dark:bg-black/20">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className={cn(
+                  "flex items-center gap-3 w-full rounded-lg hover:bg-muted dark:hover:bg-white/5 transition-all p-2 text-left",
+                  sidebarCollapsed && "justify-center p-0 hover:bg-transparent"
+                )}>
+                  <div className={cn(
+                    "relative flex items-center justify-center shrink-0 rounded-full bg-primary/10 dark:bg-white/10 text-primary dark:text-white transition-all",
+                    sidebarCollapsed ? "h-10 w-10 ring-2 ring-transparent hover:ring-primary/20" : "h-9 w-9"
+                  )}>
+                    <User className="h-5 w-5" />
+                  </div>
+                  <div className={cn(
+                    "flex-1 overflow-hidden transition-all duration-300",
+                    sidebarCollapsed ? "w-0 opacity-0" : "w-auto opacity-100"
+                  )}>
+                    <p className="text-sm font-medium truncate">{t('profile')}</p>
+                    <p className="text-xs text-muted-foreground truncate">{t('profileSettings')}</p>
+                  </div>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" side="right" sideOffset={10} className="w-56 p-2">
+                <DropdownMenuLabel className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                  {t('profile')}
+                </DropdownMenuLabel>
+                <DropdownMenuItem asChild>
+                  <Link href="/settings" className="cursor-pointer flex w-full items-center rounded-md px-2 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground">
+                    <User className="mr-2 h-4 w-4 opacity-70" />
+                    <span>{t('profileSettings')}</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger className="cursor-pointer rounded-md px-2 py-2 text-sm font-medium transition-colors focus:bg-accent focus:text-accent-foreground">
+                    <Languages className="mr-2 h-4 w-4 opacity-70" />
+                    <span>{t('language')}</span>
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="p-1">
+                    <DropdownMenuItem onClick={() => switchLocale('en')} className="cursor-pointer">
+                      <span className={locale === 'en' ? 'font-bold text-primary' : ''}>English</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => switchLocale('es')} className="cursor-pointer">
+                      <span className={locale === 'es' ? 'font-bold text-primary' : ''}>Español</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+                <DropdownMenuSeparator className="my-2 bg-border/50" />
+                <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer rounded-md px-2 py-2 text-sm font-medium text-destructive focus:bg-destructive/10 focus:text-destructive">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>{t('signOut')}</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <div className={cn(
-              "text-xs text-muted-foreground dark:text-white/40 text-center transition-all duration-300 whitespace-nowrap overflow-hidden",
-              sidebarCollapsed ? "w-0 opacity-0" : "w-auto opacity-100"
+              "text-xs text-muted-foreground dark:text-white/40 text-center transition-all duration-300 whitespace-nowrap overflow-hidden mt-4",
+              sidebarCollapsed ? "w-0 opacity-0 h-0 mt-0" : "w-auto opacity-100 h-auto"
             )}>
               © 2026 iablee Inc.
             </div>
@@ -128,8 +210,58 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
                 &times;
               </button>
             </div>
-            <div className="p-4">
+            <div className="flex-1 overflow-y-auto p-4">
               <Navigation closeSidebar={() => setSidebarOpen(false)} />
+            </div>
+            {/* Mobile Footer */}
+            <div className="p-4 border-t border-border dark:border-white/5 bg-muted/20 dark:bg-black/20">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="flex items-center gap-3 w-full rounded-lg hover:bg-muted dark:hover:bg-white/5 transition-all p-2 text-left">
+                    <div className="relative flex items-center justify-center shrink-0 rounded-full bg-primary/10 dark:bg-white/10 text-primary dark:text-white h-9 w-9">
+                      <User className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1 overflow-hidden">
+                      <p className="text-sm font-medium truncate">{t('profile')}</p>
+                      <p className="text-xs text-muted-foreground truncate">{t('profileSettings')}</p>
+                    </div>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" side="top" sideOffset={10} className="w-56 p-2">
+                  <DropdownMenuLabel className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                    {t('profile')}
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem asChild>
+                    <Link href="/settings" className="cursor-pointer flex w-full items-center rounded-md px-2 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground">
+                      <User className="mr-2 h-4 w-4 opacity-70" />
+                      <span>{t('profileSettings')}</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger className="cursor-pointer rounded-md px-2 py-2 text-sm font-medium transition-colors focus:bg-accent focus:text-accent-foreground">
+                      <Languages className="mr-2 h-4 w-4 opacity-70" />
+                      <span>{t('language')}</span>
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent className="p-1">
+                      <DropdownMenuItem onClick={() => switchLocale('en')} className="cursor-pointer">
+                        <span className={locale === 'en' ? 'font-bold text-primary' : ''}>English</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => switchLocale('es')} className="cursor-pointer">
+                        <span className={locale === 'es' ? 'font-bold text-primary' : ''}>Español</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                  <DropdownMenuSeparator className="my-2 bg-border/50" />
+                  <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer rounded-md px-2 py-2 text-sm font-medium text-destructive focus:bg-destructive/10 focus:text-destructive">
+                    <LogOut className="mr-2 h-4 w-4" />
+                    <span>{t('signOut')}</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <div className="text-xs text-muted-foreground dark:text-white/40 text-center mt-4">
+                © 2026 iablee Inc.
+              </div>
             </div>
           </div>
         </div>
