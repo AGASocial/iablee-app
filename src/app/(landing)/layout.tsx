@@ -1,5 +1,5 @@
 import { Inter, Outfit } from "next/font/google"; // Import fonts
-import "./globals.css"; // Ensure global styles are imported
+import "@/app/globals.css"; // Ensure global styles are imported
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const outfit = Outfit({ subsets: ["latin"], variable: "--font-outfit" });

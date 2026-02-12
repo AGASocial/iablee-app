@@ -3,9 +3,14 @@
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/lib/supabase";
 import type { Asset } from "@/models/asset";
 import { getAssetType, type AssetType } from "@/lib/assetTypes";
+import { Loader2 } from "lucide-react";
 
 export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: { assetType: string, onSuccess: () => void, onCancel: () => void, asset?: Asset }) {
   const t = useTranslations();
@@ -87,9 +92,7 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
     setError(null);
     console.log('Submitting asset:', {
       form: form,
-
       asset: asset,
-
     });
     try {
 
@@ -125,7 +128,7 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
         console.log('Existing files:', existingFiles);
         console.log('New files:', fileUrls);
         console.log('Combined files:', allFiles);
-        
+
         const updateData = {
           asset_type: asset.asset_type,
           asset_name: form.asset_name,
@@ -185,152 +188,163 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 w-full">
-      <div>
-        <label className="block text-sm font-medium mb-1">{t('assetName')}</label>
-        <input
+    <form onSubmit={handleSubmit} className="space-y-4 w-full py-2">
+      <div className="space-y-2">
+        <Label htmlFor="asset_name">{t('assetName')}</Label>
+        <Input
+          id="asset_name"
           name="asset_name"
           value={form.asset_name}
           onChange={handleChange}
           required
-          className="w-full rounded border px-3 py-2"
+          className="bg-background/50 border-white/10 focus:border-primary/50"
         />
       </div>
 
       {/* Conditional fields based on asset type */}
       {shouldShowField('email') && (
-        <div>
-          <label className="block text-sm font-medium mb-1">{t('email')}</label>
-          <input
+        <div className="space-y-2">
+          <Label htmlFor="email">{t('email')}</Label>
+          <Input
+            id="email"
             name="email"
             value={form.email}
             onChange={handleChange}
             type="email"
             required={isFieldRequired('email')}
-            className="w-full rounded border px-3 py-2"
+            className="bg-background/50 border-white/10 focus:border-primary/50"
           />
         </div>
       )}
 
       {shouldShowField('password') && (
-        <div>
-          <label className="block text-sm font-medium mb-1">{t('password')}</label>
-          <input
+        <div className="space-y-2">
+          <Label htmlFor="password">{t('password')}</Label>
+          <Input
+            id="password"
             name="password"
             value={form.password}
             onChange={handleChange}
             type="password"
             required={isFieldRequired('password')}
-            className="w-full rounded border px-3 py-2"
+            className="bg-background/50 border-white/10 focus:border-primary/50"
           />
         </div>
       )}
 
       {shouldShowField('website') && (
-        <div>
-          <label className="block text-sm font-medium mb-1">{t('website')}</label>
-          <input
+        <div className="space-y-2">
+          <Label htmlFor="website">{t('website')}</Label>
+          <Input
+            id="website"
             name="website"
             value={form.website}
             onChange={handleChange}
             required={isFieldRequired('website')}
-            className="w-full rounded border px-3 py-2"
+            className="bg-background/50 border-white/10 focus:border-primary/50"
           />
         </div>
       )}
 
       {shouldShowField('valid_until') && (
-        <div>
-          <label className="block text-sm font-medium mb-1">{t('validUntil')}</label>
-          <input
+        <div className="space-y-2">
+          <Label htmlFor="valid_until">{t('validUntil')}</Label>
+          <Input
+            id="valid_until"
             name="valid_until"
             value={form.valid_until}
             onChange={handleChange}
             type="date"
             required={isFieldRequired('valid_until')}
-            className="w-full rounded border px-3 py-2"
+            className="bg-background/50 border-white/10 focus:border-primary/50"
           />
         </div>
       )}
 
       {shouldShowField('description') && (
-        <div>
-          <label className="block text-sm font-medium mb-1">{t('description')}</label>
-          <textarea
+        <div className="space-y-2">
+          <Label htmlFor="description">{t('description')}</Label>
+          <Textarea
+            id="description"
             name="description"
             value={form.description}
             onChange={handleChange}
             required={isFieldRequired('description')}
-            className="w-full rounded border px-3 py-2"
-            rows={3}
+            className="bg-background/50 border-white/10 focus:border-primary/50 min-h-[80px]"
           />
         </div>
       )}
 
       {/* Custom fields for new asset types */}
       {currentAssetType?.customFields?.map((field) => (
-        <div key={field.key}>
-          <label className="block text-sm font-medium mb-1">{t(field.label)}</label>
+        <div key={field.key} className="space-y-2">
+          <Label htmlFor={field.key}>{t(field.label)}</Label>
           {field.type === 'text' && (
-            <input
+            <Input
+              id={field.key}
               type="text"
               value={String(form.customFields[field.key] || '')}
               onChange={(e) => handleCustomFieldChange(field.key, e.target.value)}
               required={field.required}
-              className="w-full rounded border px-3 py-2"
+              className="bg-background/50 border-white/10 focus:border-primary/50"
             />
           )}
           {field.type === 'textarea' && (
-            <textarea
+            <Textarea
+              id={field.key}
               value={String(form.customFields[field.key] || '')}
               onChange={(e) => handleCustomFieldChange(field.key, e.target.value)}
               required={field.required}
-              className="w-full rounded border px-3 py-2"
-              rows={3}
+              className="bg-background/50 border-white/10 focus:border-primary/50 min-h-[80px]"
             />
           )}
           {field.type === 'select' && (
-            <select
+            <Select
               value={String(form.customFields[field.key] || '')}
-              onChange={(e) => handleCustomFieldChange(field.key, e.target.value)}
-              required={field.required}
-              className="w-full rounded border px-3 py-2"
+              onValueChange={(value) => handleCustomFieldChange(field.key, value)}
             >
-              <option value="">Seleccionar...</option>
-              {field.options?.map((option) => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
+              <SelectTrigger className="bg-background/50 border-white/10 focus:border-primary/50 w-full">
+                <SelectValue placeholder="Seleccionar..." />
+              </SelectTrigger>
+              <SelectContent>
+                {field.options?.map((option) => (
+                  <SelectItem key={option} value={option}>{option}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
         </div>
       ))}
 
       {/* General file upload for assets that support it */}
       {currentAssetType?.fileAccept && (
-        <div>
-          <label className="block text-sm font-medium mb-1">
+        <div className="space-y-2">
+          <Label>
             {assetType === 'cartas' ? t('attachAnImage') :
-             assetType === 'fotos' ? t('cameraPhotos') :
-             assetType === 'videos' ? t('cameraVideos') :
-             assetType === 'audios' ? t('recordHereOrUpload') :
-             assetType === 'documentos' ? t('uploadFiles') :
-                t('uploadFiles')}
-          </label>
-          <input
+              assetType === 'fotos' ? t('cameraPhotos') :
+                assetType === 'videos' ? t('cameraVideos') :
+                  assetType === 'audios' ? t('recordHereOrUpload') :
+                    assetType === 'documentos' ? t('uploadFiles') :
+                      t('uploadFiles')}
+          </Label>
+          <Input
             name="files"
             type="file"
             multiple
             accept={currentAssetType?.fileAccept || '*'}
             onChange={handleFileChange}
-            className="w-full"
+            className="cursor-pointer file:text-primary file:font-semibold file:bg-primary/10 file:rounded-full file:border-0 file:px-4 file:mr-4 hover:file:bg-primary/20"
           />
         </div>
       )}
 
-      {error && <div className="text-red-500 text-sm">{error}</div>}
-      <div className="flex gap-2">
-        <Button type="submit" disabled={loading}>{loading ? t('saving') : t('save')}</Button>
-        <Button type="button" variant="outline" onClick={onCancel}>{t('cancel')}</Button>
+      {error && <div className="text-destructive text-sm font-medium">{error}</div>}
+      <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-border/50">
+        <Button type="button" variant="ghost" onClick={onCancel}>{t('cancel')}</Button>
+        <Button type="submit" disabled={loading} className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20">
+          {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {loading ? t('saving') : t('save')}
+        </Button>
       </div>
     </form>
   );

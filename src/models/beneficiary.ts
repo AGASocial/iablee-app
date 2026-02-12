@@ -2,7 +2,8 @@ export interface Beneficiary {
   id: string;
   full_name: string;
   email: string | null;
-  relationship: string | null;
+  relationship: { key: string } | null;
+  relationship_id: number | null;
   phone_number: string | null;
   notes: string | null;
   notified: boolean | null;

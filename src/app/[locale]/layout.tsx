@@ -3,7 +3,6 @@ import { Inter, Outfit } from "next/font/google";
 import "../globals.css";
 import { NextIntlClientProvider } from 'next-intl';
 import { notFound } from 'next/navigation';
-import ClientLayout from "@/components/ClientLayout";
 import ThemeRegistry from "@/components/ThemeRegistry";
 
 const inter = Inter({
@@ -44,9 +43,7 @@ export default async function RootLayout({
       <body className={`${inter.variable} ${outfit.variable} font-sans antialiased`} suppressHydrationWarning>
         <ThemeRegistry>
           <NextIntlClientProvider locale={locale} messages={messages}>
-            <ClientLayout>
-              {children}
-            </ClientLayout>
+            {children}
           </NextIntlClientProvider>
         </ThemeRegistry>
       </body>
