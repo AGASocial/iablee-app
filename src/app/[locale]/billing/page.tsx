@@ -190,16 +190,20 @@ export default function BillingPage() {
       </div>
 
       {/* Subscription Details */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span>{t('subscriptionDetails')}</span>
-            <span className={`text-sm font-normal ${getStatusColor(subscription?.status?.toString() || '')}`}>
+      <Card className="glass-panel overflow-hidden border-border/50 shadow-xl">
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-blue-500"></div>
+        <CardHeader className="border-b border-border/50 pb-6">
+          <CardTitle className="flex items-center justify-between text-xl">
+            <span className="flex items-center gap-2">
+              <span className="p-2 rounded-lg bg-primary/10 text-primary"><Calendar className="h-5 w-5" /></span>
+              {t('subscriptionDetails')}
+            </span>
+            <span className={`text-xs px-3 py-1 rounded-full uppercase tracking-wider font-bold ${getStatusColor(subscription?.status?.toString() || '')} bg-muted`}>
               {isFreePlan ? t('freePlan') : t(`subscription${(subscription?.status?.charAt(0).toUpperCase() || '') + (subscription?.status?.slice(1) || '')}`)}
             </span>
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-8 pt-8">
           <div className="grid md:grid-cols-2 gap-6">
             <div>
               <h3 className="font-semibold mb-2">{t('currentPlan')}</h3>
@@ -308,22 +312,24 @@ export default function BillingPage() {
       {provider !== 'payu' && <PaymentMethodsList />}
 
       {/* Billing History */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
+      <Card className="glass-panel border-border/50">
+        <CardHeader className="border-b border-border/50 pb-4">
+          <CardTitle className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-500">
+              <FileText className="h-5 w-5" />
+            </div>
             {t('billingHistory')}
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-6">
           {invoices.length === 0 ? (
             <p className="text-muted-foreground text-center py-8">{t('noInvoices')}</p>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {invoices.map((invoice) => (
                 <div
                   key={invoice.id}
-                  className="flex items-center justify-between p-4 border rounded-lg"
+                  className="flex items-center justify-between p-4 border border-transparent rounded-xl bg-muted/30 hover:bg-muted/50 hover:border-border/50 transition-all group"
                 >
                   <div className="flex items-center gap-4">
                     <FileText className="h-8 w-8 text-muted-foreground" />

@@ -7,7 +7,7 @@ import AddAssetModal from '@/components/AddAssetModal';
 import AssetAttachmentsModal from '@/components/AssetAttachmentsModal';
 import { useState, useEffect } from 'react';
 import { supabase } from "@/lib/supabase";
-import { Pencil, Trash2, Plus, Paperclip, Eye, LucideIcon, Mail, Mic, Camera, Video, File } from "lucide-react";
+import { Pencil, Trash2, Plus, Paperclip, LucideIcon, Mail, Mic, Camera, Video, File } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
 import type { Asset } from '@/models/asset';
 import { Beneficiary } from '@/models/beneficiary';
@@ -189,91 +189,108 @@ export default function DigitalAssetsPage() {
         >
           <Plus className="w-5 h-5" />
         </Button>
-        <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-gray-700">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-fade-in-up delay-100">
           {loading ? (
-            <div className="flex items-center justify-center py-12 text-muted-foreground">{t('loading') || 'Loading...'}</div>
-          ) : (
-            <div className="w-full min-w-[200px] sm:min-w-[600px]">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-900">
-                <thead>
-                  <tr>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white hidden sm:table-cell">{t('assetType')}</th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white">{t('assetName')}</th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white hidden sm:table-cell">{t('assignedBeneficiary')}</th>
-                    {/* <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white hidden sm:table-cell">{t('status')}</th> */}
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white hidden sm:table-cell">{t('validUntil')}</th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white hidden sm:table-cell">{t('numberOfFiles')}</th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white hidden sm:table-cell">{t('actions')}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {assets.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="py-12 text-center text-muted-foreground">
-                        {t('noAssetsFound')}
-                        <Button className="mt-2 ml-2 bg-gray-800 text-gray-100" onClick={handleAddAsset}>{t('addAsset')}</Button>
-                      </td>
-                    </tr>
-                  ) : (
-                    assets.map(asset => {
-                      const iconMap: Record<string, LucideIcon> = {
-                        Mail,
-                        Mic,
-                        Camera,
-                        Video,
-                        File,
-                      };
-                      const Icon = iconMap[asset.asset_type_details.icon] || File;
-                      return (
-                      <tr key={asset.id} className="bg-white dark:bg-gray-900">
-                        <td className="px-6 py-4 whitespace-nowrap text-muted-foreground hidden sm:table-cell" title={t(asset.asset_type_details.name)}> <Icon className="w-4 h-4" /> 
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white cursor-pointer" onClick={() => window.innerWidth < 640 ? setSelectedAssetDetails(asset) : undefined}>{asset.asset_name}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white rounded-full cursor-pointer hidden sm:table-cell" onClick={() => openAssignModal(asset)}>{asset.beneficiary?.full_name || '-'}</td>
-                        {/* <td className="px-6 py-4 whitespace-nowrap hidden sm:table-cell">
-                          <span onClick={() => openAssignModal(asset)} title={t('assignBeneficiary')}>
-                            <StatusBadge status={asset.status} />
-                          </span>
-                        </td> */}
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white hidden sm:table-cell">{asset.valid_until ? new Date(asset.valid_until).toISOString().slice(0, 10) : '-'}</td>
-                        <td className="px-6 py-4 whitespace-nowrap hidden sm:table-cell">
-                          <button
-                            onClick={() => openAttachmentsModal(asset)}
-                            className="flex items-center gap-2 text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                            title={t('viewAttachments')}
-                          >
-                            <Paperclip className="w-4 h-4" />
-                            {getFileCount(asset)}
-                          </button>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap flex gap-2 hidden sm:flex">
-                          <Button variant="outline" size="sm" className="flex items-center gap-1" onClick={() => openAttachmentsModal(asset)}>
-                            <Paperclip className="w-4 h-4" />
-                            {t('files')}</Button>
-                          <Button variant="outline" size="sm" className="flex items-center gap-1" onClick={() => openAssignModal(asset)}>
-                            <Eye className="w-4 h-4" />
-                            {t('beneficiaries')}</Button>
-                          <Button variant="outline" size="sm" className="flex items-center gap-1" onClick={() => handleEditAsset(asset)}>
-                            <Pencil className="w-4 h-4" />
-                            {t('edit')}</Button>
-                          
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            className="flex items-center gap-1"
-                            onClick={() => handleDeleteAsset(asset.id)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                            {t('delete')}
-                          </Button>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+            <div className="col-span-full flex items-center justify-center py-20 text-muted-foreground">
+              <div className="flex flex-col items-center gap-4">
+                <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+                <p>{t('loading') || 'Loading...'}</p>
+              </div>
             </div>
+          ) : assets.length === 0 ? (
+            <div className="col-span-full flex flex-col items-center justify-center py-20 text-center glass-panel rounded-2xl border-dashed border-2 border-muted">
+              <div className="h-20 w-20 rounded-full bg-muted/30 flex items-center justify-center mb-6">
+                <File className="h-10 w-10 text-muted-foreground" />
+              </div>
+              <h3 className="text-xl font-semibold mb-2">{t('noAssetsFound')}</h3>
+              <p className="text-muted-foreground mb-6 max-w-sm">{t('startByAddingAsset')}</p>
+              <Button className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/25" onClick={handleAddAsset}>
+                <Plus className="mr-2 h-4 w-4" /> {t('addAsset')}
+              </Button>
+            </div>
+          ) : (
+            assets.map((asset, index) => {
+              const iconMap: Record<string, LucideIcon> = {
+                Mail,
+                Mic,
+                Camera,
+                Video,
+                File,
+              };
+              const Icon = iconMap[asset.asset_type_details.icon] || File;
+              // Stagger animation
+              const delayClass = index < 5 ? `delay-${(index + 1) * 100}` : '';
+
+              return (
+                <div
+                  key={asset.id}
+                  className={`group relative glass-card p-5 rounded-2xl transition-all duration-300 hover:scale-[1.02] hover:-translate-y-1 hover:shadow-xl hover:border-primary/20 flex flex-col justify-between h-full animate-fade-in-up ${delayClass}`}
+                >
+                  {/* Card Header */}
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="p-3 rounded-xl bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white transition-colors duration-300 shadow-inner">
+                      <Icon className="w-6 h-6" />
+                    </div>
+                    {/* Status Pill - could be dynamic based on status if that field exists reliably */}
+                    {/* <div className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-green-500/10 text-green-500 border border-green-500/20">
+                      Active
+                    </div> */}
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 absolute top-4 right-4 bg-background/80 backdrop-blur-sm rounded-lg p-1 shadow-sm border border-border/50">
+                      <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-blue-500" onClick={() => handleEditAsset(asset)} title={t('edit')}>
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-red-500" onClick={() => handleDeleteAsset(asset.id)} title={t('delete')}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Card Body */}
+                  <div className="mb-4">
+                    <h3 className="font-bold text-lg mb-1 line-clamp-1 group-hover:text-primary transition-colors cursor-pointer" onClick={() => handleEditAsset(asset)}>
+                      {asset.asset_name}
+                    </h3>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-3">
+                      {t(asset.asset_type_details.name)}
+                    </p>
+
+                    <div className="space-y-2">
+                      <div
+                        className="flex items-center gap-2 text-sm p-2 rounded-lg bg-muted/30 hover:bg-muted/60 transition-colors cursor-pointer"
+                        onClick={() => openAssignModal(asset)}
+                      >
+                        <div className="h-6 w-6 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center text-[10px] font-bold text-indigo-600 dark:text-indigo-300">
+                          {asset.beneficiary?.full_name?.charAt(0) || '?'}
+                        </div>
+                        <span className={`text-xs font-medium truncate ${!asset.beneficiary ? 'text-muted-foreground italic' : ''}`}>
+                          {asset.beneficiary?.full_name || t('assignBeneficiary')}
+                        </span>
+                      </div>
+
+                      {asset.valid_until && (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground px-2">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                          {t('validUntil')}: {new Date(asset.valid_until).toLocaleDateString()}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Card Footer */}
+                  <div className="mt-auto pt-3 border-t border-border/50 flex items-center justify-between">
+                    <button
+                      onClick={() => openAttachmentsModal(asset)}
+                      className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-primary transition-colors group/files"
+                    >
+                      <Paperclip className="w-3.5 h-3.5 group-hover/files:scale-110 transition-transform" />
+                      {getFileCount(asset)} {t('files')}
+                    </button>
+
+                    {/* Mobile-friendly action trigger for small screens if needed, otherwise rely on the hover/tap */}
+                  </div>
+                </div>
+              );
+            })
           )}
         </div>
         {/* Mobile details modal */}
@@ -287,7 +304,7 @@ export default function DigitalAssetsPage() {
                 {/* <div><span className="font-semibold dark:text-white">{t('status')}:</span> <StatusBadge status={selectedAssetDetails.status} /></div> */}
                 <div><span className="font-semibold dark:text-white">{t('validUntil')}:</span> {selectedAssetDetails.valid_until ? new Date(selectedAssetDetails.valid_until).toISOString().slice(0, 10) : '-'}</div>
                 <div>
-                  <span className="font-semibold">{t('numberOfFiles')}:</span> 
+                  <span className="font-semibold">{t('numberOfFiles')}:</span>
                   <button
                     onClick={() => {
                       setSelectedAssetDetails(null);

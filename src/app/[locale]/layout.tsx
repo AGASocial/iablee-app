@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Outfit } from "next/font/google";
 import "../globals.css";
 import { NextIntlClientProvider } from 'next-intl';
 import { notFound } from 'next/navigation';
@@ -9,6 +9,12 @@ import ThemeRegistry from "@/components/ThemeRegistry";
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
+  display: "swap",
+});
+
+const outfit = Outfit({
+  subsets: ["latin"],
+  variable: "--font-outfit",
   display: "swap",
 });
 
@@ -35,7 +41,7 @@ export default async function RootLayout({
 
   return (
     <html lang={locale} suppressHydrationWarning>
-      <body className={`${inter.variable} font-sans antialiased`} suppressHydrationWarning>
+      <body className={`${inter.variable} ${outfit.variable} font-sans antialiased`} suppressHydrationWarning>
         <ThemeRegistry>
           <NextIntlClientProvider locale={locale} messages={messages}>
             <ClientLayout>

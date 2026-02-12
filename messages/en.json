@@ -11,6 +11,8 @@
   "noAssetsFound": "There are no assets. Add Assets",
   "recentBeneficiaries": "Recent Beneficiaries",
   "noBeneficiaries": "No beneficiaries added yet. Add your first beneficiary to get started.",
+  "startByAddingBeneficiary": "Start by adding a beneficiary to ensure your assets reach the right people.",
+  "startByAddingAsset": "Start by adding a digital asset to secure your legacy.",
   "digitalAssets": "Digital Assets",
   "beneficiaries": "Beneficiaries",
   "removeBeneficiary": "Remove Beneficiary",

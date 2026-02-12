@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Pencil, Trash2, Plus } from "lucide-react";
+import { Pencil, Trash2, Plus, Users } from "lucide-react";
 import { useRef } from "react";
 import { toast } from 'sonner';
 
@@ -238,70 +238,77 @@ export default function BeneficiariesPage() {
             >
                 <Plus className="w-5 h-5" />
             </Button>
-            <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-gray-700">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-fade-in-up delay-100">
                 {loading ? (
-                    <div className="flex items-center justify-center py-12 text-muted-foreground">{t('loading')}</div>
-                ) : (
-                    <div className="w-full min-w-[200px] sm:min-w-[600px]">
-                        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-900">
-                            <thead>
-                                <tr>
-                                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white">{t('name')}</th>
-                                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white hidden sm:table-cell">{t('email')}</th>
-                                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white hidden sm:table-cell">{t('phoneNumber')}</th>
-                                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white hidden sm:table-cell">{t('relationship')}</th>
-                                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white hidden sm:table-cell">{t('status')}</th>
-                                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white hidden sm:table-cell">{t('actions')}</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                                {beneficiaries.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={6} className="py-12 text-center text-muted-foreground">
-                                            {t('noBeneficiaries')}
-                                            <Button className="mt-2 ml-2 bg-gray-800 text-gray-100" onClick={handleAddBeneficiary}>{t('addBeneficiary')}</Button>
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    beneficiaries.map(b => (
-                                        <tr key={b.id} className="bg-white dark:bg-gray-900">
-                                            <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white cursor-pointer" onClick={() => window.innerWidth < 640 ? setSelectedBeneficiary(b) : undefined}>
-                                                {b.full_name}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-muted-foreground hidden sm:table-cell">{b.email}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white hidden sm:table-cell">{b.phone_number}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white hidden sm:table-cell">
-                                                {b.relationship && b.relationship.key ? t('relationships.' + b.relationship.key) : ''}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap hidden sm:table-cell">
-                                                <StatusBadge status={b.status} />
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap flex flex-row flex-nowrap gap-2 items-center hidden sm:flex">
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="flex items-center gap-1 px-2 py-1 text-sm"
-                                                    onClick={() => handleEditBeneficiary(b)}
-                                                >
-                                                    <Pencil className="w-4 h-4" />
-                                                    {t('edit')}
-                                                </Button>
-                                                <Button
-                                                    variant="destructive"
-                                                    size="sm"
-                                                    className="flex items-center gap-1 px-2 py-1 text-sm"
-                                                    onClick={() => handleDeleteBeneficiary(b.id)}
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                    {t('delete')}
-                                                </Button>
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
+                    <div className="col-span-full flex items-center justify-center py-12 text-muted-foreground">
+                        <div className="flex flex-col items-center gap-3">
+                            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+                            <p>{t('loading')}</p>
+                        </div>
                     </div>
+                ) : beneficiaries.length === 0 ? (
+                    <div className="col-span-full flex flex-col items-center justify-center py-16 text-center glass-panel rounded-2xl border-dashed border-2 border-muted">
+                        <div className="h-16 w-16 rounded-full bg-muted/30 flex items-center justify-center mb-4">
+                            <Users className="h-8 w-8 text-muted-foreground" />
+                        </div>
+                        <h3 className="text-xl font-semibold mb-2">{t('noBeneficiaries')}</h3>
+                        <p className="text-muted-foreground mb-6 max-w-sm">{t('startByAddingBeneficiary')}</p>
+                        <Button className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/25" onClick={handleAddBeneficiary}>
+                            <Plus className="mr-2 h-4 w-4" /> {t('addBeneficiary')}
+                        </Button>
+                    </div>
+                ) : (
+                    beneficiaries.map((b, index) => {
+                        // Stagger animation
+                        const delayClass = index < 8 ? `delay-${(index + 1) * 100}` : '';
+
+                        return (
+                            <div
+                                key={b.id}
+                                className={`group glass-card p-5 rounded-2xl relative flex flex-col justify-between transition-all duration-300 hover:scale-[1.02] hover:-translate-y-1 hover:shadow-xl hover:border-primary/20 animate-fade-in-up ${delayClass}`}
+                            >
+                                <div className="absolute top-4 right-4 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 bg-background/50 backdrop-blur-md hover:text-blue-500 rounded-full" onClick={() => handleEditBeneficiary(b)} title={t('edit')}>
+                                        <Pencil className="w-3.5 h-3.5" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 bg-background/50 backdrop-blur-md hover:text-red-500 rounded-full" onClick={() => handleDeleteBeneficiary(b.id)} title={t('delete')}>
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                    </Button>
+                                </div>
+
+                                <div className="mb-4 text-center">
+                                    <div className="mx-auto h-20 w-20 rounded-full bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center text-3xl font-bold text-primary mb-3 shadow-inner ring-4 ring-background">
+                                        {b.full_name.charAt(0)}
+                                    </div>
+                                    <h3 className="font-bold text-lg text-foreground line-clamp-1">{b.full_name}</h3>
+                                    <p className="text-sm text-muted-foreground mb-2">{b.email}</p>
+                                    <div className="flex justify-center flex-wrap gap-2">
+                                        {b.relationship && b.relationship.key && (
+                                            <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                                                {t('relationships.' + b.relationship.key)}
+                                            </span>
+                                        )}
+                                        <StatusBadge status={b.status} />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2 text-sm border-t border-border/50 pt-4 mt-auto">
+                                    {b.phone_number && (
+                                        <div className="flex justify-between items-center text-muted-foreground bg-muted/20 p-2 rounded-lg">
+                                            <span className="text-xs font-semibold">{t('phoneNumber')}</span>
+                                            <span className="font-mono">{b.phone_number}</span>
+                                        </div>
+                                    )}
+                                    <div className="flex justify-between items-center text-xs text-muted-foreground p-1">
+                                        <span>{t('notifications')}</span>
+                                        <span className={b.notified ? "text-green-500 font-bold" : "text-gray-400"}>
+                                            {b.notified ? "ON" : "OFF"}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })
                 )}
             </div>
             {showAddModal && (
