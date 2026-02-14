@@ -4,10 +4,10 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
 import { BillingService } from './billing.service';
 import { StripeAdapter, PayUAdapter } from './adapters';
 import type { PaymentGateway } from './gateway.interface';
+import { createAuthenticatedRouteClient } from '@/lib/supabase-server';
 
 /**
  * Get the configured payment gateway based on environment
@@ -76,50 +76,7 @@ export async function getBillingService(): Promise<BillingService> {
  */
 export async function getAuthenticatedUserId(): Promise<string | null> {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!supabaseUrl || !supabaseServiceKey) {
-      console.error('Missing Supabase environment variables');
-      return null;
-    }
-
-    // Get auth token from cookies
-    const cookieStore = await cookies();
-    const cookieName = 'sb-' + supabaseUrl.split('//')[1]?.split('.')[0] + '-auth-token';
-
-    let authToken =
-      cookieStore.get('sb-access-token')?.value ||
-      cookieStore.get(cookieName)?.value;
-
-    // If the token is JSON-encoded (array), parse it
-    if (authToken && authToken.startsWith('[')) {
-      try {
-        const parsed = JSON.parse(authToken);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          authToken = parsed[0]; // Take the first element
-        }
-      } catch (e) {
-        console.error('Failed to parse auth token:', e);
-      }
-    }
-
-    if (!authToken) {
-      return null;
-    }
-
-    // Create service role client and verify token
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser(authToken);
-
-    if (error) {
-      console.error('Error verifying auth token:', error);
-      return null;
-    }
-
+    const { user } = await createAuthenticatedRouteClient();
     return user?.id || null;
   } catch (error) {
     console.error('Error getting authenticated user:', error);

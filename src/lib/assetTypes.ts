@@ -1,4 +1,3 @@
-import { supabase } from './supabase';
 import { Database } from './supabase';
 
 type AssetTypeRow = Database['public']['Tables']['asset_types']['Row'];
@@ -24,101 +23,42 @@ export interface AssetType {
 }
 
 /**
- * Fetch all active asset types from the database
+ * Fetch all active asset types via API route
  */
 export async function getAssetTypes(): Promise<AssetType[]> {
-  const { data, error } = await supabase
-    .from('asset_types')
-    .select('*')
-    .eq('is_active', true)
-    .order('display_order', { ascending: true });
-
-  if (error) {
-    console.error('Error fetching asset types:', error);
-    throw error;
+  const res = await fetch('/api/asset-types');
+  if (!res.ok) {
+    console.error('Error fetching asset types');
+    throw new Error('Failed to fetch asset types');
   }
-
-  return data.map(transformAssetTypeFromDb);
-}
-
-/**
- * Fetch asset types available for a specific billing plan
- */
-export async function getAssetTypesForPlan(planId: string): Promise<AssetType[]> {
-  // First get the asset type IDs for this plan
-  const { data: junctionData, error: junctionError } = await supabase
-    .from('asset_type_billing_plans')
-    .select('asset_type_id')
-    .eq('billing_plan_id', planId);
-
-  if (junctionError) {
-    console.error('Error fetching asset type IDs for plan:', junctionError);
-    throw junctionError;
-  }
-
-  if (!junctionData || junctionData.length === 0) {
-    return [];
-  }
-
-  // Then fetch the actual asset types
-  const assetTypeIds = junctionData.map(item => item.asset_type_id);
-  const { data, error } = await supabase
-    .from('asset_types')
-    .select('*')
-    .in('id', assetTypeIds)
-    .eq('is_active', true)
-    .order('display_order', { ascending: true });
-
-  if (error) {
-    console.error('Error fetching asset types:', error);
-    throw error;
-  }
-
+  const data: AssetTypeRow[] = await res.json();
   return data.map(transformAssetTypeFromDb);
 }
 
 /**
  * Get asset types available for the current user's plan
+ * (Server handles subscription lookup and plan filtering)
  */
 export async function getAvailableAssetTypes(): Promise<AssetType[]> {
-  try {
-    // First get the current user's active subscription
-    const { data: subscription, error: subError } = await supabase
-      .from('billing_subscriptions')
-      .select('plan_id')
-      .eq('user_id', (await supabase.auth.getUser()).data.user?.id)
-      .eq('status', 'active')
-      .single();
-
-    if (subError || !subscription) {
-      // If no active subscription, return free plan asset types
-      return await getAssetTypesForPlan('plan_free');
-    }
-
-    return await getAssetTypesForPlan(subscription.plan_id);
-  } catch (error) {
-    console.error('Error getting available asset types:', error);
-    // Fallback to free plan
-    return await getAssetTypesForPlan('plan_free');
+  const res = await fetch('/api/asset-types');
+  if (!res.ok) {
+    console.error('Error fetching available asset types');
+    throw new Error('Failed to fetch asset types');
   }
+  const data: AssetTypeRow[] = await res.json();
+  return data.map(transformAssetTypeFromDb);
 }
 
 /**
  * Get a specific asset type by key
  */
 export async function getAssetType(key: string): Promise<AssetType | undefined> {
-  const { data, error } = await supabase
-    .from('asset_types')
-    .select('*')
-    .eq('key', key)
-    .eq('is_active', true)
-    .single();
-
-  if (error) {
-    console.error('Error fetching asset type:', error);
+  const res = await fetch(`/api/asset-types?key=${encodeURIComponent(key)}`);
+  if (!res.ok) {
+    console.error('Error fetching asset type');
     return undefined;
   }
-
+  const data: AssetTypeRow = await res.json();
   return transformAssetTypeFromDb(data);
 }
 

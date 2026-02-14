@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAuthenticatedRouteClient } from '@/lib/supabase-server';
-import { canCreateAsset } from '@/lib/subscription/limits';
+import { canCreateBeneficiary } from '@/lib/subscription/limits';
 
 export async function GET() {
     const { supabase, user } = await createAuthenticatedRouteClient();
@@ -10,13 +10,13 @@ export async function GET() {
     }
 
     const { data, error } = await supabase
-        .from('digital_assets')
-        .select('id, asset_name, asset_type, status, email, password, website, valid_until, description, files, custom_fields, beneficiary_id, beneficiary:beneficiary_id(id, full_name), asset_type_details:asset_type(id, name, description, icon)')
+        .from('beneficiaries')
+        .select('*, relationship:relationships(key)')
         .eq('user_id', user.id)
-        .order('asset_name', { ascending: true });
+        .order('full_name', { ascending: true });
 
     if (error) {
-        console.error('Supabase error fetching digital_assets:', error);
+        console.error('Supabase error fetching beneficiaries:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
 
     try {
         // Enforce subscription limit
-        const limitCheck = await canCreateAsset(supabase, user.id);
+        const limitCheck = await canCreateBeneficiary(supabase, user.id);
         if (!limitCheck.allowed) {
             return NextResponse.json(
                 { error: 'LIMIT_REACHED', message: limitCheck.reason, limit: limitCheck.limit, current: limitCheck.current },
@@ -41,34 +41,29 @@ export async function POST(request: Request) {
         }
 
         const body = await request.json();
-        const {
-            asset_type, asset_name, email, password, website,
-            valid_until, description, files, custom_fields
-        } = body;
+        const { full_name, email, phone_number, relationship_id, notes, notified } = body;
 
-        if (!asset_name || !asset_type) {
-            return NextResponse.json({ error: 'asset_name and asset_type are required' }, { status: 400 });
+        if (!full_name) {
+            return NextResponse.json({ error: 'full_name is required' }, { status: 400 });
         }
 
         const { data, error } = await supabase
-            .from('digital_assets')
+            .from('beneficiaries')
             .insert({
                 user_id: user.id,
-                asset_type,
-                asset_name,
+                full_name,
                 email: email || null,
-                password: password || null,
-                website: website || null,
-                valid_until: valid_until || null,
-                description: description || null,
-                files: files && files.length > 0 ? files : null,
-                custom_fields: custom_fields && Object.keys(custom_fields).length > 0 ? custom_fields : null,
+                phone_number: phone_number || null,
+                relationship_id: relationship_id || null,
+                notes: notes || null,
+                notified: notified || false,
+                status: 'active',
             })
-            .select()
+            .select('*, relationship:relationships(key)')
             .single();
 
         if (error) {
-            console.error('Supabase error creating asset:', error);
+            console.error('Supabase error creating beneficiary:', error);
             return NextResponse.json({ error: error.message }, { status: 500 });
         }
 

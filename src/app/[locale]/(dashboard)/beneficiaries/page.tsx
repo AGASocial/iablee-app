@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
+
 import { Pencil, Trash2, Plus, Users } from "lucide-react";
 import { toast } from 'sonner';
 import AddBeneficiaryModal from '@/components/AddBeneficiaryModal';
@@ -37,62 +37,59 @@ export default function BeneficiariesPage() {
 
     // For mobile view detail modal
     const [selectedBeneficiary, setSelectedBeneficiary] = useState<Beneficiary | null>(null);
+    const [limitReached, setLimitReached] = useState(false);
+    const [limitInfo, setLimitInfo] = useState<{ limit?: number; current?: number } | null>(null);
 
     const fetchBeneficiaries = useCallback(async () => {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
+        try {
+            const res = await fetch('/api/beneficiaries');
+            if (!res.ok) {
+                setBeneficiaries([]);
+                setLoading(false);
+                return;
+            }
+            const data = await res.json();
+            setBeneficiaries(data || []);
+        } catch {
             setBeneficiaries([]);
+        } finally {
             setLoading(false);
-            return;
         }
-        const { data } = await supabase
-            .from('beneficiaries')
-            .select('*, relationship:relationships(key)')
-            .eq('user_id', user.id)
-            .order('full_name', { ascending: true });
-        setBeneficiaries(data || []);
-        setLoading(false);
+    }, []);
+
+    const fetchLimitStatus = useCallback(async () => {
+        try {
+            const res = await fetch('/api/subscription/check-limit?type=beneficiary');
+            if (res.ok) {
+                const result = await res.json();
+                setLimitReached(!result.allowed);
+                if (!result.allowed) {
+                    setLimitInfo({ limit: result.limit, current: result.current });
+                } else {
+                    setLimitInfo(null);
+                }
+            }
+        } catch (error) {
+            console.error('Error checking beneficiary limit:', error);
+        }
     }, []);
 
     useEffect(() => {
         setLoading(true);
         fetchBeneficiaries();
-    }, [fetchBeneficiaries]);
+        fetchLimitStatus();
+    }, [fetchBeneficiaries, fetchLimitStatus]);
 
-    const handleAddBeneficiary = async () => {
-        try {
-            // Check if user can create a beneficiary
-            const response = await fetch('/api/subscription/check-limit?type=beneficiary');
-            const result = await response.json();
-
-            if (!result.allowed) {
-                // Show limit reached message with upgrade option
-                toast.error(t('beneficiaryLimitReached'), {
-                    description: t('beneficiaryLimitReachedDescription', { limit: result.limit }),
-                    action: {
-                        label: t('viewPlans'),
-                        onClick: () => router.push('/billing/plans'),
-                    },
-                    duration: 5000,
-                });
-                return;
-            }
-
-            // Open the modal if allowed
-            setBeneficiaryToEdit(null);
-            setShowAddModal(true);
-        } catch (error) {
-            console.error('Error checking beneficiary limit:', error);
-            // On error, allow creation (fail open)
-            setBeneficiaryToEdit(null);
-            setShowAddModal(true);
-        }
+    const handleAddBeneficiary = () => {
+        setBeneficiaryToEdit(null);
+        setShowAddModal(true);
     };
 
     async function handleDeleteBeneficiary(id: string) {
         if (!confirm(t('deleteConfirmBeneficiary'))) return;
         try {
-            await supabase.from('beneficiaries').delete().eq('id', id);
+            const res = await fetch(`/api/beneficiaries/${id}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error('Failed to delete');
             setBeneficiaries(beneficiaries.filter(b => b.id !== id));
             toast.success(t('beneficiaryDeleted'));
         } catch {
@@ -110,12 +107,13 @@ export default function BeneficiariesPage() {
         setBeneficiaries(prev => prev.map(b => b.id === id ? { ...b, notified: newStatus } : b));
 
         try {
-            const { error } = await supabase
-                .from('beneficiaries')
-                .update({ notified: newStatus })
-                .eq('id', id);
+            const res = await fetch(`/api/beneficiaries/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ notified: newStatus }),
+            });
 
-            if (error) throw error;
+            if (!res.ok) throw new Error('Failed to update');
             toast.success(t('notificationUpdated'));
         } catch (error) {
             console.error('Error toggling notification:', error);
@@ -134,12 +132,23 @@ export default function BeneficiariesPage() {
     return (
         <div className="p-4 sm:p-8">
             <div className="flex items-center justify-between mb-8">
-                <h1 className="text-4xl font-bold text-gray-900 dark:text-white">{t('beneficiariesTitle')}</h1>
-                <Button className="hidden sm:inline-flex rounded-full px-6 py-2 text-base font-medium" onClick={handleAddBeneficiary}>{t('addBeneficiary')}</Button>
+                <div>
+                    <h1 className="text-4xl font-bold text-gray-900 dark:text-white">{t('beneficiariesTitle')}</h1>
+                    {limitReached && limitInfo && (
+                        <p className="text-sm text-amber-600 dark:text-amber-400 mt-1">
+                            {t('beneficiaryLimitReachedDescription', { limit: limitInfo.limit ?? 0 })} —{' '}
+                            <button className="underline font-medium hover:text-amber-700" onClick={() => router.push('/billing/plans')}>
+                                {t('viewPlans')}
+                            </button>
+                        </p>
+                    )}
+                </div>
+                <Button className="hidden sm:inline-flex rounded-full px-6 py-2 text-base font-medium" onClick={handleAddBeneficiary} disabled={limitReached}>{t('addBeneficiary')}</Button>
             </div>
             <Button
                 className="sm:hidden w-full mb-4 flex items-center justify-center gap-2"
                 onClick={handleAddBeneficiary}
+                disabled={limitReached}
                 aria-label={t('addBeneficiary')}
             >
                 <Plus className="w-5 h-5" />
@@ -159,7 +168,7 @@ export default function BeneficiariesPage() {
                         </div>
                         <h3 className="text-xl font-semibold mb-2">{t('noBeneficiaries')}</h3>
                         <p className="text-muted-foreground mb-6 max-w-sm">{t('startByAddingBeneficiary')}</p>
-                        <Button className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/25" onClick={handleAddBeneficiary}>
+                        <Button className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/25" onClick={handleAddBeneficiary} disabled={limitReached}>
                             <Plus className="mr-2 h-4 w-4" /> {t('addBeneficiary')}
                         </Button>
                     </div>

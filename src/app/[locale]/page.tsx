@@ -16,23 +16,22 @@ export default function LocalePage() {
     const checkSessionAndRedirect = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        // Check if user has any assets
-        const { data: assets, error: assetsError } = await supabase
-          .from('digital_assets')
-          .select('id')
-          .eq('user_id', session.user.id)
-          .limit(1);
+        try {
+          // Check if user has any assets via API
+          const res = await fetch('/api/assets');
+          if (!res.ok) {
+            router.replace('/dashboard');
+            return;
+          }
+          const assets = await res.json();
 
-        if (assetsError) {
-          console.error('Error checking assets:', assetsError);
-          router.replace('/dashboard');
-          return;
-        }
-
-        // If user has no assets, redirect to wizard, else dashboard
-        if (!assets || assets.length === 0) {
-          router.replace('/wizard');
-        } else {
+          // If user has no assets, redirect to wizard, else dashboard
+          if (!assets || assets.length === 0) {
+            router.replace('/wizard');
+          } else {
+            router.replace('/dashboard');
+          }
+        } catch {
           router.replace('/dashboard');
         }
       } else {

@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+
 import { toast } from "sonner";
 import { Beneficiary } from "@/models/beneficiary";
 
@@ -36,13 +36,14 @@ export default function AddBeneficiaryModal({ open, onOpenChange, onSuccess, ben
 
     useEffect(() => {
         async function fetchRelationships() {
-            const { data, error } = await supabase
-                .from('relationships')
-                .select('id, key, generation_level')
-                .order('generation_level, key');
-
-            if (!error && data) {
-                setRelationships(data);
+            try {
+                const res = await fetch('/api/relationships');
+                if (res.ok) {
+                    const data = await res.json();
+                    setRelationships(data);
+                }
+            } catch (error) {
+                console.error('Error fetching relationships:', error);
             }
         }
 
@@ -78,41 +79,45 @@ export default function AddBeneficiaryModal({ open, onOpenChange, onSuccess, ben
         setLoading(true);
 
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) throw new Error("No user found");
-
             if (beneficiaryToEdit) {
                 // Update
-                const { error } = await supabase
-                    .from('beneficiaries')
-                    .update({
+                const res = await fetch(`/api/beneficiaries/${beneficiaryToEdit.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
                         full_name: formData.full_name,
                         email: formData.email,
                         phone_number: formData.phone_number,
                         relationship_id: formData.relationship_id,
                         notes: formData.notes,
                         notified: formData.notified,
-                    })
-                    .eq('id', beneficiaryToEdit.id);
+                    }),
+                });
 
-                if (error) throw error;
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.error || 'Failed to update beneficiary');
+                }
                 toast.success(t('beneficiaryUpdatedSuccess') || "Beneficiary updated successfully");
             } else {
                 // Create
-                const { error } = await supabase
-                    .from('beneficiaries')
-                    .insert({
-                        user_id: user.id,
+                const res = await fetch('/api/beneficiaries', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
                         full_name: formData.full_name,
                         email: formData.email,
                         phone_number: formData.phone_number,
                         relationship_id: formData.relationship_id,
                         notes: formData.notes,
                         notified: formData.notified,
-                        status: 'active',
-                    });
+                    }),
+                });
 
-                if (error) throw error;
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.error || 'Failed to create beneficiary');
+                }
                 toast.success(t('beneficiaryCreatedSuccess') || "Beneficiary created successfully");
             }
 

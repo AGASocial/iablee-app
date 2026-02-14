@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from '@/lib/auth';
-import { supabase } from '@/lib/supabase';
+
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
@@ -24,7 +24,7 @@ export default function WizardPage() {
   const [currentStep, setCurrentStep] = useState<WizardStep>('welcome');
   const [loading, setLoading] = useState(false);
   const [assetTypesLoading, setAssetTypesLoading] = useState(true);
-  const [relationships, setRelationships] = useState<Array<{id: number, key: string}>>([]);
+  const [relationships, setRelationships] = useState<Array<{ id: number, key: string }>>([]);
   const [assetTypes, setAssetTypes] = useState<DatabaseAssetType[]>([]);
   const [currentAssetType, setCurrentAssetType] = useState<DatabaseAssetType | null>(null);
 
@@ -53,8 +53,15 @@ export default function WizardPage() {
   // Fetch relationships and asset types from database
   useEffect(() => {
     async function fetchRelationships() {
-      const { data, error } = await supabase.from('relationships').select('id, key, generation_level').gte('generation_level', 3).order('generation_level, key');
-      if (!error && data) setRelationships(data);
+      try {
+        const res = await fetch('/api/relationships?minGenerationLevel=3');
+        if (res.ok) {
+          const data = await res.json();
+          setRelationships(data);
+        }
+      } catch (error) {
+        console.error('Error fetching relationships:', error);
+      }
     }
 
     async function fetchAssetTypes() {
@@ -170,71 +177,50 @@ export default function WizardPage() {
       const fileUrls: string[] = [];
       if (assetData.files.length > 0) {
         for (const file of assetData.files) {
-          // Sanitize file name
-          const safeFileName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-          const filePath = `${user?.id}/${Date.now()}-${safeFileName}`;
-          const { data, error } = await supabase.storage.from('assets').upload(filePath, file);
-          if (error) {
-            console.error('Upload error:', error);
-            throw error;
+          const formData = new FormData();
+          formData.append('file', file);
+          const uploadRes = await fetch('/api/storage/upload', {
+            method: 'POST',
+            body: formData,
+          });
+          if (!uploadRes.ok) {
+            const err = await uploadRes.json();
+            throw new Error(err.error || 'Upload failed');
           }
-          fileUrls.push(data.path);
+          const uploadData = await uploadRes.json();
+          fileUrls.push(uploadData.path);
         }
       }
 
-      // Create the asset
-      const { data: asset, error: assetError } = await supabase
-        .from('digital_assets')
-        .insert({
-          user_id: user?.id,
-          asset_type: assetData.assetType,
-          asset_name: assetData.assetName,
-          description: assetData.description || null,
-          website: assetData.website || null,
-          valid_until: assetData.validUntil || null,
-          email: assetData.email || null,
-          password: assetData.password || null,
-          files: fileUrls.length > 0 ? fileUrls : null,
-          custom_fields: Object.keys(assetData.customFields).length > 0 ? assetData.customFields : null,
-          status: 'unassigned'
-        })
-        .select()
-        .single();
+      // Create asset + beneficiary + link via composite API
+      const res = await fetch('/api/wizard/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          asset: {
+            assetType: assetData.assetType,
+            assetName: assetData.assetName,
+            description: assetData.description,
+            website: assetData.website,
+            validUntil: assetData.validUntil,
+            email: assetData.email,
+            password: assetData.password,
+            customFields: assetData.customFields,
+          },
+          beneficiary: {
+            fullName: beneficiaryData.fullName,
+            email: beneficiaryData.email,
+            relationshipId: beneficiaryData.relationshipId,
+            phoneNumber: beneficiaryData.phoneNumber,
+            notes: beneficiaryData.notes,
+          },
+          fileUrls,
+        }),
+      });
 
-      if (assetError) {
-        console.error('Asset creation error:', assetError);
-        throw assetError;
-      }
-
-      // Create the beneficiary
-      const { data: beneficiary, error: beneficiaryError } = await supabase
-        .from('beneficiaries')
-        .insert({
-          user_id: user?.id,
-          full_name: beneficiaryData.fullName,
-          email: beneficiaryData.email || null,
-          relationship_id: beneficiaryData.relationshipId,
-          phone_number: beneficiaryData.phoneNumber || null,
-          notes: beneficiaryData.notes || null,
-          status: 'active'
-        })
-        .select()
-        .single();
-
-      if (beneficiaryError) {
-        console.error('Beneficiary creation error:', beneficiaryError);
-        throw beneficiaryError;
-      }
-
-      // Link beneficiary to asset
-      const { error: linkError } = await supabase
-        .from('digital_assets')
-        .update({ beneficiary_id: beneficiary.id, status: 'assigned' })
-        .eq('id', asset.id);
-
-      if (linkError) {
-        console.error('Link error:', linkError);
-        throw linkError;
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to complete wizard');
       }
 
       toast.success(t('wizard-final-congrats'));
@@ -273,7 +259,7 @@ export default function WizardPage() {
             </p>
             <div className="space-y-4">
               <Label className="text-sm sm:text-base dark:text-white">{t('wizard-select-asset-type')}</Label>
-              <Select value={assetData.assetType} onValueChange={(value: string) => setAssetData({...assetData, assetType: value})}>
+              <Select value={assetData.assetType} onValueChange={(value: string) => setAssetData({ ...assetData, assetType: value })}>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder={t('wizard-select-asset-type')} />
                 </SelectTrigger>
@@ -316,7 +302,7 @@ export default function WizardPage() {
                 <Label className="text-sm sm:text-base dark:text-white">{t('assetName')} *</Label>
                 <Input
                   value={assetData.assetName}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssetData({...assetData, assetName: e.target.value})}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssetData({ ...assetData, assetName: e.target.value })}
                   placeholder={t('wizard-enter-asset-name')}
                   className="w-full"
                   required
@@ -331,7 +317,7 @@ export default function WizardPage() {
                   </Label>
                   <Input
                     value={assetData.email}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssetData({...assetData, email: e.target.value})}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssetData({ ...assetData, email: e.target.value })}
                     placeholder={t('wizard-enter-email')}
                     type="email"
                     className="w-full"
@@ -347,7 +333,7 @@ export default function WizardPage() {
                   </Label>
                   <Input
                     value={assetData.password}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssetData({...assetData, password: e.target.value})}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssetData({ ...assetData, password: e.target.value })}
                     placeholder="••••••••"
                     type="password"
                     className="w-full"
@@ -363,7 +349,7 @@ export default function WizardPage() {
                   </Label>
                   <Input
                     value={assetData.website}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssetData({...assetData, website: e.target.value})}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssetData({ ...assetData, website: e.target.value })}
                     placeholder={t('wizard-enter-website')}
                     className="w-full"
                     required={isFieldRequired('website')}
@@ -379,7 +365,7 @@ export default function WizardPage() {
                   <Input
                     type="date"
                     value={assetData.validUntil}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssetData({...assetData, validUntil: e.target.value})}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssetData({ ...assetData, validUntil: e.target.value })}
                     className="w-full"
                     required={isFieldRequired('valid_until')}
                   />
@@ -393,7 +379,7 @@ export default function WizardPage() {
                   </Label>
                   <Textarea
                     value={assetData.description}
-                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setAssetData({...assetData, description: e.target.value})}
+                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setAssetData({ ...assetData, description: e.target.value })}
                     placeholder={t('wizard-describe-asset')}
                     className="w-full"
                     required={isFieldRequired('description')}
@@ -449,11 +435,11 @@ export default function WizardPage() {
                 <div>
                   <Label className="text-sm sm:text-base dark:text-white">
                     {assetData.assetType === 'letter' ? t('attachAnImage') :
-                     assetData.assetType === 'photo' ? t('cameraPhotos') :
-                     assetData.assetType === 'video' ? t('cameraVideos') :
-                     assetData.assetType === 'audio' ? t('recordHereOrUpload') :
-                     assetData.assetType === 'document' ? t('uploadFiles') :
-                        t('uploadFiles')}
+                      assetData.assetType === 'photo' ? t('cameraPhotos') :
+                        assetData.assetType === 'video' ? t('cameraVideos') :
+                          assetData.assetType === 'audio' ? t('recordHereOrUpload') :
+                            assetData.assetType === 'document' ? t('uploadFiles') :
+                              t('uploadFiles')}
                   </Label>
                   <input
                     type="file"
@@ -488,7 +474,7 @@ export default function WizardPage() {
                 <Label className="text-sm sm:text-base dark:text-white">{t('name')} *</Label>
                 <Input
                   value={beneficiaryData.fullName}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBeneficiaryData({...beneficiaryData, fullName: e.target.value})}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBeneficiaryData({ ...beneficiaryData, fullName: e.target.value })}
                   placeholder={t('wizard-enter-beneficiary-name')}
                   className="w-full"
                 />
@@ -497,14 +483,14 @@ export default function WizardPage() {
                 <Label className="text-sm sm:text-base dark:text-white">{t('email')}</Label>
                 <Input
                   value={beneficiaryData.email}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBeneficiaryData({...beneficiaryData, email: e.target.value})}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBeneficiaryData({ ...beneficiaryData, email: e.target.value })}
                   placeholder="email@example.com"
                   className="w-full"
                 />
               </div>
               <div>
                 <Label className="text-sm sm:text-base dark:text-white">{t('relationship')} *</Label>
-                <Select value={beneficiaryData.relationshipId?.toString() || ''} onValueChange={(value: string) => setBeneficiaryData({...beneficiaryData, relationshipId: value ? parseInt(value) : null})}>
+                <Select value={beneficiaryData.relationshipId?.toString() || ''} onValueChange={(value: string) => setBeneficiaryData({ ...beneficiaryData, relationshipId: value ? parseInt(value) : null })}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder={t('wizard-select-relationship')} />
                   </SelectTrigger>
@@ -521,7 +507,7 @@ export default function WizardPage() {
                 <Label className="text-sm sm:text-base dark:text-white">{t('phoneNumber')}</Label>
                 <Input
                   value={beneficiaryData.phoneNumber}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBeneficiaryData({...beneficiaryData, phoneNumber: e.target.value})}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBeneficiaryData({ ...beneficiaryData, phoneNumber: e.target.value })}
                   placeholder="+1 (555) 123-4567"
                   className="w-full"
                 />
@@ -530,7 +516,7 @@ export default function WizardPage() {
                 <Label className="text-sm sm:text-base dark:text-white">{t('notes')}</Label>
                 <Textarea
                   value={beneficiaryData.notes}
-                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setBeneficiaryData({...beneficiaryData, notes: e.target.value})}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setBeneficiaryData({ ...beneficiaryData, notes: e.target.value })}
                   placeholder={t('wizard-enter-beneficiary-notes')}
                   className="w-full"
                 />
@@ -594,27 +580,25 @@ export default function WizardPage() {
               </div>
             </div>
           </div>
-          
+
           {/* Desktop: Horizontal step indicator */}
           <div className="hidden sm:flex items-center justify-center mb-4">
             <div className="flex items-center space-x-6">
               {['welcome', 'asset-type', 'asset-details', 'beneficiary', 'final'].map((step, index) => (
                 <div key={step} className="flex items-center">
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center text-base font-medium ${
-                    currentStep === step 
-                      ? 'bg-blue-600 text-white' 
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center text-base font-medium ${currentStep === step
+                      ? 'bg-blue-600 text-white'
                       : index < ['welcome', 'asset-type', 'asset-details', 'beneficiary', 'final'].indexOf(currentStep)
-                      ? 'bg-green-600 text-white'
-                      : 'bg-gray-200 text-gray-600'
-                  }`}>
+                        ? 'bg-green-600 text-white'
+                        : 'bg-gray-200 text-gray-600'
+                    }`}>
                     {index + 1}
                   </div>
                   {index < 4 && (
-                    <div className={`w-24 h-1 mx-3 ${
-                      index < ['welcome', 'asset-type', 'asset-details', 'beneficiary', 'final'].indexOf(currentStep)
+                    <div className={`w-24 h-1 mx-3 ${index < ['welcome', 'asset-type', 'asset-details', 'beneficiary', 'final'].indexOf(currentStep)
                         ? 'bg-green-600'
                         : 'bg-gray-200'
-                    }`} />
+                      }`} />
                   )}
                 </div>
               ))}

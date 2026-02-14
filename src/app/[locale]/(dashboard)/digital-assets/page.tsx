@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import AddAssetModal from '@/components/AddAssetModal';
 import AssetAttachmentsModal from '@/components/AssetAttachmentsModal';
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from "@/lib/supabase";
+
 import { Pencil, Trash2, Plus, Paperclip, LucideIcon, Mail, Mic, Camera, Video, File } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
 import type { Asset } from '@/models/asset';
@@ -28,6 +28,8 @@ export default function DigitalAssetsPage() {
   const [selectedAssetDetails, setSelectedAssetDetails] = useState<Asset | null>(null);
   const [attachmentsModalOpen, setAttachmentsModalOpen] = useState(false);
   const [selectedAssetForAttachments, setSelectedAssetForAttachments] = useState<Asset | null>(null);
+  const [limitReached, setLimitReached] = useState(false);
+  const [limitInfo, setLimitInfo] = useState<{ limit?: number; current?: number } | null>(null);
 
   const fetchAssets = useCallback(async () => {
     setLoading(true);
@@ -54,52 +56,49 @@ export default function DigitalAssetsPage() {
   }, [t]);
 
   const fetchBeneficiaries = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data } = await supabase
-      .from('beneficiaries')
-      .select('id, full_name, email')
-      .eq('user_id', user?.id)
-      .order('full_name', { ascending: true });
-    setBeneficiaries((data || []) as Beneficiary[]);
+    try {
+      const res = await fetch('/api/beneficiaries');
+      if (res.ok) {
+        const data = await res.json();
+        setBeneficiaries((data || []) as Beneficiary[]);
+      }
+    } catch (error) {
+      console.error('Error fetching beneficiaries:', error);
+    }
   };
 
-  const handleAddAsset = async () => {
+  const fetchLimitStatus = useCallback(async () => {
     try {
-      // Check if user can create an asset
-      const response = await fetch('/api/subscription/check-limit?type=asset');
-      const result = await response.json();
-
-      if (!result.allowed) {
-        // Show limit reached message with upgrade option
-        toast.error(t('assetLimitReached'), {
-          description: t('assetLimitReachedDescription', { limit: result.limit }),
-          action: {
-            label: t('viewPlans'),
-            onClick: () => router.push('/billing/plans'),
-          },
-          duration: 5000,
-        });
-        return;
+      const res = await fetch('/api/subscription/check-limit?type=asset');
+      if (res.ok) {
+        const result = await res.json();
+        setLimitReached(!result.allowed);
+        if (!result.allowed) {
+          setLimitInfo({ limit: result.limit, current: result.current });
+        } else {
+          setLimitInfo(null);
+        }
       }
-
-      // Open the modal if allowed
-      setModalOpen(true);
     } catch (error) {
       console.error('Error checking asset limit:', error);
-      // On error, allow creation (fail open)
-      setModalOpen(true);
     }
+  }, []);
+
+  const handleAddAsset = () => {
+    setModalOpen(true);
   };
 
   useEffect(() => {
     fetchAssets();
-  }, [fetchAssets]);
+    fetchLimitStatus();
+  }, [fetchAssets, fetchLimitStatus]);
 
   async function handleDeleteAsset(id: string) {
     if (!confirm(t('deleteConfirmDigitalAsset'))) return;
     setLoading(true);
     try {
-      await supabase.from('digital_assets').delete().eq('id', id);
+      const res = await fetch(`/api/assets/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete');
       fetchAssets();
     } catch {
       alert('Error deleting asset');
@@ -121,22 +120,21 @@ export default function DigitalAssetsPage() {
   };
 
   const handleAssignBeneficiary = async (beneficiaryId: string | null = selectedBeneficiaryId) => {
-    console.log('DEBUG: handleAssignBeneficiary', selectedBeneficiaryId, selectedAsset);
     if (!selectedAsset) return;
     setLoading(true);
     try {
-      console.log('DEBUG: selectedBeneficiaryId', selectedBeneficiaryId);
-
       // Determine if we're assigning or removing a beneficiary
       const isRemoving = beneficiaryId === null;
       const updateData = {
         beneficiary_id: beneficiaryId,
         status: isRemoving ? 'unassigned' : 'assigned',
       };
-      console.log('DEBUG: updateData', updateData);
-      const { error } = await supabase.from('digital_assets').update(updateData).eq('id', selectedAsset.id);
-      console.log('DEBUG: error', error);
-      if (error) throw error;
+      const res = await fetch(`/api/assets/${selectedAsset.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData),
+      });
+      if (!res.ok) throw new Error('Failed to update');
 
       setAssignModalOpen(false);
       setSelectedAsset(null);
@@ -184,12 +182,23 @@ export default function DigitalAssetsPage() {
           />
         )}
         <div className="flex items-center justify-between mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 dark:text-white">{t('digitalAssetsTitle')}</h1>
-          <Button className="hidden sm:inline-flex rounded-full px-6 py-2 text-base font-medium bg-gray-800 text-gray-100" onClick={handleAddAsset}>{t('addNewAsset')}</Button>
+          <div>
+            <h1 className="text-4xl font-bold text-gray-900 dark:text-white">{t('digitalAssetsTitle')}</h1>
+            {limitReached && limitInfo && (
+              <p className="text-sm text-amber-600 dark:text-amber-400 mt-1">
+                {t('assetLimitReachedDescription', { limit: limitInfo.limit ?? 0 })} —{' '}
+                <button className="underline font-medium hover:text-amber-700" onClick={() => router.push('/billing/plans')}>
+                  {t('viewPlans')}
+                </button>
+              </p>
+            )}
+          </div>
+          <Button className="hidden sm:inline-flex rounded-full px-6 py-2 text-base font-medium bg-gray-800 text-gray-100" onClick={handleAddAsset} disabled={limitReached}>{t('addNewAsset')}</Button>
         </div>
         <Button
           className="sm:hidden w-full mb-4 flex items-center justify-center gap-2"
           onClick={handleAddAsset}
+          disabled={limitReached}
           aria-label={t('addNewAsset')}
         >
           <Plus className="w-5 h-5" />
@@ -209,7 +218,7 @@ export default function DigitalAssetsPage() {
               </div>
               <h3 className="text-xl font-semibold mb-2">{t('noAssetsFound')}</h3>
               <p className="text-muted-foreground mb-6 max-w-sm">{t('startByAddingAsset')}</p>
-              <Button className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/25" onClick={handleAddAsset}>
+              <Button className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/25" onClick={handleAddAsset} disabled={limitReached}>
                 <Plus className="mr-2 h-4 w-4" /> {t('addAsset')}
               </Button>
             </div>

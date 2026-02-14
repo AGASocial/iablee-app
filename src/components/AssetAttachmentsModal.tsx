@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
-import { supabase } from "@/lib/supabase";
 import { Download, Trash2, Upload, Eye, File, Image, Video, Music, FileText, X } from "lucide-react";
 import type { Asset, AssetAttachment } from "@/models/asset";
 import { toast } from "sonner"; // Assuming sonner is used for toasts based on package.json
@@ -163,20 +162,22 @@ export default function AssetAttachmentsModal({
 
     setUploading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
       for (const file of Array.from(selectedFiles)) {
-        // 1. Upload to Storage
-        // Sanitize file name
-        const safeFileName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-        const filePath = `${user.id}/${Date.now()}-${safeFileName}`;
+        // 1. Upload to Storage via API
+        const formData = new FormData();
+        formData.append('file', file);
 
-        const { data, error } = await supabase.storage
-          .from('assets')
-          .upload(filePath, file);
+        const uploadRes = await fetch('/api/storage/upload', {
+          method: 'POST',
+          body: formData,
+        });
 
-        if (error) throw error;
+        if (!uploadRes.ok) {
+          const err = await uploadRes.json();
+          throw new Error(err.error || 'Upload failed');
+        }
+
+        const uploadData = await uploadRes.json();
 
         // 2. Create Attachment Record via API
         const extension = file.name.split('.').pop()?.toLowerCase() || '';
@@ -186,7 +187,7 @@ export default function AssetAttachmentsModal({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            file_path: data.path,
+            file_path: uploadData.path,
             file_name: file.name,
             file_type: fileType,
             file_size: file.size

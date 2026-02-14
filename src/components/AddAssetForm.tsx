@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { supabase } from "@/lib/supabase";
+
 import type { Asset } from "@/models/asset";
 import { getAssetType, type AssetType } from "@/lib/assetTypes";
 import { Loader2 } from "lucide-react";
@@ -90,44 +90,30 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
     e.preventDefault();
     setLoading(true);
     setError(null);
-    console.log('Submitting asset:', {
-      form: form,
-      asset: asset,
-    });
     try {
-
-      const { data: { user } } = await supabase.auth.getUser();
-
-      if (!user) throw new Error("Not authenticated");
-
       // Upload files if any
       const fileUrls: string[] = [];
-      console.log('Files to upload:', form.files.length, form.files);
       if (form.files.length > 0) {
         for (const file of form.files) {
-          // Sanitize file name
-          const safeFileName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-          const filePath = `${user.id}/${Date.now()}-${safeFileName}`;
-          console.log('Uploading file:', file.name, 'to path:', filePath);
-          const { data, error } = await supabase.storage.from('assets').upload(filePath, file);
-          if (error) {
-            console.error('Upload error:', error);
-            throw error;
+          const formData = new FormData();
+          formData.append('file', file);
+          const uploadRes = await fetch('/api/storage/upload', {
+            method: 'POST',
+            body: formData,
+          });
+          if (!uploadRes.ok) {
+            const err = await uploadRes.json();
+            throw new Error(err.error || 'Upload failed');
           }
-          console.log('Upload successful:', data.path);
-          fileUrls.push(data.path);
+          const uploadData = await uploadRes.json();
+          fileUrls.push(uploadData.path);
         }
       }
-      console.log('All uploaded file URLs:', fileUrls);
-
 
       if (asset) {
         // Update existing asset - merge existing files with new files
         const existingFiles = asset.files || [];
         const allFiles = [...existingFiles, ...fileUrls];
-        console.log('Existing files:', existingFiles);
-        console.log('New files:', fileUrls);
-        console.log('Combined files:', allFiles);
 
         const updateData = {
           asset_type: asset.asset_type,
@@ -140,14 +126,18 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
           files: allFiles.length > 0 ? allFiles : null,
           custom_fields: Object.keys(form.customFields).length > 0 ? form.customFields : null,
         };
-        console.log('Updating asset with data:', updateData);
-        const { error: updateError } = await supabase.from('digital_assets').update(updateData).eq('id', asset.id);
-        console.log('updateError', updateError);
-        if (updateError) throw updateError;
+        const res = await fetch(`/api/assets/${asset.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updateData),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to update asset');
+        }
       } else {
         // Insert new asset
         const insertData = {
-          user_id: user.id,
           asset_type: assetType,
           asset_name: form.asset_name,
           email: form.email,
@@ -158,9 +148,15 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
           files: fileUrls.length > 0 ? fileUrls : null,
           custom_fields: Object.keys(form.customFields).length > 0 ? form.customFields : null,
         };
-        console.log('Inserting asset with data:', insertData);
-        const { error: insertError } = await supabase.from('digital_assets').insert(insertData);
-        if (insertError) throw insertError;
+        const res = await fetch('/api/assets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(insertData),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to create asset');
+        }
       }
       onSuccess();
     } catch (err: unknown) {

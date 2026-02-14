@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Shield, Users, Key, Activity, Sparkles } from "lucide-react";
 import { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabase";
+
 import type { Asset } from '@/models/asset';
 import type { Beneficiary } from '@/models/beneficiary';
 import { Link } from '@/i18n/navigation';
@@ -50,35 +50,13 @@ export default function DashboardPage() {
   useEffect(() => {
     async function fetchDashboardData() {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        const res = await fetch('/api/dashboard');
+        if (!res.ok) return;
+        const data = await res.json();
 
-        // Fetch assets
-        const { data: assetsData } = await supabase
-          .from('digital_assets')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('asset_name', { ascending: true })
-          .limit(5);
-
-        // Fetch beneficiaries
-        const { data: beneficiariesData } = await supabase
-          .from('beneficiaries')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('full_name', { ascending: false })
-          .limit(5);
-
-        // Update stats
-        setStats({
-          totalAssets: assetsData?.length || 0,
-          totalBeneficiaries: beneficiariesData?.length || 0,
-          protectedAssets: assetsData?.filter(a => a.status === 'protected')?.length || 0,
-          recentActivity: 0 // You can implement this based on your activity tracking
-        });
-
-        setAssets(assetsData || []);
-        setBeneficiaries(beneficiariesData || []);
+        setStats(data.stats);
+        setAssets(data.assets || []);
+        setBeneficiaries(data.beneficiaries || []);
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
       } finally {
@@ -93,31 +71,30 @@ export default function DashboardPage() {
   async function handleAddBeneficiary() {
     setSubmitting(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('No user');
-      console.log('User:', user);
-      const { error } = await supabase.from('beneficiaries').insert({
-        user_id: user.id,
-        full_name: form.full_name,
-        email: form.email,
-        phone_number: form.phone_number,
-        relationship: form.relationship,
-        notes: form.notes,
-        notified: form.notified,
-        status: 'active',
+      const res = await fetch('/api/beneficiaries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          full_name: form.full_name,
+          email: form.email,
+          phone_number: form.phone_number,
+          notes: form.notes,
+          notified: form.notified,
+        }),
       });
-      if (error) throw error;
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to add beneficiary');
+      }
       setShowAddModal(false);
       setForm({ full_name: '', email: '', phone_number: '', relationship: '', notes: '', notified: false });
+      // Refetch dashboard data
       setLoading(true);
-      // Refetch data
-      const { data: beneficiariesData } = await supabase
-        .from('beneficiaries')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(5);
-      setBeneficiaries(beneficiariesData || []);
+      const dashRes = await fetch('/api/dashboard');
+      if (dashRes.ok) {
+        const data = await dashRes.json();
+        setBeneficiaries(data.beneficiaries || []);
+      }
     } catch {
       alert('Error adding beneficiary');
     } finally {

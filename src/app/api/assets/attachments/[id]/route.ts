@@ -1,8 +1,6 @@
 
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { Database } from '@/lib/supabase';
+import { createAuthenticatedRouteClient } from '@/lib/supabase-server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 
 export async function GET(
@@ -10,35 +8,13 @@ export async function GET(
     { params }: { params: Promise<{ id: string }> }
 ) {
     const id = (await params).id;
-    const cookieStore = await cookies();
+    const { supabase, user } = await createAuthenticatedRouteClient();
 
-    const supabase = createServerClient<Database>(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-            cookies: {
-                getAll() {
-                    return cookieStore.getAll();
-                },
-                setAll(cookiesToSet) {
-                    try {
-                        cookiesToSet.forEach(({ name, value, options }) =>
-                            cookieStore.set(name, value, options)
-                        );
-                    } catch {
-                    }
-                },
-            },
-        }
-    );
-
-    const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // 1. Get attachment details and verify access
-    // We use the standard client so RLS applies.
     const { data: attachment, error: fetchError } = await supabase
         .from('asset_attachments')
         .select('*, digital_assets!inner(user_id)')
@@ -77,29 +53,8 @@ export async function DELETE(
     { params }: { params: Promise<{ id: string }> }
 ) {
     const id = (await params).id;
-    const cookieStore = await cookies();
+    const { supabase, user } = await createAuthenticatedRouteClient();
 
-    const supabase = createServerClient<Database>(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-            cookies: {
-                getAll() {
-                    return cookieStore.getAll();
-                },
-                setAll(cookiesToSet) {
-                    try {
-                        cookiesToSet.forEach(({ name, value, options }) =>
-                            cookieStore.set(name, value, options)
-                        );
-                    } catch {
-                    }
-                },
-            },
-        }
-    );
-
-    const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -125,17 +80,13 @@ export async function DELETE(
         return NextResponse.json({ error: dbError.message }, { status: 500 });
     }
 
-    // 3. Delete from Storage (using Admin because RLS checks might be tricky or we want to ensure cleanup)
-    // Actually, we should probably use the same user client if they have storage permissions,
-    // but let's use Admin to ensure it's cleaned up even if storage policies are restrictive.
+    // 3. Delete from Storage using Admin to ensure cleanup
     const { error: storageError } = await supabaseAdmin.storage
         .from('assets')
         .remove([attachment.file_path]);
 
     if (storageError) {
         console.error('Error deleting file from storage:', storageError);
-        // We already deleted from DB, so we can't really rollback easily.
-        // Just log it.
     }
 
     return NextResponse.json({ success: true });
