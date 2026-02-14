@@ -42,8 +42,6 @@ export default function Navbar({ onMenuClick }: { onMenuClick?: () => void }) {
             </div>
           </Link>
         </div>
-
-
       </div>
     </div>
   );

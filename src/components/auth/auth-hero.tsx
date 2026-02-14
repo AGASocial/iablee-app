@@ -11,13 +11,13 @@ const IMAGE_SOURCES = [
   'https://images.unsplash.com/photo-1555949963-aa79dcee981c?w=1200&h=1600&fit=crop&q=80', // Technology
   'https://images.unsplash.com/photo-1518770660439-4636190af475?w=1200&h=1600&fit=crop&q=80', // Security
   'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=1200&h=1600&fit=crop&q=80', // Data protection
-  
+
   // Family & legacy themes
   'https://images.unsplash.com/photo-1522673607200-164d1b6ce486?w=1200&h=1600&fit=crop&q=80', // Family
   'https://images.unsplash.com/photo-1511895426328-dc8714191300?w=1200&h=1600&fit=crop&q=80', // Generations
   'https://images.unsplash.com/photo-1511632765486-a01980e01a18?w=1200&h=1600&fit=crop&q=80', // Memory keeping
   'https://images.unsplash.com/photo-1505852679233-d9fd70aff56d?w=1200&h=1600&fit=crop&q=80', // Legacy
-  
+
   // Abstract & inspiring
   'https://images.unsplash.com/photo-1557672172-298e090bd0f1?w=1200&h=1600&fit=crop&q=80', // Abstract
   'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1200&h=1600&fit=crop&q=80', // Modern tech
@@ -53,7 +53,7 @@ export function AuthHero({ quote, author, children }: { quote: string; author: s
   useEffect(() => {
     // Get the next image URL
     const nextImageUrl = IMAGE_SOURCES[nextImageIndex];
-    
+
     // Reset loaded state when nextImageIndex changes - use setTimeout to avoid synchronous setState
     let isMounted = true;
     const resetTimeout = setTimeout(() => {
@@ -61,7 +61,7 @@ export function AuthHero({ quote, author, children }: { quote: string; author: s
         setNextImageLoaded(false);
       }
     }, 0);
-    
+
     // Preload the next image to check if it's cached or needs loading
     const img = new window.Image();
     img.onload = () => {
@@ -74,10 +74,10 @@ export function AuthHero({ quote, author, children }: { quote: string; author: s
         setNextImageLoaded(true); // Allow transition even if image fails
       }
     };
-    
+
     // Start loading the image
     img.src = nextImageUrl;
-    
+
     // If image is already cached and loaded, onload might not fire
     // Check after a short delay
     const timeout = setTimeout(() => {
@@ -85,7 +85,7 @@ export function AuthHero({ quote, author, children }: { quote: string; author: s
         setNextImageLoaded(true);
       }
     }, 100);
-    
+
     return () => {
       isMounted = false;
       clearTimeout(resetTimeout);
@@ -118,10 +118,9 @@ export function AuthHero({ quote, author, children }: { quote: string; author: s
       {/* Background Images with fade transition */}
       <div className="absolute inset-0">
         {/* Current visible image */}
-        <div 
-          className={`absolute inset-0 transition-opacity duration-1000 ${
-            isTransitioning ? 'opacity-0' : 'opacity-100'
-          }`}
+        <div
+          className={`absolute inset-0 transition-opacity duration-1000 ${isTransitioning ? 'opacity-0' : 'opacity-100'
+            }`}
         >
           <Image
             src={currentImage}
@@ -138,13 +137,12 @@ export function AuthHero({ quote, author, children }: { quote: string; author: s
             }}
           />
         </div>
-        
+
         {/* Next image - always rendered but hidden until transition, preloading in background */}
-        <div 
-          className={`absolute inset-0 transition-opacity duration-1000 ${
-            isTransitioning ? 'opacity-100' : 'opacity-0'
-          }`}
-          style={{ 
+        <div
+          className={`absolute inset-0 transition-opacity duration-1000 ${isTransitioning ? 'opacity-100' : 'opacity-0'
+            }`}
+          style={{
             visibility: isTransitioning ? 'visible' : 'hidden',
             pointerEvents: 'none'
           }}
@@ -190,10 +188,10 @@ export function AuthHero({ quote, author, children }: { quote: string; author: s
 
       {/* Gradient overlay - Primary color with modern gradient */}
       <div className="absolute inset-0 bg-gradient-to-br from-primary/85 via-primary/75 to-primary/90" />
-      
+
       {/* Additional overlay for depth and text readability */}
       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/50" />
-      
+
       {/* Subtle vignette effect */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_transparent_0%,_rgba(0,0,0,0.2)_100%)]" />
 
@@ -207,23 +205,9 @@ export function AuthHero({ quote, author, children }: { quote: string; author: s
       <div className="relative z-20 flex items-center text-base sm:text-lg font-medium">
         {children || (
           <div className="flex items-center group">
-            <div className="p-1.5 sm:p-2 rounded-lg bg-white/10 backdrop-blur-sm group-hover:bg-white/20 transition-colors">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="h-5 w-5 sm:h-6 sm:w-6"
-              >
-                <path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3" />
-              </svg>
+            <div className="p-1.5 sm:p-2 rounded-lg transition-colors">
+              <Image src="/logo-iablee-dark.png" alt="Logo" width={200} height={200} />
             </div>
-            <span className="ml-2 sm:ml-3 font-bold text-lg sm:text-xl bg-gradient-to-r from-white to-white/90 bg-clip-text text-transparent drop-shadow-lg">
-              iablee
-            </span>
           </div>
         )}
       </div>
