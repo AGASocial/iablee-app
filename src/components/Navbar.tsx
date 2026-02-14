@@ -1,14 +1,14 @@
 'use client';
 
-import Image from 'next/image';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Menu } from "lucide-react";
 
 export default function Navbar({ onMenuClick }: { onMenuClick?: () => void }) {
 
   return (
     <div className="sticky top-0 z-40 w-full border-b border-white/10 bg-white/60 backdrop-blur-xl transition-all dark:bg-black/40 supports-[backdrop-filter]:bg-white/60">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-4">
           {onMenuClick && (
             <button
@@ -41,10 +41,6 @@ export default function Navbar({ onMenuClick }: { onMenuClick?: () => void }) {
               />
             </div>
           </Link>
-        </div>
-
-        {/* Center/Right Section - Empty for now if no other elements */}
-        <div className="flex items-center gap-2">
         </div>
       </div>
     </div>

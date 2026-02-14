@@ -8,6 +8,16 @@ export interface AssetTypeDetails {
   icon: string;
 }
 
+export interface AssetAttachment {
+  id: string;
+  asset_id: string;
+  file_path: string;
+  file_name: string;
+  file_type: string;
+  file_size: number;
+  created_at: string;
+}
+
 export interface Asset {
   id: string;
   user_id: string;
@@ -24,6 +34,7 @@ export interface Asset {
   number_of_files?: number;
   description?: string;
   files?: string[];
+  attachments?: AssetAttachment[];
   custom_fields?: Record<string, string | number | boolean | string[]>;
   created_at: string;
   updated_at: string;
