@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { User, LogOut, Languages, ChevronUp } from "lucide-react";
-import { useRouter, usePathname } from '@/i18n/navigation';
+import { Link, useRouter, usePathname } from '@/i18n/navigation';
 import { supabase } from '@/lib/supabase';
 
 export default function LayoutWrapper({ children }: { children: React.ReactNode }) {
