@@ -116,7 +116,7 @@ export default function AddBeneficiaryModal({ open, onOpenChange, onSuccess, ben
 
                 if (!res.ok) {
                     const err = await res.json();
-                    throw new Error(err.error || 'Failed to create beneficiary');
+                    throw new Error(err.message || err.error || 'Failed to create beneficiary');
                 }
                 toast.success(t('beneficiaryCreatedSuccess') || "Beneficiary created successfully");
             }
@@ -125,7 +125,9 @@ export default function AddBeneficiaryModal({ open, onOpenChange, onSuccess, ben
             onOpenChange(false);
         } catch (error) {
             console.error("Error saving beneficiary:", error);
-            toast.error(t('errorSavingBeneficiary') || "Error saving beneficiary");
+            const message = error instanceof Error ? error.message : null;
+            const localizedMessage = message ? (t(message) !== message ? t(message) : message) : null;
+            toast.error(localizedMessage || t('errorSavingBeneficiary') || "Error saving beneficiary");
         } finally {
             setLoading(false);
         }

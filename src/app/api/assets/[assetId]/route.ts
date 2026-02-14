@@ -18,7 +18,7 @@ export async function PUT(
         const {
             asset_type, asset_name, email, password, website,
             valid_until, description, files, custom_fields,
-            beneficiary_id, status
+            beneficiary_id, status, fileMetadata
         } = body;
 
         const updateData: Record<string, unknown> = {};
@@ -45,6 +45,25 @@ export async function PUT(
         if (error) {
             console.error('Supabase error updating asset:', error);
             return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+
+        // Create asset_attachments records for newly uploaded files
+        if (fileMetadata && Array.isArray(fileMetadata) && fileMetadata.length > 0) {
+            const attachmentRows = fileMetadata.map((fm: { path: string; fileName: string; fileType: string; fileSize: number }) => ({
+                asset_id: assetId,
+                file_path: fm.path,
+                file_name: fm.fileName,
+                file_type: fm.fileType,
+                file_size: fm.fileSize,
+            }));
+
+            const { error: attachError } = await supabase
+                .from('asset_attachments')
+                .insert(attachmentRows);
+
+            if (attachError) {
+                console.error('Error creating asset attachments:', attachError);
+            }
         }
 
         return NextResponse.json(data);

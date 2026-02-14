@@ -11,7 +11,7 @@ export async function POST(request: Request) {
 
     try {
         const body = await request.json();
-        const { asset, beneficiary, fileUrls } = body;
+        const { asset, beneficiary, fileUrls, fileMetadata } = body;
 
         if (!asset || !beneficiary) {
             return NextResponse.json({ error: 'Both asset and beneficiary data are required' }, { status: 400 });
@@ -58,6 +58,25 @@ export async function POST(request: Request) {
         if (assetError) {
             console.error('Asset creation error:', assetError);
             return NextResponse.json({ error: assetError.message }, { status: 500 });
+        }
+
+        // Create asset_attachments records for uploaded files
+        if (fileMetadata && Array.isArray(fileMetadata) && fileMetadata.length > 0) {
+            const attachmentRows = fileMetadata.map((fm: { path: string; fileName: string; fileType: string; fileSize: number }) => ({
+                asset_id: assetData.id,
+                file_path: fm.path,
+                file_name: fm.fileName,
+                file_type: fm.fileType,
+                file_size: fm.fileSize,
+            }));
+
+            const { error: attachError } = await supabase
+                .from('asset_attachments')
+                .insert(attachmentRows);
+
+            if (attachError) {
+                console.error('Error creating asset attachments:', attachError);
+            }
         }
 
         // Create the beneficiary

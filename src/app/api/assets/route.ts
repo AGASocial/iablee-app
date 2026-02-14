@@ -43,7 +43,7 @@ export async function POST(request: Request) {
         const body = await request.json();
         const {
             asset_type, asset_name, email, password, website,
-            valid_until, description, files, custom_fields
+            valid_until, description, files, custom_fields, fileMetadata
         } = body;
 
         if (!asset_name || !asset_type) {
@@ -70,6 +70,26 @@ export async function POST(request: Request) {
         if (error) {
             console.error('Supabase error creating asset:', error);
             return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+
+        // Create asset_attachments records for each uploaded file
+        if (fileMetadata && Array.isArray(fileMetadata) && fileMetadata.length > 0) {
+            const attachmentRows = fileMetadata.map((fm: { path: string; fileName: string; fileType: string; fileSize: number }) => ({
+                asset_id: data.id,
+                file_path: fm.path,
+                file_name: fm.fileName,
+                file_type: fm.fileType,
+                file_size: fm.fileSize,
+            }));
+
+            const { error: attachError } = await supabase
+                .from('asset_attachments')
+                .insert(attachmentRows);
+
+            if (attachError) {
+                console.error('Error creating asset attachments:', attachError);
+                // Don't fail the whole request — asset was created. Log and continue.
+            }
         }
 
         return NextResponse.json(data, { status: 201 });

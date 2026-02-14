@@ -175,6 +175,7 @@ export default function WizardPage() {
     try {
       // Upload files if any
       const fileUrls: string[] = [];
+      const fileMetadata: { path: string; fileName: string; fileType: string; fileSize: number }[] = [];
       if (assetData.files.length > 0) {
         for (const file of assetData.files) {
           const formData = new FormData();
@@ -189,6 +190,12 @@ export default function WizardPage() {
           }
           const uploadData = await uploadRes.json();
           fileUrls.push(uploadData.path);
+          fileMetadata.push({
+            path: uploadData.path,
+            fileName: uploadData.fileName,
+            fileType: uploadData.fileType,
+            fileSize: uploadData.fileSize,
+          });
         }
       }
 
@@ -215,19 +222,22 @@ export default function WizardPage() {
             notes: beneficiaryData.notes,
           },
           fileUrls,
+          fileMetadata,
         }),
       });
 
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || 'Failed to complete wizard');
+        throw new Error(err.message || err.error || 'Failed to complete wizard');
       }
 
       toast.success(t('wizard-final-congrats'));
       router.push('/dashboard');
     } catch (error) {
       console.error('Error creating asset and beneficiary:', error);
-      toast.error('An error occurred while creating your asset and beneficiary.');
+      const message = error instanceof Error ? error.message : null;
+      const localized = message ? (t(message) !== message ? t(message) : message) : null;
+      toast.error(localized || t('errorSavingAsset') || 'An error occurred while creating your asset and beneficiary.');
     } finally {
       setLoading(false);
     }
@@ -587,17 +597,17 @@ export default function WizardPage() {
               {['welcome', 'asset-type', 'asset-details', 'beneficiary', 'final'].map((step, index) => (
                 <div key={step} className="flex items-center">
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center text-base font-medium ${currentStep === step
-                      ? 'bg-blue-600 text-white'
-                      : index < ['welcome', 'asset-type', 'asset-details', 'beneficiary', 'final'].indexOf(currentStep)
-                        ? 'bg-green-600 text-white'
-                        : 'bg-gray-200 text-gray-600'
+                    ? 'bg-blue-600 text-white'
+                    : index < ['welcome', 'asset-type', 'asset-details', 'beneficiary', 'final'].indexOf(currentStep)
+                      ? 'bg-green-600 text-white'
+                      : 'bg-gray-200 text-gray-600'
                     }`}>
                     {index + 1}
                   </div>
                   {index < 4 && (
                     <div className={`w-24 h-1 mx-3 ${index < ['welcome', 'asset-type', 'asset-details', 'beneficiary', 'final'].indexOf(currentStep)
-                        ? 'bg-green-600'
-                        : 'bg-gray-200'
+                      ? 'bg-green-600'
+                      : 'bg-gray-200'
                       }`} />
                   )}
                 </div>

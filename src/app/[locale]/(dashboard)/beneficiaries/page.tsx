@@ -1,6 +1,6 @@
 "use client";
 import { useTranslations } from 'next-intl';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useState, useEffect, useCallback } from "react";
@@ -28,6 +28,7 @@ function StatusBadge({ status }: { status: string | null }) {
 export default function BeneficiariesPage() {
     const t = useTranslations();
     const router = useRouter();
+    const searchParams = useSearchParams();
     const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
     const [loading, setLoading] = useState(true);
     const [showAddModal, setShowAddModal] = useState(false);
@@ -79,6 +80,15 @@ export default function BeneficiariesPage() {
         fetchBeneficiaries();
         fetchLimitStatus();
     }, [fetchBeneficiaries, fetchLimitStatus]);
+
+    // Auto-open modal when ?action=add is present in the URL
+    useEffect(() => {
+        if (searchParams.get('action') === 'add') {
+            setShowAddModal(true);
+            // Clean the query param from the URL
+            router.replace(window.location.pathname, { scroll: false });
+        }
+    }, [searchParams, router]);
 
     const handleAddBeneficiary = () => {
         setBeneficiaryToEdit(null);

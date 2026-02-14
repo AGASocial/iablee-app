@@ -622,6 +622,36 @@ export class BillingService {
     if (!atPeriodEnd) {
       updates.status = 'canceled';
       updates.canceled_at = new Date().toISOString();
+    } else if (!subscription.current_period_end) {
+      // If current_period_end is not set (e.g. PayU subscriptions), compute it
+      // based on the plan's billing interval from the most recent invoice paid_at or creation date
+      const { data: latestInvoice } = await this.supabase
+        .from('billing_invoices')
+        .select('paid_at')
+        .eq('subscription_id', subscriptionId)
+        .eq('status', 'paid')
+        .order('paid_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const { data: plan } = await this.supabase
+        .from('billing_plans')
+        .select('interval')
+        .eq('id', subscription.plan_id)
+        .single();
+
+      const baseDate = latestInvoice?.paid_at
+        ? new Date(latestInvoice.paid_at as string)
+        : new Date(subscription.created_at as string);
+
+      const periodEnd = new Date(baseDate);
+      if (plan?.interval === 'year') {
+        periodEnd.setFullYear(periodEnd.getFullYear() + 1);
+      } else {
+        periodEnd.setMonth(periodEnd.getMonth() + 1);
+      }
+
+      updates.current_period_end = periodEnd.toISOString();
     }
 
     const { error: updateError } = await this.supabase
@@ -796,6 +826,49 @@ export class BillingService {
       if (data.planId) {
         updates.plan_id = data.planId;
       }
+
+      // Compute current_period_start and current_period_end based on the plan interval
+      const paidAt = data.paidAt ? new Date(data.paidAt) : new Date();
+      updates.current_period_start = paidAt.toISOString();
+
+      // Determine the plan interval to calculate period end
+      const planId = data.planId;
+      let interval = 'month'; // default to monthly
+      if (planId) {
+        const { data: plan } = await this.supabase
+          .from('billing_plans')
+          .select('interval')
+          .eq('id', planId)
+          .single();
+        if (plan?.interval) {
+          interval = plan.interval;
+        }
+      } else {
+        // Try to get the interval from the existing subscription's plan
+        const { data: sub } = await this.supabase
+          .from('billing_subscriptions')
+          .select('plan_id')
+          .eq('provider_subscription_id', data.subscriptionId)
+          .single();
+        if (sub?.plan_id) {
+          const { data: plan } = await this.supabase
+            .from('billing_plans')
+            .select('interval')
+            .eq('id', sub.plan_id)
+            .single();
+          if (plan?.interval) {
+            interval = plan.interval;
+          }
+        }
+      }
+
+      const periodEnd = new Date(paidAt);
+      if (interval === 'year') {
+        periodEnd.setFullYear(periodEnd.getFullYear() + 1);
+      } else {
+        periodEnd.setMonth(periodEnd.getMonth() + 1);
+      }
+      updates.current_period_end = periodEnd.toISOString();
 
       await this.supabase
         .from('billing_subscriptions')

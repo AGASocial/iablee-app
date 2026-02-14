@@ -93,6 +93,7 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
     try {
       // Upload files if any
       const fileUrls: string[] = [];
+      const fileMetadata: { path: string; fileName: string; fileType: string; fileSize: number }[] = [];
       if (form.files.length > 0) {
         for (const file of form.files) {
           const formData = new FormData();
@@ -107,6 +108,12 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
           }
           const uploadData = await uploadRes.json();
           fileUrls.push(uploadData.path);
+          fileMetadata.push({
+            path: uploadData.path,
+            fileName: uploadData.fileName,
+            fileType: uploadData.fileType,
+            fileSize: uploadData.fileSize,
+          });
         }
       }
 
@@ -125,6 +132,7 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
           description: form.description,
           files: allFiles.length > 0 ? allFiles : null,
           custom_fields: Object.keys(form.customFields).length > 0 ? form.customFields : null,
+          fileMetadata: fileMetadata.length > 0 ? fileMetadata : undefined,
         };
         const res = await fetch(`/api/assets/${asset.id}`, {
           method: 'PUT',
@@ -147,6 +155,7 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
           description: form.description,
           files: fileUrls.length > 0 ? fileUrls : null,
           custom_fields: Object.keys(form.customFields).length > 0 ? form.customFields : null,
+          fileMetadata: fileMetadata.length > 0 ? fileMetadata : undefined,
         };
         const res = await fetch('/api/assets', {
           method: 'POST',
@@ -155,13 +164,15 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
         });
         if (!res.ok) {
           const err = await res.json();
-          throw new Error(err.error || 'Failed to create asset');
+          throw new Error(err.message || err.error || 'Failed to create asset');
         }
       }
       onSuccess();
     } catch (err: unknown) {
       const error = err as Error;
-      setError(error.message || "Error adding asset");
+      const msg = error.message || 'Error adding asset';
+      const localized = t(msg) !== msg ? t(msg) : msg;
+      setError(localized);
     } finally {
       setLoading(false);
     }

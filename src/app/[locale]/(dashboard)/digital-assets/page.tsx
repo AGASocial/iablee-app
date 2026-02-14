@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from 'next-intl';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import AddAssetModal from '@/components/AddAssetModal';
 import AssetAttachmentsModal from '@/components/AssetAttachmentsModal';
@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 export default function DigitalAssetsPage() {
   const t = useTranslations();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [modalOpen, setModalOpen] = useState(false);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,6 +93,14 @@ export default function DigitalAssetsPage() {
     fetchAssets();
     fetchLimitStatus();
   }, [fetchAssets, fetchLimitStatus]);
+
+  // Auto-open modal when ?action=add is present in the URL
+  useEffect(() => {
+    if (searchParams.get('action') === 'add') {
+      setModalOpen(true);
+      router.replace(window.location.pathname, { scroll: false });
+    }
+  }, [searchParams, router]);
 
   async function handleDeleteAsset(id: string) {
     if (!confirm(t('deleteConfirmDigitalAsset'))) return;
