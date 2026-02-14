@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Shield, Users, Key, Activity, Sparkles } from "lucide-react";
 import { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabase";
+
 import type { Asset } from '@/models/asset';
 import type { Beneficiary } from '@/models/beneficiary';
 import { Link } from '@/i18n/navigation';
@@ -50,35 +50,13 @@ export default function DashboardPage() {
   useEffect(() => {
     async function fetchDashboardData() {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        const res = await fetch('/api/dashboard');
+        if (!res.ok) return;
+        const data = await res.json();
 
-        // Fetch assets
-        const { data: assetsData } = await supabase
-          .from('digital_assets')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('asset_name', { ascending: true })
-          .limit(5);
-
-        // Fetch beneficiaries
-        const { data: beneficiariesData } = await supabase
-          .from('beneficiaries')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('full_name', { ascending: false })
-          .limit(5);
-
-        // Update stats
-        setStats({
-          totalAssets: assetsData?.length || 0,
-          totalBeneficiaries: beneficiariesData?.length || 0,
-          protectedAssets: assetsData?.filter(a => a.status === 'protected')?.length || 0,
-          recentActivity: 0 // You can implement this based on your activity tracking
-        });
-
-        setAssets(assetsData || []);
-        setBeneficiaries(beneficiariesData || []);
+        setStats(data.stats);
+        setAssets(data.assets || []);
+        setBeneficiaries(data.beneficiaries || []);
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
       } finally {
@@ -93,31 +71,30 @@ export default function DashboardPage() {
   async function handleAddBeneficiary() {
     setSubmitting(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('No user');
-      console.log('User:', user);
-      const { error } = await supabase.from('beneficiaries').insert({
-        user_id: user.id,
-        full_name: form.full_name,
-        email: form.email,
-        phone_number: form.phone_number,
-        relationship: form.relationship,
-        notes: form.notes,
-        notified: form.notified,
-        status: 'active',
+      const res = await fetch('/api/beneficiaries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          full_name: form.full_name,
+          email: form.email,
+          phone_number: form.phone_number,
+          notes: form.notes,
+          notified: form.notified,
+        }),
       });
-      if (error) throw error;
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to add beneficiary');
+      }
       setShowAddModal(false);
       setForm({ full_name: '', email: '', phone_number: '', relationship: '', notes: '', notified: false });
+      // Refetch dashboard data
       setLoading(true);
-      // Refetch data
-      const { data: beneficiariesData } = await supabase
-        .from('beneficiaries')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(5);
-      setBeneficiaries(beneficiariesData || []);
+      const dashRes = await fetch('/api/dashboard');
+      if (dashRes.ok) {
+        const data = await dashRes.json();
+        setBeneficiaries(data.beneficiaries || []);
+      }
     } catch {
       alert('Error adding beneficiary');
     } finally {
@@ -139,66 +116,66 @@ export default function DashboardPage() {
 
       {/* Stats Overview */}
       <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="card-gradient hover-lift border-border/50">
+        <Card className="glass-panel hover-lift border-border/50 animate-fade-in-up delay-100">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-foreground">
               {t('totalAssets')}
             </CardTitle>
-            <div className="p-2 rounded-lg bg-primary/10">
+            <div className="p-2.5 rounded-xl bg-primary/10 shadow-inner">
               <Key className="h-4 w-4 text-primary" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-foreground">{stats.totalAssets}</div>
-            <p className="text-xs text-muted-foreground mt-1">
+            <div className="text-3xl font-bold text-foreground tracking-tight">{stats.totalAssets}</div>
+            <p className="text-xs text-muted-foreground mt-1 font-medium">
               {t('digitalAssetsRegistered')}
             </p>
           </CardContent>
         </Card>
-        <Card className="card-gradient hover-lift border-border/50">
+        <Card className="glass-panel hover-lift border-border/50 animate-fade-in-up delay-200">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-foreground">
               {t('protectedAssets')}
             </CardTitle>
-            <div className="p-2 rounded-lg icon-bg-success">
+            <div className="p-2.5 rounded-xl icon-bg-success shadow-inner">
               <Shield className="h-4 w-4 icon-success" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-foreground">{stats.protectedAssets}</div>
-            <p className="text-xs text-muted-foreground mt-1">
+            <div className="text-3xl font-bold text-foreground tracking-tight">{stats.protectedAssets}</div>
+            <p className="text-xs text-muted-foreground mt-1 font-medium">
               {t('assetsWithProtection')}
             </p>
           </CardContent>
         </Card>
-        <Card className="card-gradient hover-lift border-border/50">
+        <Card className="glass-panel hover-lift border-border/50 animate-fade-in-up delay-300">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-foreground">
               {t('beneficiariesStat')}
             </CardTitle>
-            <div className="p-2 rounded-lg icon-bg-accent">
+            <div className="p-2.5 rounded-xl icon-bg-accent shadow-inner">
               <Users className="h-4 w-4 icon-accent" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-foreground">{stats.totalBeneficiaries}</div>
-            <p className="text-xs text-muted-foreground mt-1">
+            <div className="text-3xl font-bold text-foreground tracking-tight">{stats.totalBeneficiaries}</div>
+            <p className="text-xs text-muted-foreground mt-1 font-medium">
               {t('registeredBeneficiaries')}
             </p>
           </CardContent>
         </Card>
-        <Card className="card-gradient hover-lift border-border/50">
+        <Card className="glass-panel hover-lift border-border/50 animate-fade-in-up delay-[400ms]">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-foreground">
               {t('recentActivity')}
             </CardTitle>
-            <div className="p-2 rounded-lg icon-bg-info">
+            <div className="p-2.5 rounded-xl icon-bg-info shadow-inner">
               <Activity className="h-4 w-4 icon-info" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-foreground">{stats.recentActivity}</div>
-            <p className="text-xs text-muted-foreground mt-1">
+            <div className="text-3xl font-bold text-foreground tracking-tight">{stats.recentActivity}</div>
+            <p className="text-xs text-muted-foreground mt-1 font-medium">
               {t('changesLast30Days')}
             </p>
           </CardContent>
@@ -206,31 +183,30 @@ export default function DashboardPage() {
       </div>
 
       {/* Main Content Cards */}
-      <div className="grid gap-6 grid-cols-1 md:grid-cols-2">
+      <div className="grid gap-6 grid-cols-1 md:grid-cols-2 animate-fade-in-up delay-[500ms]">
         {/* Digital Assets Card */}
-        <Card className="col-span-1 card-gradient hover-lift border-border/50">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <Card className="col-span-1 glass-card border-none shadow-xl bg-card/30">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b border-white/5 pb-4">
             <div>
-              <CardTitle>{t('yourDigitalAssets')}</CardTitle>
-              <CardDescription>{t('overviewDigitalAssets')}</CardDescription>
+              <CardTitle className="text-xl">{t('yourDigitalAssets')}</CardTitle>
+              <CardDescription className="text-base">{t('overviewDigitalAssets')}</CardDescription>
             </div>
-            {/* <Button variant="outline" size="sm" className="flex items-center gap-2">
-              <PlusCircle className="h-4 w-4" /> {t('addAsset')}
-            </Button> */}
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6">
             {loading ? (
               <div className="flex items-center justify-center py-6">
                 <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
               </div>
             ) : assets.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8">
-                <Key className="h-12 w-12 text-muted-foreground mb-4" />
-                <p className="text-center text-sm text-muted-foreground mb-4">
+                <div className="h-16 w-16 rounded-full bg-muted/30 flex items-center justify-center mb-4">
+                  <Key className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <p className="text-center text-sm text-muted-foreground mb-4 max-w-[250px]">
                   {t('noAssets')}
                 </p>
                 <Link href="/wizard">
-                  <Button className="btn-primary-gradient flex items-center gap-2 text-primary-foreground">
+                  <Button className="btn-primary-gradient flex items-center gap-2 text-primary-foreground shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all">
                     <Sparkles className="h-4 w-4" />
                     {t('setupWizard')}
                   </Button>
@@ -239,10 +215,13 @@ export default function DashboardPage() {
             ) : (
               <div className="space-y-3">
                 {assets.map((asset) => (
-                  <div key={asset.id} className="flex items-center justify-between p-4 border rounded-lg bg-card/50 hover:bg-accent/30 transition-colors hover-lift">
+                  <div key={asset.id} className="group flex items-center justify-between p-4 border border-transparent rounded-xl bg-white/5 hover:bg-white/10 transition-all hover:scale-[1.01] hover:border-primary/10 hover:shadow-lg">
                     <div className="flex items-center space-x-4">
+                      <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-colors">
+                        <Key className="h-5 w-5" />
+                      </div>
                       <div>
-                        <p className="font-medium text-foreground">{asset.asset_name}</p>
+                        <p className="font-semibold text-foreground group-hover:text-primary transition-colors">{asset.asset_name}</p>
                         <p className="text-sm text-muted-foreground">{asset.asset_type}</p>
                       </div>
                     </div>
@@ -255,49 +234,44 @@ export default function DashboardPage() {
         </Card>
 
         {/* Beneficiaries Card */}
-        <Card className="col-span-1 card-gradient hover-lift border-border/50">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <Card className="col-span-1 glass-card border-none shadow-xl bg-card/30">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b border-white/5 pb-4">
             <div>
-              <CardTitle>{t('recentBeneficiaries')}</CardTitle>
-              <CardDescription>{t('manageBeneficiaries')}</CardDescription>
+              <CardTitle className="text-xl">{t('recentBeneficiaries')}</CardTitle>
+              <CardDescription className="text-base">{t('manageBeneficiaries')}</CardDescription>
             </div>
-            {/* <Button variant="outline" size="sm" className="flex items-center gap-2" onClick={() => setShowAddModal(true)}>
-              <PlusCircle className="h-4 w-4" /> {t('addBeneficiary')}
-            </Button> */}
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6">
             {loading ? (
               <div className="flex items-center justify-center py-6">
                 <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
               </div>
             ) : beneficiaries.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8">
-                <Users className="h-12 w-12 text-muted-foreground mb-4" />
-                <p className="text-center text-sm text-muted-foreground">
+                <div className="h-16 w-16 rounded-full bg-muted/30 flex items-center justify-center mb-4">
+                  <Users className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <p className="text-center text-sm text-muted-foreground max-w-[250px]">
                   {t('noBeneficiaries')}
                 </p>
               </div>
             ) : (
               <div className="space-y-3">
                 {beneficiaries.map((beneficiary) => (
-                  <div key={beneficiary.id} className="flex flex-col md:flex-row md:items-center md:justify-between p-4 border rounded-lg bg-card/50 hover:bg-accent/30 transition-colors hover-lift">
+                  <div key={beneficiary.id} className="group flex flex-col md:flex-row md:items-center md:justify-between p-4 border border-transparent rounded-xl bg-white/5 hover:bg-white/10 transition-all hover:scale-[1.01] hover:border-primary/10 hover:shadow-lg">
                     <div className="flex flex-col space-y-1">
-                      <span className="font-medium text-foreground">{beneficiary.full_name}</span>
+                      <span className="font-semibold text-foreground group-hover:text-primary transition-colors">{beneficiary.full_name}</span>
                       <span className="text-sm text-muted-foreground">{beneficiary.email}</span>
-                      <span className="text-sm text-muted-foreground">{beneficiary.phone_number}</span>
-                      <span className="text-sm text-muted-foreground">{beneficiary.relationship}</span>
-                      {beneficiary.notes && <span className="text-sm text-muted-foreground">{beneficiary.notes}</span>}
-                      <div className="flex gap-2 flex-wrap mt-1">
-                        <span className={`text-xs px-2 py-0.5 rounded ${beneficiary.notified ? 'badge-active' : 'bg-muted text-muted-foreground'}`}>
+                      {/* Truncate less important info for cleaner look if needed, keeping mostly same for now */}
+                      <div className="flex gap-2 flex-wrap mt-2">
+                        <span className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full font-bold ${beneficiary.notified ? 'bg-green-500/10 text-green-500' : 'bg-muted text-muted-foreground'}`}>
                           {beneficiary.notified ? t('notified') : t('notNotified')}
                         </span>
-                        <span className={`text-xs px-2 py-0.5 rounded ${beneficiary.email_verified ? 'badge-active' : 'bg-muted text-muted-foreground'}`}>
-                          {beneficiary.email_verified ? t('emailVerified') : t('emailNotVerified')}
-                        </span>
                       </div>
-                      {beneficiary.last_notified_at && <span className="text-xs text-muted-foreground">{t('lastNotifiedAt')}: {beneficiary.last_notified_at}</span>}
                     </div>
-                    <StatusBadge status={beneficiary.status || 'Active'} />
+                    <div className="mt-3 md:mt-0">
+                      <StatusBadge status={beneficiary.status || 'Active'} />
+                    </div>
                   </div>
                 ))}
               </div>

@@ -15,25 +15,22 @@ export default function AuthCallbackPage() {
         // Supabase JS client will automatically handle the session if the code is present
         // But you can force a refresh or handle errors here if needed
         const { data: { session }, error } = await supabase.auth.getSession();
-        
+
         if (!error && session) {
-          // Check if user has any assets
-          const { data: assets, error: assetsError } = await supabase
-            .from('digital_assets')
-            .select('id')
-            .eq('user_id', session.user.id)
-            .limit(1);
-
-          if (assetsError) {
-            console.error('Error checking assets:', assetsError);
-            router.replace(`/${locale}/dashboard`);
-            return;
-          }
-
-          // If user has no assets, redirect to wizard
-          if (!assets || assets.length === 0) {
-            router.replace(`/${locale}/wizard`);
-          } else {
+          // Check if user has any assets via API
+          try {
+            const res = await fetch('/api/assets');
+            if (res.ok) {
+              const assets = await res.json();
+              if (!assets || assets.length === 0) {
+                router.replace(`/${locale}/wizard`);
+              } else {
+                router.replace(`/${locale}/dashboard`);
+              }
+            } else {
+              router.replace(`/${locale}/dashboard`);
+            }
+          } catch {
             router.replace(`/${locale}/dashboard`);
           }
         } else {

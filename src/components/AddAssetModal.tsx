@@ -65,7 +65,7 @@ export default function AddAssetModal({ open, onOpenChange, onAssetAdded, asset 
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-lg w-full">
+      <DialogContent className="max-w-lg w-full glass-panel border-white/10 dark:border-white/5">
         <DialogHeader>
           <div className="flex items-center gap-2">
             {step === 2 && !asset && (
@@ -73,12 +73,12 @@ export default function AddAssetModal({ open, onOpenChange, onAssetAdded, asset 
                 variant="ghost"
                 size="sm"
                 onClick={handleBack}
-                className="p-1 h-auto"
+                className="p-1 h-8 w-8 rounded-full hover:bg-white/10"
               >
                 <ArrowLeft className="w-4 h-4" />
               </Button>
             )}
-            <DialogTitle className="flex-1">
+            <DialogTitle className="flex-1 text-xl font-heading font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-600">
               {step === 1 ? t("chooseAssetType") : t("addAssetDetails")}
             </DialogTitle>
           </div>
@@ -86,11 +86,11 @@ export default function AddAssetModal({ open, onOpenChange, onAssetAdded, asset 
           </DialogClose>
         </DialogHeader>
         {step === 1 && (
-          <div className="grid grid-cols-3 gap-4 mt-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-4">
             {assetTypesLoading ? (
-              <div className="col-span-3 flex items-center justify-center py-8">
-                <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
-                <span className="ml-2 text-sm text-gray-500">Loading asset types...</span>
+              <div className="col-span-full flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                <span className="ml-2 text-sm text-muted-foreground">Loading asset types...</span>
               </div>
             ) : (
               assetTypes.map((type) => {
@@ -108,12 +108,18 @@ export default function AddAssetModal({ open, onOpenChange, onAssetAdded, asset 
                 return (
                   <button
                     key={type.key}
-                    className={`flex flex-col items-center justify-center p-4 border rounded-lg transition ${isSelected ? 'bg-blue-100 dark:bg-blue-900 border-blue-500' : 'hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+                    className={`flex flex-col items-center justify-center p-4 rounded-xl border transition-all duration-200 group
+                      ${isSelected
+                        ? 'bg-primary/20 border-primary shadow-[0_0_15px_rgba(var(--primary-rgb),0.3)]'
+                        : 'bg-background/40 border-white/10 hover:bg-primary/10 hover:border-primary/50 hover:scale-[1.02] hover:shadow-lg'
+                      }
+                    `}
                     onClick={() => handleTypeSelect(type.key)}
                   >
-                    <Icon className="w-10 h-10 mb-2 text-blue-500" />
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-900">{t(type.label)}</span>
-                    {isSelected && <span className="mt-1 text-xs text-blue-600">{t('selectedType')}</span>}
+                    <div className={`p-3 rounded-full mb-3 transition-colors ${isSelected ? 'bg-primary text-primary-foreground' : 'bg-background/80 text-primary group-hover:bg-primary group-hover:text-primary-foreground'}`}>
+                      <Icon className="w-6 h-6" />
+                    </div>
+                    <span className="text-sm font-medium text-foreground">{t(type.label)}</span>
                   </button>
                 );
               })

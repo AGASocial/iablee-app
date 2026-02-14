@@ -1,60 +1,59 @@
 import createMiddleware from 'next-intl/middleware';
 import { routing } from './i18n/routing';
-import { createClient } from '@supabase/supabase-js'
+import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 const intlMiddleware = createMiddleware(routing);
 
 // function name changed to middleware for Next.js convention
-export async function middleware(req: NextRequest) {
+export async function middleware(request: NextRequest) {
   // First, run next-intl middleware for locale negotiation
-  const intlResponse = await intlMiddleware(req);
-  if (intlResponse) return intlResponse;
+  const intlResponse = await intlMiddleware(request);
 
-  // Then, run your Supabase session logic
-  const res = NextResponse.next()
+  let supabaseResponse = NextResponse.next({
+    request,
+  });
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value)
+          );
 
-  // Get auth token from cookies
-  let authToken =
-    req.cookies.get('sb-access-token')?.value ||
-    req.cookies.get('sb-' + supabaseUrl.split('//')[1]?.split('.')[0] + '-auth-token')?.value;
+          supabaseResponse = NextResponse.next({
+            request,
+          });
 
-  // If the token is JSON-encoded (array), parse it
-  if (authToken && authToken.startsWith('[')) {
-    try {
-      const parsed = JSON.parse(authToken);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        authToken = parsed[0];
-      }
-    } catch (e) {
-      console.error('Failed to parse auth token in middleware:', e);
+          cookiesToSet.forEach(({ name, value, options }) =>
+            supabaseResponse.cookies.set(name, value, options)
+          );
+        },
+      },
     }
-  }
+  );
 
-  let session = null;
-  if (authToken && supabaseServiceKey) {
-    // Verify token with service role client
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const { data: { user } } = await supabase.auth.getUser(authToken);
-    if (user) {
-      session = { user };
-    }
-  }
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  // Get the locale from the URL path
-  const pathname = req.nextUrl.pathname;
+  // If user is not signed in and the current path is not /auth/*,
+  // redirect the user to /{locale}/auth/login
+  const pathname = request.nextUrl.pathname;
+
+  // Get the locale from the URL path or default
+  const defaultLocale = routing.defaultLocale;
   const pathnameIsMissingLocale = routing.locales.every(
     (locale) => !pathname.startsWith(`/${locale}/`) && pathname !== `/${locale}`
   );
 
-  // Get the default locale
-  const defaultLocale = routing.defaultLocale;
-
-  // Extract locale from pathname or use default
   let locale = defaultLocale;
   if (!pathnameIsMissingLocale) {
     const pathnameLocale = routing.locales.find(
@@ -65,41 +64,36 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  // If user is not signed in and the current path is not / or /auth/*,
-  // redirect the user to /{locale}/auth/login
-  if (!session && !pathname.startsWith(`/${locale}/auth`) && !pathname.startsWith('/auth')) {
-    const redirectUrl = req.nextUrl.clone()
-    redirectUrl.pathname = `/${locale}/auth/login`
-    redirectUrl.searchParams.set(`redirectedFrom`, req.nextUrl.pathname)
-    return NextResponse.redirect(redirectUrl)
-  }
+  // Protected routes check
+  if (!user && !pathname.includes('/auth/')) {
+    // If we are on a protected route and not logged in, redirect to login
+    // However, we need to respect internationalized paths.
+    // The intlMiddleware handles the locale part, but if we need to redirect...
 
-  // If user is signed in and the current path is /auth/*,
-  // check if they have assets and redirect accordingly
-  if (session && (pathname.startsWith(`/${locale}/auth`) || pathname.startsWith('/auth'))) {
-    const redirectUrl = req.nextUrl.clone()
-
-    // Check if user has any assets using service role client
-    if (authToken && supabaseServiceKey) {
-      const supabase = createClient(supabaseUrl, supabaseServiceKey);
-      const { data: assets } = await supabase
-        .from('digital_assets')
-        .select('id')
-        .eq('user_id', session.user.id)
-        .limit(1);
-
-      // If user has no assets, redirect to wizard
-      if (!assets || assets.length === 0) {
-        redirectUrl.pathname = `/${locale}/wizard`
-      } else {
-        redirectUrl.pathname = `/${locale}/dashboard`
-      }
+    // Check if it's a public path or asset
+    if (
+      !pathname.startsWith('/_next') &&
+      !pathname.includes('/api/') &&
+      !pathname.includes('.') // static files
+    ) {
+      const loginUrl = request.nextUrl.clone();
+      loginUrl.pathname = `/${locale}/auth/login`;
+      loginUrl.searchParams.set(`redirectedFrom`, pathname);
+      return NextResponse.redirect(loginUrl);
     }
-
-    return NextResponse.redirect(redirectUrl)
   }
 
-  return res
+  // If we have an intlResponse (redirect or rewrite), we should return it, 
+  // but we need to merge the cookies set by Supabase.
+  if (intlResponse) {
+    // Copy cookies from supabaseResponse to intlResponse
+    supabaseResponse.cookies.getAll().forEach((cookie) => {
+      intlResponse.cookies.set(cookie.name, cookie.value, cookie);
+    });
+    return intlResponse;
+  }
+
+  return supabaseResponse;
 }
 
 export const config = {

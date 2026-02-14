@@ -8,8 +8,6 @@ import { Toaster } from "sonner";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { useTranslations, useLocale } from 'next-intl';
-import { useRouter, usePathname, Link } from '@/i18n/navigation';
-import { supabase } from '@/lib/supabase';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,7 +19,10 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
-import { User, LogOut, Languages } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { User, LogOut, Languages, ChevronUp } from "lucide-react";
+import { Link, useRouter, usePathname } from '@/i18n/navigation';
+import { supabase } from '@/lib/supabase';
 
 export default function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -112,39 +113,30 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
             </svg>
           </button>
 
-          {/* User Profile / Footer Area (Optional if needed later) */}
           {/* User Profile / Footer Area */}
           <div className="p-4 border-t border-border dark:border-white/5 bg-muted/20 dark:bg-black/20">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className={cn(
-                  "flex items-center gap-3 w-full rounded-lg hover:bg-muted dark:hover:bg-white/5 transition-all p-2 text-left",
-                  sidebarCollapsed && "justify-center p-0 hover:bg-transparent"
-                )}>
-                  <div className={cn(
-                    "relative flex items-center justify-center shrink-0 rounded-full bg-primary/10 dark:bg-white/10 text-primary dark:text-white transition-all",
-                    sidebarCollapsed ? "h-10 w-10 ring-2 ring-transparent hover:ring-primary/20" : "h-9 w-9"
-                  )}>
-                    <User className="h-5 w-5" />
+                <Button variant="ghost" className={cn("w-full justify-start px-2", sidebarCollapsed ? "justify-center px-0" : "")}>
+                  <div className="flex items-center gap-2 w-full">
+                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                      <User className="h-4 w-4 text-primary" />
+                    </div>
+                    <div className={cn("flex flex-col items-start overflow-hidden transition-all duration-300", sidebarCollapsed ? "w-0 opacity-0" : "flex-1 opacity-100")}>
+                      <span className="text-sm font-medium truncate w-full text-left">{t('profile')}</span>
+                      <span className="text-xs text-muted-foreground truncate w-full text-left">My Account</span>
+                    </div>
+                    {!sidebarCollapsed && <ChevronUp className="h-4 w-4 text-muted-foreground ml-auto" />}
                   </div>
-                  <div className={cn(
-                    "flex-1 overflow-hidden transition-all duration-300",
-                    sidebarCollapsed ? "w-0 opacity-0" : "w-auto opacity-100"
-                  )}>
-                    <p className="text-sm font-medium truncate">{t('profile')}</p>
-                    <p className="text-xs text-muted-foreground truncate">{t('profileSettings')}</p>
-                  </div>
-                </button>
+                </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" side="right" sideOffset={10} className="w-56 p-2">
+              <DropdownMenuContent align="end" side="right" className="w-56 p-2 mb-2 ml-2">
                 <DropdownMenuLabel className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
                   {t('profile')}
                 </DropdownMenuLabel>
-                <DropdownMenuItem asChild>
-                  <Link href="/settings" className="cursor-pointer flex w-full items-center rounded-md px-2 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground">
-                    <User className="mr-2 h-4 w-4 opacity-70" />
-                    <span>{t('profileSettings')}</span>
-                  </Link>
+                <DropdownMenuItem className="cursor-pointer rounded-md px-2 py-2 text-sm font-medium transition-colors focus:bg-accent focus:text-accent-foreground">
+                  <User className="mr-2 h-4 w-4 opacity-70" />
+                  <span>{t('profileSettings')}</span>
                 </DropdownMenuItem>
                 <DropdownMenuSub>
                   <DropdownMenuSubTrigger className="cursor-pointer rounded-md px-2 py-2 text-sm font-medium transition-colors focus:bg-accent focus:text-accent-foreground">
@@ -167,13 +159,6 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-
-            <div className={cn(
-              "text-xs text-muted-foreground dark:text-white/40 text-center transition-all duration-300 whitespace-nowrap overflow-hidden mt-4",
-              sidebarCollapsed ? "w-0 opacity-0 h-0 mt-0" : "w-auto opacity-100 h-auto"
-            )}>
-              © 2026 iablee Inc.
-            </div>
           </div>
         </div>
       </aside>

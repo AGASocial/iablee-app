@@ -138,7 +138,7 @@ export async function canCreateAsset(
   if (usage.assetsCount >= limits.maxAssets) {
     return {
       allowed: false,
-      reason: 'Asset limit reached',
+      reason: 'assetLimitReached',
       limit: limits.maxAssets,
       current: usage.assetsCount,
     };
@@ -167,7 +167,7 @@ export async function canCreateBeneficiary(
   if (usage.beneficiariesCount >= limits.maxBeneficiaries) {
     return {
       allowed: false,
-      reason: 'Beneficiary limit reached',
+      reason: 'beneficiaryLimitReached',
       limit: limits.maxBeneficiaries,
       current: usage.beneficiariesCount,
     };
