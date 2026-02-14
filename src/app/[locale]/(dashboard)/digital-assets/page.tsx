@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import AddAssetModal from '@/components/AddAssetModal';
 import AssetAttachmentsModal from '@/components/AssetAttachmentsModal';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from "@/lib/supabase";
 import { Pencil, Trash2, Plus, Paperclip, LucideIcon, Mail, Mic, Camera, Video, File } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
@@ -29,24 +29,29 @@ export default function DigitalAssetsPage() {
   const [attachmentsModalOpen, setAttachmentsModalOpen] = useState(false);
   const [selectedAssetForAttachments, setSelectedAssetForAttachments] = useState<Asset | null>(null);
 
-  const fetchAssets = async () => {
+  const fetchAssets = useCallback(async () => {
     setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data } = await supabase
-      .from('digital_assets')
-      .select('id, asset_name, asset_type, status, email, password, website, valid_until, description, files, custom_fields, beneficiary_id, beneficiary:beneficiary_id(id, full_name), asset_type_details:asset_type(id, name, description, icon)')
-      .eq('user_id', user?.id)
-      .order('asset_name', { ascending: true });
-    console.log('DEBUG: data', data);
-    setAssets(((data || []).map((asset: unknown) => {
-      const typedAsset = asset as Asset;
-      return {
-        ...typedAsset,
-        beneficiary: Array.isArray(typedAsset.beneficiary) ? typedAsset.beneficiary[0] || null : typedAsset.beneficiary || null,
-      };
-    }) as Asset[]));
-    setLoading(false);
-  };
+    try {
+      const response = await fetch('/api/assets');
+      if (!response.ok) throw new Error('Failed to fetch assets');
+
+      const data = await response.json();
+      console.log('DEBUG: data', data);
+
+      setAssets(((data || []).map((asset: unknown) => {
+        const typedAsset = asset as Asset;
+        return {
+          ...typedAsset,
+          beneficiary: Array.isArray(typedAsset.beneficiary) ? typedAsset.beneficiary[0] || null : typedAsset.beneficiary || null,
+        };
+      }) as Asset[]));
+    } catch (error) {
+      console.error('Error fetching assets:', error);
+      toast.error(t('errorFetchingAssets') || 'Error fetching assets');
+    } finally {
+      setLoading(false);
+    }
+  }, [t]);
 
   const fetchBeneficiaries = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -88,7 +93,7 @@ export default function DigitalAssetsPage() {
 
   useEffect(() => {
     fetchAssets();
-  }, []);
+  }, [fetchAssets]);
 
   async function handleDeleteAsset(id: string) {
     if (!confirm(t('deleteConfirmDigitalAsset'))) return;
