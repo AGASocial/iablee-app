@@ -1,4 +1,4 @@
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { createBrowserClient } from '@supabase/ssr'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -26,10 +26,10 @@ if (!isValidSupabaseUrl(supabaseUrl)) {
   throw new Error('Invalid Supabase URL. Please check your NEXT_PUBLIC_SUPABASE_URL in .env.local')
 }
 
-export const supabase = createClientComponentClient({
+export const supabase = createBrowserClient(
   supabaseUrl,
-  supabaseKey: supabaseAnonKey,
-})
+  supabaseAnonKey
+)
 
 export type Database = {
   public: {

@@ -204,6 +204,11 @@ npm run test:e2e -- --reporter=html
 
 ## Recursos Adicionales
 
+Usuario real para probar
+
+Email: gaveho@gmail.com
+Password: not2GIVE
+
 - [Jest Documentation](https://jestjs.io/)
 - [React Testing Library](https://testing-library.com/react)
 - [Playwright Documentation](https://playwright.dev/)
