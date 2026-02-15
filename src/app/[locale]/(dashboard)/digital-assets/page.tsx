@@ -109,6 +109,7 @@ export default function DigitalAssetsPage() {
       const res = await fetch(`/api/assets/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete');
       fetchAssets();
+      fetchLimitStatus();
     } catch {
       alert('Error deleting asset');
     } finally {
@@ -177,7 +178,7 @@ export default function DigitalAssetsPage() {
             if (!open) setEditAsset(null);
           }}
           asset={editAsset || undefined}
-          onAssetAdded={fetchAssets}
+          onAssetAdded={() => { fetchAssets(); fetchLimitStatus(); }}
         />
         {selectedAssetForAttachments && (
           <AssetAttachmentsModal

@@ -102,6 +102,7 @@ export default function BeneficiariesPage() {
             if (!res.ok) throw new Error('Failed to delete');
             setBeneficiaries(beneficiaries.filter(b => b.id !== id));
             toast.success(t('beneficiaryDeleted'));
+            fetchLimitStatus();
         } catch {
             toast.error(t('errorDeletingBeneficiary'));
         }
@@ -137,6 +138,7 @@ export default function BeneficiariesPage() {
     function handleSuccess() {
         setLoading(true);
         fetchBeneficiaries();
+        fetchLimitStatus();
     }
 
     return (

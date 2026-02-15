@@ -225,10 +225,14 @@ export default function AssetAttachmentsModal({
         </div>
       );
     }
-
     if (!file.url) return null;
 
-    switch (file.file_type) {
+    // Normalize file_type: could be MIME (e.g. "image/jpeg") or simple (e.g. "image")
+    const normalizedType = file.file_type.includes('/')
+      ? file.file_type.split('/')[0]   // "image/jpeg" → "image"
+      : file.file_type;                // already "image"
+
+    switch (normalizedType) {
       case 'image':
         return (
           <div className="flex items-center justify-center p-4">
@@ -394,7 +398,7 @@ export default function AssetAttachmentsModal({
                       >
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
                           <div className="flex-shrink-0 text-gray-500 dark:text-gray-400">
-                            {getFileIcon(file.file_type)}
+                            {getFileIcon(file.file_type.includes('/') ? file.file_type.split('/')[0] : file.file_type)}
                           </div>
                           <div className="flex-1 min-w-0">
                             <p
