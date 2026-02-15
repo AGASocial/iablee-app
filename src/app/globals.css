@@ -199,7 +199,7 @@
   }
 
   .glass-card {
-    @apply bg-card/50 backdrop-blur-md border border-border/50 shadow-lg shadow-black/5;
+    @apply bg-card backdrop-blur-md border border-border/50 shadow-lg shadow-black/5;
   }
 
   .glass-panel {

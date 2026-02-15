@@ -195,7 +195,7 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 w-full py-2">
+    <form onSubmit={handleSubmit} className="space-y-4 w-full py-2" autoComplete="off">
       <div className="space-y-2">
         <Label htmlFor="asset_name">{t('assetName')}</Label>
         <Input
@@ -213,11 +213,12 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
         <div className="space-y-2">
           <Label htmlFor="email">{t('email')}</Label>
           <Input
-            id="email"
+            id="asset_email"
             name="email"
             value={form.email}
             onChange={handleChange}
-            type="email"
+            type="text"
+            autoComplete="off"
             required={isFieldRequired('email')}
             className="bg-background/50 border-white/10 focus:border-primary/50"
           />
@@ -228,11 +229,12 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
         <div className="space-y-2">
           <Label htmlFor="password">{t('password')}</Label>
           <Input
-            id="password"
+            id="asset_password"
             name="password"
             value={form.password}
             onChange={handleChange}
-            type="password"
+            type="text"
+            autoComplete="off"
             required={isFieldRequired('password')}
             className="bg-background/50 border-white/10 focus:border-primary/50"
           />
