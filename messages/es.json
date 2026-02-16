@@ -49,6 +49,7 @@
   "delete": "Eliminar",
   "select": "Seleccionar",
   "chooseAssetType": "Elegir un tipo de activo",
+  "selectAssetTypeDesc": "Selecciona el tipo de activo que deseas agregar",
   "addAssetDetails": "Agregar Detalles del Activo",
   "numberFiles": "Número de archivos",
   "cartas": "Cartas",

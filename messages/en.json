@@ -48,6 +48,7 @@
   "delete": "Delete",
   "select": "Select",
   "chooseAssetType": "Choose an asset type",
+  "selectAssetTypeDesc": "Select the type of asset you want to add",
   "addAssetDetails": "Add Asset Details",
   "numberFiles": "Number of files",
   "cartas": "Letters",

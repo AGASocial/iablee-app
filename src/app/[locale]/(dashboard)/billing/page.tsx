@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
-import { FileText, Calendar, AlertCircle } from 'lucide-react';
+import { FileText, Calendar, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
@@ -156,29 +156,13 @@ export default function BillingPage() {
   if (loading) {
     return (
       <div className="container mx-auto py-10">
-        <div className="text-center">{t('loadingSubscription')}</div>
+        <div className="flex items-center justify-center gap-2 py-16">
+          <Loader2 className="w-6 h-6 animate-spin text-primary" />
+          <span className="text-muted-foreground">{t('loadingSubscription')}</span>
+        </div>
       </div>
     );
   }
-
-  // No longer needed since API always returns at least the Free plan
-  // if (!subscription) {
-  //   return (
-  //     <div className="container mx-auto py-10">
-  //       <Card>
-  //         <CardHeader>
-  //           <CardTitle>{t('subscription')}</CardTitle>
-  //           <CardDescription>{t('noSubscription')}</CardDescription>
-  //         </CardHeader>
-  //         <CardContent>
-  //           <Button onClick={() => router.push('/billing/plans')}>
-  //             {t('choosePlan')}
-  //           </Button>
-  //         </CardContent>
-  //       </Card>
-  //     </div>
-  //   );
-  // }
 
   const isFreePlan = !subscription || subscription.planId === 'plan_free';
 

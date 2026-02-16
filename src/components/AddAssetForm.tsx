@@ -313,11 +313,11 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
               onValueChange={(value) => handleCustomFieldChange(field.key, value)}
             >
               <SelectTrigger className="bg-background/50 border-white/10 focus:border-primary/50 w-full">
-                <SelectValue placeholder="Seleccionar..." />
+                <SelectValue placeholder={t('select')} />
               </SelectTrigger>
               <SelectContent>
                 {field.options?.map((option) => (
-                  <SelectItem key={option} value={option}>{option}</SelectItem>
+                  <SelectItem key={option} value={option}>{t(option)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

@@ -38,7 +38,7 @@ export default function BeneficiariesPage() {
 
     // For mobile view detail modal
     const [selectedBeneficiary, setSelectedBeneficiary] = useState<Beneficiary | null>(null);
-    const [limitReached, setLimitReached] = useState(false);
+    const [limitReached, setLimitReached] = useState(true);
     const [limitInfo, setLimitInfo] = useState<{ limit?: number; current?: number } | null>(null);
 
     const fetchBeneficiaries = useCallback(async () => {

@@ -29,7 +29,7 @@ export default function DigitalAssetsPage() {
   const [selectedAssetDetails, setSelectedAssetDetails] = useState<Asset | null>(null);
   const [attachmentsModalOpen, setAttachmentsModalOpen] = useState(false);
   const [selectedAssetForAttachments, setSelectedAssetForAttachments] = useState<Asset | null>(null);
-  const [limitReached, setLimitReached] = useState(false);
+  const [limitReached, setLimitReached] = useState(true);
   const [limitInfo, setLimitInfo] = useState<{ limit?: number; current?: number } | null>(null);
 
   const fetchAssets = useCallback(async () => {
