@@ -69,6 +69,16 @@ The app includes automatic authentication redirects:
 - `src/middleware.ts` - Authentication and internationalization middleware
 - `messages/` - Translation files for internationalization
 
+## Documentation
+
+Detailed documentation for specific features and implementations can be found in the `docs/` directory:
+
+-   **[File Encryption & Security](docs/encryption.md)**: Details the Envelope Encryption system, key management, and database hardening measures.
+-   **[Billing Setup](docs/BILLING-SETUP.md)**: Guide for setting up and managing billing integration.
+-   **[Technical Specifications](docs/TECHNICAL-SPECIFICATIONS.md)**: In-depth technical specs for the application.
+-   **[Google Sign-In](docs/GOOGLE_SIGN_IN_IMPLEMENTATION.md)**: Implementation details for Google OAuth.
+
+
 ## Learn More
 
 To learn more about the technologies used:

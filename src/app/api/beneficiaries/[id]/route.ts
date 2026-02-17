@@ -56,6 +56,21 @@ export async function DELETE(
 
     const { id } = await params;
 
+    // Check if the beneficiary is assigned to any assets
+    const { count, error: countError } = await supabase
+        .from('digital_assets')
+        .select('*', { count: 'exact', head: true })
+        .eq('beneficiary_id', id);
+
+    if (countError) {
+        console.error('Supabase error checking beneficiary assignments:', countError);
+        return NextResponse.json({ error: countError.message }, { status: 500 });
+    }
+
+    if (count && count > 0) {
+        return NextResponse.json({ error: 'Beneficiary is assigned to assets' }, { status: 409 });
+    }
+
     const { error } = await supabase
         .from('beneficiaries')
         .delete()

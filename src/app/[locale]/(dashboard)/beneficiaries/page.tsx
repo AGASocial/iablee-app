@@ -6,6 +6,7 @@ import { Switch } from "@/components/ui/switch";
 import { useState, useEffect, useCallback } from "react";
 
 import { Pencil, Trash2, Plus, Users } from "lucide-react";
+import DeleteConfirmationModal from '@/components/DeleteConfirmationModal';
 import { toast } from 'sonner';
 import AddBeneficiaryModal from '@/components/AddBeneficiaryModal';
 import { Beneficiary } from '@/models/beneficiary';
@@ -101,18 +102,38 @@ export default function BeneficiariesPage() {
         setShowAddModal(true);
     };
 
-    async function handleDeleteBeneficiary(id: string) {
-        if (!confirm(t('deleteConfirmBeneficiary'))) return;
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [beneficiaryToDelete, setBeneficiaryToDelete] = useState<string | null>(null);
+
+    function handleDeleteBeneficiary(id: string) {
+        setBeneficiaryToDelete(id);
+        setDeleteModalOpen(true);
+    }
+
+    async function confirmDeleteBeneficiary() {
+        if (!beneficiaryToDelete) return;
+
         try {
-            const res = await fetch(`/api/beneficiaries/${id}`, { method: 'DELETE' });
+            const res = await fetch(`/api/beneficiaries/${beneficiaryToDelete}`, { method: 'DELETE' });
+
+            if (res.status === 409) {
+                toast.error(t('errorBeneficiaryAssigned'));
+                setDeleteModalOpen(false);
+                setBeneficiaryToDelete(null);
+                return;
+            }
+
             if (!res.ok) throw new Error('Failed to delete');
-            setBeneficiaries(beneficiaries.filter(b => b.id !== id));
+            setBeneficiaries(beneficiaries.filter(b => b.id !== beneficiaryToDelete));
             toast.success(t('beneficiaryDeleted'));
             fetchLimitStatus();
+            setDeleteModalOpen(false);
+            setBeneficiaryToDelete(null);
         } catch {
             toast.error(t('errorDeletingBeneficiary'));
         }
     }
+
 
     function handleEditBeneficiary(b: Beneficiary) {
         setBeneficiaryToEdit(b);
@@ -149,6 +170,17 @@ export default function BeneficiariesPage() {
 
     return (
         <div className="p-4 sm:p-8">
+            <DeleteConfirmationModal
+                open={deleteModalOpen}
+                onClose={() => {
+                    setDeleteModalOpen(false);
+                    setBeneficiaryToDelete(null);
+                }}
+                onConfirm={confirmDeleteBeneficiary}
+                title={t('delete')}
+                description={t('deleteConfirmBeneficiary')}
+                loading={loading}
+            />
             <div className="flex items-center justify-between mb-8">
                 <div>
                     <h1 className="text-4xl font-bold text-gray-900 dark:text-white">{t('beneficiariesTitle')}</h1>
