@@ -13,6 +13,17 @@ export function PinInput({ length = 6, onComplete, disabled = false }: PinInputP
     const [pin, setPin] = useState<string[]>(new Array(length).fill(""));
     const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
+    // If an external valid pin is provided via some prop we could use it, 
+    // but here we just want to expose a way to reset.
+    // However, the standard way in React is to be a controlled component or exposed ref.
+    // Given the implementation in SecuritySettingsPage uses reset by key or just remounting, 
+    // actually, let's just make sure we export a way to clear or use a key.
+    // But wait, the user's implementation in `SecuritySettingsPage` calls `setCurrentPin` etc.
+    // The `PinInput` component does NOT take a `value` prop currently, so it is uncontrolled internally.
+    // If I want to clear it, I should add a key prop in the parent or make it controlled.
+    // Making it fully controlled is better.
+
+
     useEffect(() => {
         if (inputRefs.current[0] && !disabled) {
             inputRefs.current[0].focus();

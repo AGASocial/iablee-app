@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createAuthenticatedRouteClient } from "@/lib/supabase-server";
 import { cookies } from "next/headers";
 import { verifySecuritySessionToken } from "@/lib/security";

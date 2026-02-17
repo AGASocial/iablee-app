@@ -138,9 +138,11 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
                 <DropdownMenuLabel className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
                   {t('profile')}
                 </DropdownMenuLabel>
-                <DropdownMenuItem className="cursor-pointer rounded-md px-2 py-2 text-sm font-medium transition-colors focus:bg-accent focus:text-accent-foreground">
-                  <User className="mr-2 h-4 w-4 opacity-70" />
-                  <span>{t('profileSettings')}</span>
+                <DropdownMenuItem asChild>
+                  <Link href="/settings" className="flex w-full cursor-pointer items-center rounded-md px-2 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground">
+                    <User className="mr-2 h-4 w-4 opacity-70" />
+                    <span>{t('profileSettings')}</span>
+                  </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSub>
                   <DropdownMenuSubTrigger className="cursor-pointer rounded-md px-2 py-2 text-sm font-medium transition-colors focus:bg-accent focus:text-accent-foreground">
