@@ -1,49 +1,35 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor, act } from '@testing-library/react';
 import { useAuth } from '../auth';
-import { supabase } from '../supabase';
-
-jest.mock('../supabase');
 
 describe('useAuth', () => {
-  const mockSupabase = supabase as jest.Mocked<typeof supabase>;
-  const mockUnsubscribe = jest.fn();
-  const mockSubscription = {
-    data: { subscription: { unsubscribe: mockUnsubscribe } },
-  };
+  const mockFetch = global.fetch as jest.Mock;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockFetch.mockReset();
   });
 
-  it('should initialize with loading state', () => {
-    mockSupabase.auth.getSession = jest.fn().mockResolvedValue({
-      data: { session: null },
-      error: null,
+  it('should initialize with loading state', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ authenticated: false, user: null }),
     });
-    mockSupabase.auth.onAuthStateChange = jest.fn().mockReturnValue(mockSubscription);
 
     const { result } = renderHook(() => useAuth());
 
     expect(result.current.loading).toBe(true);
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
   });
 
-  it('should return user when session exists', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mockUser: any = {
-      id: 'user-123',
-      email: 'test@example.com',
-    };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mockSession: any = {
-      user: mockUser,
-      access_token: 'token',
-    };
-
-    mockSupabase.auth.getSession = jest.fn().mockResolvedValue({
-      data: { session: mockSession },
-      error: null,
+  it('should return user when authenticated session exists', async () => {
+    const user = { id: 'user-123', email: 'test@example.com' };
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ authenticated: true, user }),
     });
-    mockSupabase.auth.onAuthStateChange = jest.fn().mockReturnValue(mockSubscription);
 
     const { result } = renderHook(() => useAuth());
 
@@ -51,16 +37,19 @@ describe('useAuth', () => {
       expect(result.current.loading).toBe(false);
     });
 
-    expect(result.current.user).toEqual(mockUser);
+    expect(result.current.user).toEqual(user);
     expect(result.current.isAuthenticated).toBe(true);
+    expect(mockFetch).toHaveBeenCalledWith('/api/auth/session', {
+      method: 'GET',
+      credentials: 'include',
+    });
   });
 
-  it('should return null user when no session', async () => {
-    mockSupabase.auth.getSession = jest.fn().mockResolvedValue({
-      data: { session: null },
-      error: null,
+  it('should return null user when not authenticated', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ authenticated: false, user: null }),
     });
-    mockSupabase.auth.onAuthStateChange = jest.fn().mockReturnValue(mockSubscription);
 
     const { result } = renderHook(() => useAuth());
 
@@ -72,13 +61,8 @@ describe('useAuth', () => {
     expect(result.current.isAuthenticated).toBe(false);
   });
 
-  it('should handle session errors', async () => {
-    const errorMessage = 'Session error';
-    mockSupabase.auth.getSession = jest.fn().mockResolvedValue({
-      data: { session: null },
-      error: { message: errorMessage },
-    });
-    mockSupabase.auth.onAuthStateChange = jest.fn().mockReturnValue(mockSubscription);
+  it('should set error when session request fails', async () => {
+    mockFetch.mockResolvedValue({ ok: false, json: async () => ({}) });
 
     const { result } = renderHook(() => useAuth());
 
@@ -86,18 +70,23 @@ describe('useAuth', () => {
       expect(result.current.loading).toBe(false);
     });
 
-    expect(result.current.error).toBe(errorMessage);
+    expect(result.current.error).toBe('Failed to get session');
   });
 
-  it('should call signOut successfully', async () => {
-    mockSupabase.auth.getSession = jest.fn().mockResolvedValue({
-      data: { session: null },
-      error: null,
-    });
-    mockSupabase.auth.onAuthStateChange = jest.fn().mockReturnValue(mockSubscription);
-    mockSupabase.auth.signOut = jest.fn().mockResolvedValue({
-      error: null,
-    });
+  it('should call logout endpoint on signOut', async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ authenticated: true, user: { id: 'user-123' } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ authenticated: false, user: null }),
+      });
 
     const { result } = renderHook(() => useAuth());
 
@@ -105,21 +94,26 @@ describe('useAuth', () => {
       expect(result.current.loading).toBe(false);
     });
 
-    await result.current.signOut();
+    await act(async () => {
+      await result.current.signOut();
+    });
 
-    expect(mockSupabase.auth.signOut).toHaveBeenCalled();
+    expect(mockFetch).toHaveBeenCalledWith('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+    });
   });
 
-  it('should handle signOut errors', async () => {
-    const errorMessage = 'Sign out error';
-    mockSupabase.auth.getSession = jest.fn().mockResolvedValue({
-      data: { session: null },
-      error: null,
-    });
-    mockSupabase.auth.onAuthStateChange = jest.fn().mockReturnValue(mockSubscription);
-    mockSupabase.auth.signOut = jest.fn().mockResolvedValue({
-      error: { message: errorMessage },
-    });
+  it('should refresh session when auth-changed is dispatched', async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ authenticated: false, user: null }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ authenticated: true, user: { id: 'user-999' } }),
+      });
 
     const { result } = renderHook(() => useAuth());
 
@@ -127,23 +121,12 @@ describe('useAuth', () => {
       expect(result.current.loading).toBe(false);
     });
 
-    await result.current.signOut();
-
-    expect(result.current.error).toBe(errorMessage);
-  });
-
-  it('should unsubscribe on unmount', () => {
-    mockSupabase.auth.getSession = jest.fn().mockResolvedValue({
-      data: { session: null },
-      error: null,
+    act(() => {
+      window.dispatchEvent(new Event('auth-changed'));
     });
-    mockSupabase.auth.onAuthStateChange = jest.fn().mockReturnValue(mockSubscription);
 
-    const { unmount } = renderHook(() => useAuth());
-
-    unmount();
-
-    expect(mockUnsubscribe).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(result.current.user?.id).toBe('user-999');
+    });
   });
 });
-

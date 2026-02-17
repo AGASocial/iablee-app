@@ -16,7 +16,6 @@ import {
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase"
 import Link from "next/link"
 import Image from "next/image"
 import { useTranslations, useLocale } from "next-intl"
@@ -54,40 +53,35 @@ export function AuthForm({ type }: AuthFormProps) {
     setIsLoading(true)
 
     try {
-      const origin = typeof window !== "undefined" ? window.location.origin : "";
-      const emailRedirectTo = `${origin}/${locale}`;
-
-      console.log('Auth redirect URLs:', {
-        origin,
-        locale,
-        emailRedirectTo,
-        currentUrl: window.location.href
-      });
-
       if (type === "register") {
-        const { error: signUpError } = await supabase.auth.signUp({
-          email: data.email,
-          password: data.password,
-          options: {
-            data: {
-              full_name: data.fullName,
-            },
-            emailRedirectTo
-          },
+        const response = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: data.email,
+            password: data.password,
+            fullName: data.fullName,
+            locale,
+          }),
         })
-
-        if (signUpError) throw signUpError
+        const result = await response.json()
+        if (!response.ok) throw new Error(result.error ?? "Registration failed")
 
         toast.success("Registration successful! Please check your email to verify your account.")
         router.push(`/${locale}/auth/login`)
       } else {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email: data.email,
-          password: data.password,
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: data.email,
+            password: data.password,
+          }),
         })
+        const result = await response.json()
+        if (!response.ok) throw new Error(result.error ?? "Login failed")
 
-        if (signInError) throw signInError
-        console.log("Sign in successful!")
+        window.dispatchEvent(new Event('auth-changed'))
         toast.success("Login successful!")
 
         // Check if user has any assets via API
@@ -116,31 +110,49 @@ export function AuthForm({ type }: AuthFormProps) {
   }
 
   async function handleGoogleSignIn() {
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
-    const redirectTo = `${origin}/${locale}/auth/callback`;
-
-    console.log('Google OAuth redirect:', redirectTo);
-
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo
+    try {
+      setIsLoading(true);
+      const response = await fetch('/api/auth/oauth/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'google',
+          locale,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.url) {
+        throw new Error(result.error ?? 'Failed to start Google login');
       }
-    });
+
+      window.location.href = result.url;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "An error occurred");
+      setIsLoading(false);
+    }
   }
 
   async function handleAppleSignIn() {
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
-    const redirectTo = `${origin}/${locale}/auth/callback`;
-
-    console.log('Apple OAuth redirect:', redirectTo);
-
-    await supabase.auth.signInWithOAuth({
-      provider: "apple",
-      options: {
-        redirectTo
+    try {
+      setIsLoading(true);
+      const response = await fetch('/api/auth/oauth/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'apple',
+          locale,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.url) {
+        throw new Error(result.error ?? 'Failed to start Apple login');
       }
-    });
+
+      window.location.href = result.url;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "An error occurred");
+      setIsLoading(false);
+    }
   }
 
   const appleButtonUrl =
@@ -274,7 +286,7 @@ export function AuthForm({ type }: AuthFormProps) {
       </p>
 
       <p className="px-8 text-center text-xs text-muted-foreground">
-        Versión 2.0.0
+        {t("version")} 2.1.0
         <br />
         Copyright © 2026
       </p>

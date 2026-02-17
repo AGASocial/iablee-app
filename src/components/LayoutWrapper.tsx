@@ -22,7 +22,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { User, LogOut, Languages, ChevronUp } from "lucide-react";
 import { Link, useRouter, usePathname } from '@/i18n/navigation';
-import { supabase } from '@/lib/supabase';
 import SecurityPinModal from './security/SecurityPinModal';
 import { useSecurity } from '@/context/SecurityContext';
 
@@ -39,7 +38,8 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
   const securityState = useSecurity();
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
+    await fetch('/api/auth/logout', { method: 'POST' });
+    window.dispatchEvent(new Event('auth-changed'));
     router.push('/auth/login');
   };
 
