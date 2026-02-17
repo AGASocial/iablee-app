@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { Database } from '@/lib/supabase';
+import { verifySecuritySessionToken } from '@/lib/security';
 
 /**
  * Creates an authenticated Supabase server client for use in API routes.
@@ -47,4 +48,15 @@ export async function createAuthenticatedRouteClient() {
     }
 
     return { supabase, user } as const;
+}
+
+/**
+ * Checks if the user has a valid security session (PIN verified)
+ */
+export async function checkSecuritySession() {
+    const cookieStore = await cookies();
+    const securitySession = cookieStore.get("security_session");
+    if (!securitySession?.value) return false;
+
+    return await verifySecuritySessionToken(securitySession.value);
 }

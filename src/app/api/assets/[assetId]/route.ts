@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAuthenticatedRouteClient } from '@/lib/supabase-server';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 
 export async function PUT(
     request: Request,
@@ -30,11 +31,11 @@ export async function PUT(
         if (valid_until !== undefined) updateData.valid_until = valid_until;
         if (description !== undefined) updateData.description = description;
         if (files !== undefined) updateData.files = files;
-        if (custom_fields !== undefined) updateData.custom_fields = custom_fields;
+        if (custom_fields !== undefined) updateData.custom_fields = custom_fields ? JSON.stringify(custom_fields) : null;
         if (beneficiary_id !== undefined) updateData.beneficiary_id = beneficiary_id;
         if (status !== undefined) updateData.status = status;
 
-        const { data, error } = await supabase
+        const { data, error } = await supabaseAdmin
             .from('digital_assets')
             .update(updateData)
             .eq('id', assetId)

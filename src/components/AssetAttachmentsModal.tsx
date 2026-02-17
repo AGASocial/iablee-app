@@ -188,7 +188,7 @@ export default function AssetAttachmentsModal({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             file_path: uploadData.path,
-            file_name: file.name,
+            file_name: uploadData.fileName, // Use sanitized name from server
             file_type: fileType,
             file_size: file.size
           })

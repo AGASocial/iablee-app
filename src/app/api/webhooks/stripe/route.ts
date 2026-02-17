@@ -82,8 +82,5 @@ export async function POST(request: NextRequest) {
 }
 
 // Disable body parsing for webhook signature verification
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
+// Disable body parsing for webhook signature verification
+// In App Router, we read the body manually, so no config needed.
