@@ -27,6 +27,7 @@
   "changeSecurityPin": "Change Security PIN",
   "currentPin": "Current PIN",
   "newPin": "New PIN",
+  "forgotPin": "Forgot your PIN?",
   "confirmNewPin": "Confirm New PIN",
   "changePinDescription": "Change your 6-digit PIN to secure your assets and beneficiaries.",
   "pinChangedSuccess": "Security PIN changed successfully",

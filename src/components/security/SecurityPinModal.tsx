@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { PinInput } from "@/components/ui/pin-input";
 import { Loader2, Lock, ShieldCheck, AlertCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { Link } from "@/i18n/navigation";
 
 interface SecurityPinModalProps {
     isOpen: boolean;
@@ -21,11 +22,13 @@ export default function SecurityPinModal({ isOpen, mode, onSuccess, onCancel, fo
     const [step, setStep] = useState<"enter" | "create" | "confirm">(mode === "setup" ? "create" : "enter");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [showForgotLink, setShowForgotLink] = useState(false);
 
     useEffect(() => {
         if (isOpen) {
             setPin("");
             setError(null);
+            setShowForgotLink(false);
             setStep(mode === "setup" ? "create" : "enter");
         }
     }, [isOpen, mode]);
@@ -33,6 +36,7 @@ export default function SecurityPinModal({ isOpen, mode, onSuccess, onCancel, fo
     const handlePinComplete = async (enteredPin: string) => {
         setError(null);
         setPin(enteredPin);
+        setShowForgotLink(false);
 
         if (step === "enter") {
             await verifyPin(enteredPin);
@@ -42,8 +46,6 @@ export default function SecurityPinModal({ isOpen, mode, onSuccess, onCancel, fo
         } else if (step === "confirm") {
             if (enteredPin !== pin) {
                 setError(t("pinMismatch") !== "pinMismatch" ? t("pinMismatch") : "PINs do not match. Try again.");
-                // specific UX choice: clear confirm pin and stay on confirm step or go back to create?
-                // Let's go back to create to be safe
                 setStep("create");
                 setPin("");
             } else {
@@ -71,6 +73,7 @@ export default function SecurityPinModal({ isOpen, mode, onSuccess, onCancel, fo
             const error = err as Error;
             setError(error.message || "Invalid PIN");
             setPin(""); // clear pin to allow retry
+            setShowForgotLink(true);
         } finally {
             setLoading(false);
         }
@@ -149,9 +152,16 @@ export default function SecurityPinModal({ isOpen, mode, onSuccess, onCancel, fo
                     )}
 
                     {error && (
-                        <div className="flex items-center text-destructive text-sm bg-destructive/10 p-2 rounded-md transition-all animate-in fade-in slide-in-from-top-1">
-                            <AlertCircle className="w-4 h-4 mr-2" />
-                            {error}
+                        <div className="flex flex-col items-center space-y-2">
+                            <div className="flex items-center text-destructive text-sm bg-destructive/10 p-2 rounded-md transition-all animate-in fade-in slide-in-from-top-1">
+                                <AlertCircle className="w-4 h-4 mr-2" />
+                                {error}
+                            </div>
+                            {showForgotLink && step === "enter" && (
+                                <Link href="/settings/security" className="text-sm text-primary hover:underline mt-2">
+                                    {t("forgotPin") || "Forgot your PIN?"}
+                                </Link>
+                            )}
                         </div>
                     )}
                 </div>

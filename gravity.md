@@ -14,3 +14,6 @@
 - **Security**: Keeps database logic, schemas, and sensitive operations hidden from the client.
 - **Abstraction**: Decouples the frontend from the specific backend implementation (Supabase), making future migrations or changes easier.
 - **Control**: Allows for centralized validation, rate limiting, and business logic execution on the server before database access.
+
+Always use the `t` function to get the translations.
+Always create the translations in the `messages` folder for en.json and es.json
