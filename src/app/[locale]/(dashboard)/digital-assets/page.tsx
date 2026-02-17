@@ -8,16 +8,19 @@ import AssetAttachmentsModal from '@/components/AssetAttachmentsModal';
 import { useState, useEffect, useCallback } from 'react';
 
 import { Pencil, Trash2, Plus, Paperclip, LucideIcon, Mail, Mic, Camera, Video, File } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter } from '@/components/ui/dialog';
 import type { Asset } from '@/models/asset';
 import { Beneficiary } from '@/models/beneficiary';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { toast } from 'sonner';
 
+import { useSecurity } from '@/context/SecurityContext';
+
 export default function DigitalAssetsPage() {
   const t = useTranslations();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { locked, loading: securityLoading } = useSecurity(); // Get security state
   const [modalOpen, setModalOpen] = useState(false);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,7 +42,6 @@ export default function DigitalAssetsPage() {
       if (!response.ok) throw new Error('Failed to fetch assets');
 
       const data = await response.json();
-      console.log('DEBUG: data', data);
 
       setAssets(((data || []).map((asset: unknown) => {
         const typedAsset = asset as Asset;
@@ -90,9 +92,12 @@ export default function DigitalAssetsPage() {
   };
 
   useEffect(() => {
-    fetchAssets();
-    fetchLimitStatus();
-  }, [fetchAssets, fetchLimitStatus]);
+    // Only fetch if unlocked AND security check is done to avoid errors
+    if (!locked && !securityLoading) {
+      fetchAssets();
+      fetchLimitStatus();
+    }
+  }, [fetchAssets, fetchLimitStatus, locked, securityLoading]);
 
   // Auto-open modal when ?action=add is present in the URL
   useEffect(() => {
@@ -248,7 +253,8 @@ export default function DigitalAssetsPage() {
               return (
                 <div
                   key={asset.id}
-                  className={`group relative glass-card p-5 rounded-2xl transition-all duration-300 hover:scale-[1.02] hover:-translate-y-1 hover:shadow-xl hover:border-primary/20 flex flex-col justify-between h-full animate-fade-in-up ${delayClass}`}
+                  className={`group relative glass-card p-5 rounded-2xl transition-all duration-300 hover:scale-[1.02] hover:-translate-y-1 hover:shadow-xl hover:border-primary/20 flex flex-col justify-between h-full animate-fade-in-up ${delayClass} cursor-pointer`}
+                  onClick={() => setSelectedAssetDetails(asset)}
                 >
                   {/* Card Header */}
                   <div className="flex items-start justify-between mb-4">
@@ -260,10 +266,10 @@ export default function DigitalAssetsPage() {
                       Active
                     </div> */}
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 absolute top-4 right-4 bg-background/80 backdrop-blur-sm rounded-lg p-1 shadow-sm border border-border/50">
-                      <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-blue-500" onClick={() => handleEditAsset(asset)} title={t('edit')}>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-blue-500" onClick={(e) => { e.stopPropagation(); handleEditAsset(asset); }} title={t('edit')}>
                         <Pencil className="w-4 h-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-red-500" onClick={() => handleDeleteAsset(asset.id)} title={t('delete')}>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-red-500" onClick={(e) => { e.stopPropagation(); handleDeleteAsset(asset.id); }} title={t('delete')}>
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>
@@ -271,7 +277,7 @@ export default function DigitalAssetsPage() {
 
                   {/* Card Body */}
                   <div className="mb-4">
-                    <h3 className="font-bold text-lg mb-1 line-clamp-1 group-hover:text-primary transition-colors cursor-pointer" onClick={() => handleEditAsset(asset)}>
+                    <h3 className="font-bold text-lg mb-1 line-clamp-1 group-hover:text-primary transition-colors cursor-pointer">
                       {asset.asset_name}
                     </h3>
                     <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-3">
@@ -281,7 +287,7 @@ export default function DigitalAssetsPage() {
                     <div className="space-y-2">
                       <div
                         className="flex items-center gap-2 text-sm p-2 rounded-lg bg-muted/30 hover:bg-muted/60 transition-colors cursor-pointer"
-                        onClick={() => openAssignModal(asset)}
+                        onClick={(e) => { e.stopPropagation(); openAssignModal(asset); }}
                       >
                         <div className="h-6 w-6 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center text-[10px] font-bold text-indigo-600 dark:text-indigo-300">
                           {asset.beneficiary?.full_name?.charAt(0) || '?'}
@@ -303,7 +309,7 @@ export default function DigitalAssetsPage() {
                   {/* Card Footer */}
                   <div className="mt-auto pt-3 border-t border-border/50 flex items-center justify-between">
                     <button
-                      onClick={() => openAttachmentsModal(asset)}
+                      onClick={(e) => { e.stopPropagation(); openAttachmentsModal(asset); }}
                       className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-primary transition-colors group/files"
                     >
                       <Paperclip className="w-3.5 h-3.5 group-hover/files:scale-110 transition-transform" />
@@ -319,7 +325,7 @@ export default function DigitalAssetsPage() {
         </div>
         {/* Mobile details modal */}
         {selectedAssetDetails && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-2 sm:hidden">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-2">
             <div className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-lg shadow-lg p-6 w-full max-w-sm border border-gray-200 dark:border-gray-700">
               <h3 className="text-lg font-bold mb-4 text-gray-900 dark:text-white">{selectedAssetDetails.asset_name}</h3>
               <div className="space-y-2">
@@ -380,15 +386,15 @@ export default function DigitalAssetsPage() {
                 </div>
               )}
             </div>
-            <div className="flex justify-end gap-2 mt-6">
-              <Button variant="destructive" onClick={() => handleAssignBeneficiary(null)} disabled={selectedBeneficiaryId === null || loading}>
+            <DialogFooter className="mt-6 gap-2 sm:gap-2">
+              <Button variant="destructive" onClick={() => handleAssignBeneficiary(null)} disabled={selectedBeneficiaryId === null || loading} className="w-full sm:w-auto">
                 {loading ? t('saving') : t('removeBeneficiary')}
               </Button>
-              <Button variant="outline" onClick={() => setAssignModalOpen(false)}>{t('cancel')}</Button>
-              <Button onClick={() => handleAssignBeneficiary(selectedBeneficiaryId)} disabled={!selectedBeneficiaryId || loading}>
+              <Button variant="outline" onClick={() => setAssignModalOpen(false)} className="w-full sm:w-auto">{t('cancel')}</Button>
+              <Button onClick={() => handleAssignBeneficiary(selectedBeneficiaryId)} disabled={!selectedBeneficiaryId || loading} className="w-full sm:w-auto">
                 {loading ? t('saving') : t('assignBeneficiary')}
               </Button>
-            </div>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>

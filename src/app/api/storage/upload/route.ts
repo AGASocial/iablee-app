@@ -32,7 +32,8 @@ export async function POST(request: Request) {
 
         return NextResponse.json({
             path: data.path,
-            fileName: file.name,
+            fileName: safeFileName, // Return the sanitized name for the DB record
+            originalName: file.name, // Keep original if needed for UI, but primary name is now safe
             fileType: file.type,
             fileSize: file.size,
         }, { status: 201 });

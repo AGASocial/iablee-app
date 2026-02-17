@@ -39,7 +39,11 @@ export async function GET(
     const headers = new Headers();
     headers.set('Content-Type', fileData.type);
     headers.set('Content-Length', fileData.size.toString());
-    headers.set('Content-Disposition', `inline; filename="${attachment.file_name}"`);
+
+    // Handle non-ASCII characters in filename
+    const encodedFilename = encodeURIComponent(attachment.file_name);
+    headers.set('Content-Disposition', `inline; filename="${encodedFilename}"; filename*=UTF-8''${encodedFilename}`);
+
     headers.set('Cache-Control', 'private, max-age=3600');
 
     return new NextResponse(fileData, {

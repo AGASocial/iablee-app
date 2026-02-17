@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAuthenticatedRouteClient } from '@/lib/supabase-server';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { canCreateAsset, canCreateBeneficiary } from '@/lib/subscription/limits';
 
 export async function POST(request: Request) {
@@ -37,7 +38,7 @@ export async function POST(request: Request) {
         }
 
         // Create the asset
-        const { data: assetData, error: assetError } = await supabase
+        const { data: assetData, error: assetError } = await supabaseAdmin
             .from('digital_assets')
             .insert({
                 user_id: user.id,
@@ -49,7 +50,7 @@ export async function POST(request: Request) {
                 email: asset.email || null,
                 password: asset.password || null,
                 files: fileUrls && fileUrls.length > 0 ? fileUrls : null,
-                custom_fields: asset.customFields && Object.keys(asset.customFields).length > 0 ? asset.customFields : null,
+                custom_fields: asset.customFields && Object.keys(asset.customFields).length > 0 ? JSON.stringify(asset.customFields) : null,
                 status: 'unassigned',
             })
             .select()
@@ -100,7 +101,7 @@ export async function POST(request: Request) {
         }
 
         // Link beneficiary to asset
-        const { error: linkError } = await supabase
+        const { error: linkError } = await supabaseAdmin
             .from('digital_assets')
             .update({ beneficiary_id: beneficiaryData.id, status: 'assigned' })
             .eq('id', assetData.id);

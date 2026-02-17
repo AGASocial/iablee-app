@@ -25,10 +25,13 @@ function StatusBadge({ status }: { status: string | null }) {
     );
 }
 
+import { useSecurity } from '@/context/SecurityContext'; // Import security context
+
 export default function BeneficiariesPage() {
     const t = useTranslations();
     const router = useRouter();
     const searchParams = useSearchParams();
+    const { locked, loading: securityLoading } = useSecurity(); // Get security state
     const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
     const [loading, setLoading] = useState(true);
     const [showAddModal, setShowAddModal] = useState(false);
@@ -76,10 +79,13 @@ export default function BeneficiariesPage() {
     }, []);
 
     useEffect(() => {
-        setLoading(true);
-        fetchBeneficiaries();
-        fetchLimitStatus();
-    }, [fetchBeneficiaries, fetchLimitStatus]);
+        // Only fetch if unlocked to avoid errors
+        if (!locked && !securityLoading) {
+            setLoading(true);
+            fetchBeneficiaries();
+            fetchLimitStatus();
+        }
+    }, [fetchBeneficiaries, fetchLimitStatus, locked, securityLoading]);
 
     // Auto-open modal when ?action=add is present in the URL
     useEffect(() => {

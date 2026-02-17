@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createAuthenticatedRouteClient } from '@/lib/supabase-server';
+import { createAuthenticatedRouteClient, checkSecuritySession } from '@/lib/supabase-server';
 import { canCreateBeneficiary } from '@/lib/subscription/limits';
 
 export async function GET() {
@@ -7,6 +7,14 @@ export async function GET() {
 
     if (!user) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const hasSecuritySession = await checkSecuritySession();
+    if (!hasSecuritySession) {
+        const { data: userData } = await supabase.from('users').select('security_pin_hash').eq('id', user.id).single();
+        if (userData?.security_pin_hash) {
+            return NextResponse.json({ error: 'Security PIN required' }, { status: 403 });
+        }
     }
 
     const { data, error } = await supabase
@@ -28,6 +36,14 @@ export async function POST(request: Request) {
 
     if (!user) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const hasSecuritySession = await checkSecuritySession();
+    if (!hasSecuritySession) {
+        const { data: userData } = await supabase.from('users').select('security_pin_hash').eq('id', user.id).single();
+        if (userData?.security_pin_hash) {
+            return NextResponse.json({ error: 'Security PIN required' }, { status: 403 });
+        }
     }
 
     try {
