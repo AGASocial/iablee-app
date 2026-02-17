@@ -1,55 +1,77 @@
-import { useEffect, useState } from 'react';
-import { supabase } from './supabase';
-import type { User, Session } from '@supabase/supabase-js';
+import { useCallback, useEffect, useState } from 'react';
+
+interface AuthUser {
+  id: string;
+  email?: string;
+  user_metadata?: {
+    full_name?: string;
+    [key: string]: unknown;
+  };
+}
+
+interface SessionResponse {
+  authenticated: boolean;
+  user: AuthUser | null;
+}
 
 export function useAuth() {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    // Get initial session
-    const getInitialSession = async () => {
-      try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) {
-          console.error('Error getting session:', error);
-          setError(error.message);
-        } else {
-          setSession(session);
-          setUser(session?.user ?? null);
-        }
-      } catch (err) {
-        console.error('Error in getInitialSession:', err);
+  const refreshSession = useCallback(async () => {
+    try {
+      const response = await fetch('/api/auth/session', {
+        method: 'GET',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        setUser(null);
         setError('Failed to get session');
-      } finally {
-        setLoading(false);
+        return;
       }
+
+      const data = (await response.json()) as SessionResponse;
+      setUser(data.authenticated ? data.user : null);
+      setError(null);
+    } catch (err) {
+      console.error('Error loading auth session:', err);
+      setUser(null);
+      setError('Failed to get session');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshSession();
+
+    const onAuthChanged = () => {
+      setLoading(true);
+      void refreshSession();
     };
 
-    getInitialSession();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('Auth state changed:', event, session?.user?.email);
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
-        setError(null);
-      }
-    );
-
-    return () => subscription.unsubscribe();
-  }, []);
+    window.addEventListener('auth-changed', onAuthChanged);
+    return () => window.removeEventListener('auth-changed', onAuthChanged);
+  }, [refreshSession]);
 
   const signOut = async () => {
     try {
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        setError(error.message);
+      const response = await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json()) as { error?: string };
+        setError(payload.error ?? 'Failed to sign out');
+        return;
       }
+
+      setUser(null);
+      setError(null);
+      window.dispatchEvent(new Event('auth-changed'));
     } catch (err) {
       console.error('Error signing out:', err);
       setError('Failed to sign out');
@@ -58,10 +80,9 @@ export function useAuth() {
 
   return {
     user,
-    session,
     loading,
     error,
     signOut,
-    isAuthenticated: !!session,
+    isAuthenticated: !!user,
   };
-} 
+}

@@ -1,4 +1,5 @@
 {
+  "version": "Version",
   "welcome": "Welcome back",
   "signIn": "Sign In",
   "totalBeneficiaries": "Total Beneficiaries",
@@ -16,6 +17,8 @@
   "digitalAssets": "Digital Assets",
   "beneficiaries": "Beneficiaries",
   "removeBeneficiary": "Remove Beneficiary",
+  "beneficiaryUpdatedSuccess": "Beneficiary updated successfully",
+  "beneficiaryDeleted": "Beneficiary deleted successfully",
   "profile": "Profile",
   "profileSettings": "Profile Settings",
   "createSecurityPin": "Create Security PIN",

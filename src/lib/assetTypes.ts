@@ -1,4 +1,4 @@
-import { Database } from './supabase';
+import type { Database } from './supabase';
 
 type AssetTypeRow = Database['public']['Tables']['asset_types']['Row'];
 
