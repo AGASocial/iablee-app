@@ -9,11 +9,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import type { Asset } from "@/models/asset";
-import { getAssetType, type AssetType } from "@/lib/assetTypes";
+import { useAssetType } from "@/lib/assetTypes";
 import { Loader2 } from "lucide-react";
 
 export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: { assetType: string, onSuccess: () => void, onCancel: () => void, asset?: Asset }) {
   const t = useTranslations();
+
+  // Fetch asset type information using React Query
+  const { data: currentAssetType, isLoading: assetTypeLoading } = useAssetType(assetType);
+
   const [form, setForm] = useState({
     asset_name: "",
     email: "",
@@ -26,8 +30,6 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [currentAssetType, setCurrentAssetType] = useState<AssetType | null>(null);
-  const [assetTypeLoading, setAssetTypeLoading] = useState(true);
 
   useEffect(() => {
     if (asset) {
@@ -43,24 +45,6 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
       });
     }
   }, [asset]);
-
-  // Fetch asset type information
-  useEffect(() => {
-    async function fetchAssetType() {
-      try {
-        setAssetTypeLoading(true);
-        const assetTypeData = await getAssetType(assetType);
-        setCurrentAssetType(assetTypeData || null);
-      } catch (error) {
-        console.error('Error fetching asset type:', error);
-        setError('Failed to load asset type information');
-      } finally {
-        setAssetTypeLoading(false);
-      }
-    }
-
-    fetchAssetType();
-  }, [assetType]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -326,7 +310,7 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
       ))}
 
       {/* General file upload for assets that support it */}
-      {currentAssetType?.fileAccept && (
+      {shouldShowField('files') && (
         <div className="space-y-2">
           <Label>
             {assetType === 'cartas' ? t('attachAnImage') :

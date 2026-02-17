@@ -3,7 +3,6 @@ import {
     createDecipheriv,
     randomBytes,
     hkdfSync,
-    Decipher,
     DecipherGCM,
 } from 'crypto';
 import { Transform } from 'stream';

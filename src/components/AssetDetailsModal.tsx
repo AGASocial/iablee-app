@@ -2,14 +2,14 @@
 
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import {
     Mail, Mic, Camera, Video, File, LucideIcon,
-    Calendar, User, Paperclip, Download, ExternalLink,
-    Edit, Trash2, X, Check, Pencil
+    Calendar, User, Paperclip, Download, Trash2, X, Check, Pencil
 } from "lucide-react";
 import type { Asset, AssetAttachment } from "@/models/asset";
+import { useAssetType } from "@/lib/assetTypes";
 import { Badge } from "@/components/ui/badge";
 import AddAssetForm from "./AddAssetForm";
 import {
@@ -89,6 +89,16 @@ export default function AssetDetailsModal({
     const [loadingFiles, setLoadingFiles] = useState(false);
     const [updatingBeneficiary, setUpdatingBeneficiary] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
+
+    // Fetch asset type configuration using React Query
+    const { data: currentAssetType } = useAssetType(asset?.asset_type);
+
+    const shouldShowField = (fieldName: string): boolean => {
+        if (!currentAssetType) return true; // Show by default while loading or if missing
+        const isRequired = currentAssetType.requiredFields?.includes(fieldName);
+        const isOptional = currentAssetType.optionalFields?.includes(fieldName);
+        return isRequired || isOptional || false;
+    };
 
     useEffect(() => {
         if (asset && open) {
@@ -435,21 +445,23 @@ export default function AssetDetailsModal({
                         {renderContent()}
                     </div>
 
-                    {/* Files Summary Section (if not already managed by type logic extensively) */}
-                    <div className="flex items-center justify-between p-4 bg-muted/20 rounded-xl border border-border/60">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg text-blue-600 dark:text-blue-400">
-                                <Paperclip className="w-4 h-4" />
+                    {/* Files Summary Section (conditional) */}
+                    {shouldShowField('files') && (
+                        <div className="flex items-center justify-between p-4 bg-muted/20 rounded-xl border border-border/60">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg text-blue-600 dark:text-blue-400">
+                                    <Paperclip className="w-4 h-4" />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-medium">{attachments.length} {t('filesAttached')}</p>
+                                    <p className="text-xs text-muted-foreground">{t('manageAssetFiles')}</p>
+                                </div>
                             </div>
-                            <div>
-                                <p className="text-sm font-medium">{attachments.length} {t('filesAttached')}</p>
-                                <p className="text-xs text-muted-foreground">{t('manageAssetFiles')}</p>
-                            </div>
+                            <Button variant="outline" size="sm" onClick={() => onManageFiles(asset)}>
+                                {t('manageFiles')}
+                            </Button>
                         </div>
-                        <Button variant="outline" size="sm" onClick={() => onManageFiles(asset)}>
-                            {t('manageFiles')}
-                        </Button>
-                    </div>
+                    )}
                 </div>
 
                 {/* Footer */}
