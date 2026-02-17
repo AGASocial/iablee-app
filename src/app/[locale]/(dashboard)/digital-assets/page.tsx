@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import AddAssetModal from '@/components/AddAssetModal';
 import AssetDetailsModal from '@/components/AssetDetailsModal';
 import AssetAttachmentsModal from '@/components/AssetAttachmentsModal';
+import { FilterBar } from '@/components/FilterBar';
 import { useState, useEffect, useCallback } from 'react';
 
 import { Trash2, Plus, Paperclip, LucideIcon, Mail, Mic, Camera, Video, File } from "lucide-react";
@@ -35,6 +36,70 @@ export default function DigitalAssetsPage() {
   const [selectedAssetForAttachments, setSelectedAssetForAttachments] = useState<Asset | null>(null);
   const [limitReached, setLimitReached] = useState(true);
   const [limitInfo, setLimitInfo] = useState<{ limit?: number; current?: number } | null>(null);
+
+  // Filtering State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeFilters, setActiveFilters] = useState<Record<string, string>>({});
+
+  // Derived filtered assets
+  const filteredAssets = assets.filter(asset => {
+    // Search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      const matchesName = asset.asset_name.toLowerCase().includes(query);
+      const matchesDescription = asset.description?.toLowerCase().includes(query);
+      if (!matchesName && !matchesDescription) return false;
+    }
+
+    // Type filter
+    if (activeFilters.type && activeFilters.type !== 'all') {
+      if (asset.asset_type_details.name !== activeFilters.type) return false;
+    }
+
+    // Beneficiary filter
+    if (activeFilters.beneficiary && activeFilters.beneficiary !== 'all') {
+      const hasBeneficiary = !!asset.beneficiary;
+      if (activeFilters.beneficiary === 'assigned' && !hasBeneficiary) return false;
+      if (activeFilters.beneficiary === 'unassigned' && hasBeneficiary) return false;
+    }
+
+    // Attachments filter
+    if (activeFilters.attachments && activeFilters.attachments !== 'all') {
+      const hasAttachments = (asset.number_of_files || 0) > 0 || (asset.files && asset.files.length > 0);
+      if (activeFilters.attachments === 'yes' && !hasAttachments) return false;
+      if (activeFilters.attachments === 'no' && hasAttachments) return false;
+    }
+
+    return true;
+  });
+
+  // Extract unique asset types for filter options
+  const assetTypeOptions = Array.from(new Set(assets.map(a => a.asset_type_details.name)))
+    .map(type => ({ label: t(type), value: type }));
+
+  const filterConfigs = [
+    {
+      key: 'type',
+      label: t('assetType') || 'Asset Type',
+      options: assetTypeOptions,
+    },
+    {
+      key: 'beneficiary',
+      label: t('beneficiaryStatus') || 'Beneficiary Status',
+      options: [
+        { label: t('assigned') || 'Assigned', value: 'assigned' },
+        { label: t('unassigned') || 'Unassigned', value: 'unassigned' },
+      ],
+    },
+    {
+      key: 'attachments',
+      label: t('attachments') || 'Attachments',
+      options: [
+        { label: t('yes') || 'Yes', value: 'yes' },
+        { label: t('no') || 'No', value: 'no' },
+      ],
+    },
+  ];
 
   const fetchAssets = useCallback(async () => {
     setLoading(true);
@@ -260,14 +325,18 @@ export default function DigitalAssetsPage() {
           </div>
           <Button className="hidden sm:inline-flex rounded-full px-6 py-2 text-base font-medium bg-gray-800 text-gray-100" onClick={handleAddAsset} disabled={limitReached}>{t('addNewAsset')}</Button>
         </div>
-        <Button
-          className="sm:hidden w-full mb-4 flex items-center justify-center gap-2"
-          onClick={handleAddAsset}
-          disabled={limitReached}
-          aria-label={t('addNewAsset')}
-        >
-          <Plus className="w-5 h-5" />
-        </Button>
+
+
+        <FilterBar
+          onSearch={setSearchQuery}
+          onFilterChange={(key, value) => setActiveFilters(prev => ({ ...prev, [key]: value }))}
+          onClearFilters={() => { setSearchQuery(''); setActiveFilters({}); }}
+          filters={filterConfigs}
+          activeFilters={activeFilters}
+          searchQuery={searchQuery}
+          placeholder={t('searchAssets') || 'Search assets...'}
+        />
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-fade-in-up delay-100">
           {loading ? (
             <div className="col-span-full flex items-center justify-center py-20 text-muted-foreground">
@@ -276,19 +345,21 @@ export default function DigitalAssetsPage() {
                 <p>{t('loading') || 'Loading...'}</p>
               </div>
             </div>
-          ) : assets.length === 0 ? (
+          ) : filteredAssets.length === 0 ? (
             <div className="col-span-full flex flex-col items-center justify-center py-20 text-center glass-panel rounded-2xl border-dashed border-2 border-muted">
               <div className="h-20 w-20 rounded-full bg-muted/30 flex items-center justify-center mb-6">
                 <File className="h-10 w-10 text-muted-foreground" />
               </div>
               <h3 className="text-xl font-semibold mb-2">{t('noAssetsFound')}</h3>
-              <p className="text-muted-foreground mb-6 max-w-sm">{t('startByAddingAsset')}</p>
-              <Button className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/25" onClick={handleAddAsset} disabled={limitReached}>
-                <Plus className="mr-2 h-4 w-4" /> {t('addAsset')}
-              </Button>
+              <p className="text-muted-foreground mb-6 max-w-sm">{searchQuery || Object.keys(activeFilters).length > 0 ? t('tryAdjustingFilters') || 'Try adjusting your filters' : t('startByAddingAsset')}</p>
+              {!(searchQuery || Object.keys(activeFilters).length > 0) && (
+                <Button className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/25" onClick={handleAddAsset} disabled={limitReached}>
+                  <Plus className="mr-2 h-4 w-4" /> {t('addAsset')}
+                </Button>
+              )}
             </div>
           ) : (
-            assets.map((asset, index) => {
+            filteredAssets.map((asset, index) => {
               const iconMap: Record<string, LucideIcon> = {
                 Mail,
                 Mic,
@@ -441,6 +512,6 @@ export default function DigitalAssetsPage() {
         description={t('deleteConfirmDigitalAsset')}
         loading={loading}
       />
-    </ProtectedRoute>
+    </ProtectedRoute >
   );
 } 

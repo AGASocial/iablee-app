@@ -57,7 +57,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
   }
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex min-h-screen bg-background overflow-x-hidden">
       {/* Sidebar for desktop */}
       <aside className={cn(
         "hidden md:flex flex-col fixed inset-y-0 z-50 transition-all duration-300",
