@@ -30,9 +30,9 @@ export default function PreferencesSettingsPage() {
         <div className="space-y-6">
             <div>
                 <h3 className="text-lg font-medium">{t('settings.preferences')}</h3>
-                <p className="text-sm text-muted-foreground">
+                {/* <p className="text-sm text-muted-foreground">
                     {t('settings.languageDescription')}
-                </p>
+                </p> */}
             </div>
 
             <div className="rounded-lg border bg-card p-6 space-y-8 max-w-lg">
@@ -40,6 +40,9 @@ export default function PreferencesSettingsPage() {
                     <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                         {t('settings.selectLanguage')}
                     </label>
+                    <p className="text-sm text-muted-foreground">
+                        {t('settings.languageDescription')}
+                    </p>
                     <div className="flex items-center gap-4">
                         <Select
                             value={locale}
