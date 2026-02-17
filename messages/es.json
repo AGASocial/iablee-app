@@ -1,4 +1,5 @@
 {
+  "version": "Versión",
   "welcome": "Bienvenido de nuevo",
   "signIn": "Iniciar sesión",
   "dashboard": "Dashboard",
@@ -17,6 +18,8 @@
   "recentBeneficiaries": "Beneficiarios Recientes",
   "digitalAssets": "Activos Digitales",
   "beneficiaries": "Beneficiarios",
+  "beneficiaryUpdatedSuccess": "Beneficiario actualizado exitosamente",
+  "beneficiaryDeleted": "Beficiario eliminado exitosamente",
   "profile": "Perfil",
   "removeBeneficiary": "Remover Beneficiario",
   "profileSettings": "Configuración del Perfil",

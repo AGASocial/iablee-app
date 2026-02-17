@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from '@/i18n/navigation';
 import { Link } from '@/i18n/navigation'; // Use locale-aware Link
-import { supabase } from '@/lib/supabase';
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { Users, ArrowRight, Lock, Zap, Heart } from "lucide-react"
@@ -14,8 +13,10 @@ export default function LocalePage() {
 
   useEffect(() => {
     const checkSessionAndRedirect = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
+      const response = await fetch('/api/auth/session');
+      const data = response.ok ? await response.json() : { authenticated: false };
+
+      if (data.authenticated) {
         try {
           // Check if user has any assets via API
           const res = await fetch('/api/assets');
