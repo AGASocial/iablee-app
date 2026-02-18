@@ -21,6 +21,10 @@ const outfit = Outfit({
 export const metadata: Metadata = {
   title: "iablee - Digital Inheritance Platform",
   description: "Secure and manage your digital legacy with iablee",
+  icons: {
+    icon: "/logo-lock.png",
+    apple: "/logo-lock.png",
+  },
 };
 
 export default async function RootLayout({
