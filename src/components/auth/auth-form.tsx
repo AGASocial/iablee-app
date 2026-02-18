@@ -161,7 +161,7 @@ export function AuthForm({ type }: AuthFormProps) {
       : 'https://appleid.cdn-apple.com/appleid/button?height=38&width=300&color=black';
 
   return (
-    <div className="mx-auto p-4 flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
+    <div className="mx-auto p-4 flex w-full flex-col justify-center space-y-6 sm:w-[350px] rounded-lg ">
       <div className="flex flex-col space-y-2 text-center">
         <h1 className="text-2xl font-semibold tracking-tight">
           {type === "login" ? t("welcome") : t("createAnAccount")}
