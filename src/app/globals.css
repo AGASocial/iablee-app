@@ -179,14 +179,14 @@
     @apply border-border outline-ring/50;
   }
 
-  body {
+  /* body {
     @apply bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary overflow-x-hidden;
     background-image: url("/background.png");
     background-attachment: fixed;
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
-  }
+  } */
 
   /* Typography enhancements */
   h1,
@@ -203,8 +203,12 @@
     @apply bg-background/60 backdrop-blur-lg border border-white/10 dark:border-white/5;
   }
 
+  .glass-dark {
+    @apply bg-red-900 backdrop-blur-lg border border-white/10 dark:border-white/5;
+  }
+
   .glass-card {
-    @apply bg-card backdrop-blur-md border border-border/50 shadow-lg shadow-black/5;
+    @apply bg-card backdrop-blur-md border border-border/50 shadow-lg shadow-black/10;
   }
 
   .glass-panel {
@@ -275,6 +279,23 @@
   .delay-300 {
     animation-delay: 300ms;
   }
+}
+
+.bg-main-background {
+  background-image: url("/background.png");
+  background-attachment: fixed;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.bg-main-background-dark {
+  background-image: url("/background.png");
+  filter: brightness(0.90);
+  background-attachment: fixed;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 
 @utility bg-noise {

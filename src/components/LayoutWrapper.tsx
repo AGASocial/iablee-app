@@ -49,7 +49,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
 
   if (isAuthPage) {
     return (
-      <div className="min-h-screen">
+      <div className="min-h-screen bg-transparent">
         {children}
         <Toaster richColors closeButton position="top-right" />
       </div>
@@ -63,7 +63,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
         "hidden md:flex flex-col fixed inset-y-0 z-50 transition-all duration-300",
         sidebarCollapsed ? "w-20" : "w-60"
       )}>
-        <div className="relative flex-1 flex flex-col min-h-0 bg-card dark:bg-[#0F172A] border-r border-border dark:border-white/5 shadow-xl transition-all duration-300">
+        <div className="relative flex-1 flex flex-col min-h-0 bg-card/75 dark:bg-[#0F172A] border-r border-border dark:border-white/5 shadow-xl transition-all duration-300">
           {/* Logo Area */}
           <div className={cn(
             "flex items-center h-20 border-b border-border dark:border-white/5 bg-card/50 dark:bg-[#0F172A]/50 backdrop-blur-xl transition-all duration-300 shrink-0",
@@ -260,7 +260,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
 
       {/* Main Content */}
       <main className={cn(
-        "flex-1 flex flex-col transition-all duration-300",
+        "flex-1 flex flex-col transition-all duration-300 bg-main-background-dark light:bg-main-background",
         sidebarCollapsed ? "md:pl-20" : "md:pl-72"
       )}>
         <Navbar onMenuClick={() => setSidebarOpen(true)} />

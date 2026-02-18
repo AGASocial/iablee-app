@@ -187,13 +187,13 @@ export function AuthHero({ quote, author, children }: { quote: string; author: s
       </div>
 
       {/* Gradient overlay - Primary color with modern gradient */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/85 via-primary/75 to-primary/90" />
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/70 via-primary/50 to-primary/70 backdrop-blur-[2px]" />
 
-      {/* Additional overlay for depth and text readability */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/50" />
+      {/* Additional overlay for depth and text readability - lightened */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/30" />
 
-      {/* Subtle vignette effect */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_transparent_0%,_rgba(0,0,0,0.2)_100%)]" />
+      {/* Subtle vignette effect - reduced opacity */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_transparent_0%,_rgba(0,0,0,0.1)_100%)]" />
 
       {/* Animated gradient orbs for extra visual interest */}
       <div className="absolute inset-0 overflow-hidden">

@@ -50,7 +50,7 @@ export function SettingsNav({ className, ...props }: SettingsNavProps) {
                             isActive
                                 ? "bg-muted hover:bg-muted font-medium"
                                 : "hover:bg-transparent hover:underline text-muted-foreground",
-                            "justify-start"
+                            "justify-start dark:text-white"
                         )}
                     >
                         <item.icon className="mr-2 h-4 w-4" />
