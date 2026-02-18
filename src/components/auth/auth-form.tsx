@@ -161,7 +161,7 @@ export function AuthForm({ type }: AuthFormProps) {
       : 'https://appleid.cdn-apple.com/appleid/button?height=38&width=300&color=black';
 
   return (
-    <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
+    <div className="mx-auto p-4 flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
       <div className="flex flex-col space-y-2 text-center">
         <h1 className="text-2xl font-semibold tracking-tight">
           {type === "login" ? t("welcome") : t("createAnAccount")}
@@ -204,7 +204,7 @@ export function AuthForm({ type }: AuthFormProps) {
           <span className="w-full border-t" />
         </div>
         <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-background px-2 text-muted-foreground">or</span>
+          <span className="bg-background px-2 text-muted-foreground">{t("or")}</span>
         </div>
       </div>
 
@@ -286,7 +286,7 @@ export function AuthForm({ type }: AuthFormProps) {
       </p>
 
       <p className="px-8 text-center text-xs text-muted-foreground">
-        {t("version")} 2.1.0
+        {t("version")} 2.2.0
         <br />
         Copyright © 2026
       </p>

@@ -6,8 +6,10 @@ import { Switch } from "@/components/ui/switch";
 import { useState, useEffect, useCallback } from "react";
 
 import { Pencil, Trash2, Plus, Users } from "lucide-react";
+import DeleteConfirmationModal from '@/components/DeleteConfirmationModal';
 import { toast } from 'sonner';
 import AddBeneficiaryModal from '@/components/AddBeneficiaryModal';
+import { FilterBar } from '@/components/FilterBar';
 import { Beneficiary } from '@/models/beneficiary';
 
 // Helper for status badge (copied from dashboard)
@@ -44,6 +46,58 @@ export default function BeneficiariesPage() {
     const [limitReached, setLimitReached] = useState(true);
     const [limitInfo, setLimitInfo] = useState<{ limit?: number; current?: number } | null>(null);
 
+
+
+    // Filtering State
+    const [searchQuery, setSearchQuery] = useState('');
+    const [activeFilters, setActiveFilters] = useState<Record<string, string>>({});
+
+    // Derived filtered beneficiaries
+    const filteredBeneficiaries = beneficiaries.filter(b => {
+        // Search filter
+        if (searchQuery) {
+            const query = searchQuery.toLowerCase();
+            const matchesName = b.full_name.toLowerCase().includes(query);
+            const matchesEmail = b.email?.toLowerCase().includes(query) || false;
+            if (!matchesName && !matchesEmail) return false;
+        }
+
+        // Relationship filter
+        if (activeFilters.relationship && activeFilters.relationship !== 'all') {
+            if (b.relationship?.key !== activeFilters.relationship) return false;
+        }
+
+        // Status filter
+        if (activeFilters.status && activeFilters.status !== 'all') {
+            if ((b.status || '').toLowerCase() !== activeFilters.status.toLowerCase()) return false;
+        }
+
+        return true;
+    });
+
+    // Extract unique relationships for filter options
+    const relationshipOptions = Array.from(new Set(beneficiaries.map(b => b.relationship?.key).filter(Boolean)))
+        .map(key => ({ label: t(`relationships.${key}`), value: key as string }));
+
+    const filterConfigs = [
+        {
+            key: 'relationship',
+            label: t('relationship') || 'Relationship',
+            options: relationshipOptions,
+        },
+        /* Status is not fully implemented in the UI yet (commented out), but let's add it if data exists */
+        /*
+        {
+            key: 'status',
+            label: t('status') || 'Status',
+            options: [
+                { label: t('active') || 'Active', value: 'active' },
+                { label: t('pending') || 'Pending', value: 'pending' },
+                { label: t('inactive') || 'Inactive', value: 'inactive' },
+            ],
+        },
+        */
+    ];
     const fetchBeneficiaries = useCallback(async () => {
         try {
             const res = await fetch('/api/beneficiaries');
@@ -101,18 +155,38 @@ export default function BeneficiariesPage() {
         setShowAddModal(true);
     };
 
-    async function handleDeleteBeneficiary(id: string) {
-        if (!confirm(t('deleteConfirmBeneficiary'))) return;
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [beneficiaryToDelete, setBeneficiaryToDelete] = useState<string | null>(null);
+
+    function handleDeleteBeneficiary(id: string) {
+        setBeneficiaryToDelete(id);
+        setDeleteModalOpen(true);
+    }
+
+    async function confirmDeleteBeneficiary() {
+        if (!beneficiaryToDelete) return;
+
         try {
-            const res = await fetch(`/api/beneficiaries/${id}`, { method: 'DELETE' });
+            const res = await fetch(`/api/beneficiaries/${beneficiaryToDelete}`, { method: 'DELETE' });
+
+            if (res.status === 409) {
+                toast.error(t('errorBeneficiaryAssigned'));
+                setDeleteModalOpen(false);
+                setBeneficiaryToDelete(null);
+                return;
+            }
+
             if (!res.ok) throw new Error('Failed to delete');
-            setBeneficiaries(beneficiaries.filter(b => b.id !== id));
+            setBeneficiaries(beneficiaries.filter(b => b.id !== beneficiaryToDelete));
             toast.success(t('beneficiaryDeleted'));
             fetchLimitStatus();
+            setDeleteModalOpen(false);
+            setBeneficiaryToDelete(null);
         } catch {
             toast.error(t('errorDeletingBeneficiary'));
         }
     }
+
 
     function handleEditBeneficiary(b: Beneficiary) {
         setBeneficiaryToEdit(b);
@@ -149,6 +223,17 @@ export default function BeneficiariesPage() {
 
     return (
         <div className="p-4 sm:p-8">
+            <DeleteConfirmationModal
+                open={deleteModalOpen}
+                onClose={() => {
+                    setDeleteModalOpen(false);
+                    setBeneficiaryToDelete(null);
+                }}
+                onConfirm={confirmDeleteBeneficiary}
+                title={t('delete')}
+                description={t('deleteConfirmBeneficiary')}
+                loading={loading}
+            />
             <div className="flex items-center justify-between mb-8">
                 <div>
                     <h1 className="text-4xl font-bold text-gray-900 dark:text-white">{t('beneficiariesTitle')}</h1>
@@ -163,14 +248,17 @@ export default function BeneficiariesPage() {
                 </div>
                 <Button className="hidden sm:inline-flex rounded-full px-6 py-2 text-base font-medium" onClick={handleAddBeneficiary} disabled={limitReached}>{t('addBeneficiary')}</Button>
             </div>
-            <Button
-                className="sm:hidden w-full mb-4 flex items-center justify-center gap-2"
-                onClick={handleAddBeneficiary}
-                disabled={limitReached}
-                aria-label={t('addBeneficiary')}
-            >
-                <Plus className="w-5 h-5" />
-            </Button>
+
+            <FilterBar
+                onSearch={setSearchQuery}
+                onFilterChange={(key, value) => setActiveFilters(prev => ({ ...prev, [key]: value }))}
+                onClearFilters={() => { setSearchQuery(''); setActiveFilters({}); }}
+                filters={filterConfigs}
+                activeFilters={activeFilters}
+                searchQuery={searchQuery}
+                placeholder={t('searchBeneficiaries') || 'Search beneficiaries...'}
+            />
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-fade-in-up delay-100">
                 {loading ? (
                     <div className="col-span-full flex items-center justify-center py-12 text-muted-foreground">
@@ -179,19 +267,21 @@ export default function BeneficiariesPage() {
                             <p>{t('loading')}</p>
                         </div>
                     </div>
-                ) : beneficiaries.length === 0 ? (
+                ) : filteredBeneficiaries.length === 0 ? (
                     <div className="col-span-full flex flex-col items-center justify-center py-16 text-center glass-panel rounded-2xl border-dashed border-2 border-muted">
                         <div className="h-16 w-16 rounded-full bg-muted/30 flex items-center justify-center mb-4">
                             <Users className="h-8 w-8 text-muted-foreground" />
                         </div>
                         <h3 className="text-xl font-semibold mb-2">{t('noBeneficiaries')}</h3>
-                        <p className="text-muted-foreground mb-6 max-w-sm">{t('startByAddingBeneficiary')}</p>
-                        <Button className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/25" onClick={handleAddBeneficiary} disabled={limitReached}>
-                            <Plus className="mr-2 h-4 w-4" /> {t('addBeneficiary')}
-                        </Button>
+                        <p className="text-muted-foreground mb-6 max-w-sm">{searchQuery || Object.keys(activeFilters).length > 0 ? t('tryAdjustingFilters') || 'Try adjusting your filters' : t('startByAddingBeneficiary')}</p>
+                        {!(searchQuery || Object.keys(activeFilters).length > 0) && (
+                            <Button className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/25" onClick={handleAddBeneficiary} disabled={limitReached}>
+                                <Plus className="mr-2 h-4 w-4" /> {t('addBeneficiary')}
+                            </Button>
+                        )}
                     </div>
                 ) : (
-                    beneficiaries.map((b, index) => {
+                    filteredBeneficiaries.map((b, index) => {
                         // Stagger animation
                         const delayClass = index < 8 ? `delay-${(index + 1) * 100}` : '';
 
@@ -254,25 +344,27 @@ export default function BeneficiariesPage() {
                 beneficiaryToEdit={beneficiaryToEdit}
             />
 
-            {selectedBeneficiary && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-2 sm:hidden">
-                    <div className="bg-white dark:bg-gray-900 rounded-lg shadow-lg p-6 w-full max-w-sm border border-gray-200 dark:border-gray-700">
-                        <h3 className="text-lg font-bold mb-4 text-gray-900 dark:text-white">{selectedBeneficiary.full_name}</h3>
-                        <div className="space-y-2">
-                            <div><span className="font-semibold">{t('email')}:</span> {selectedBeneficiary.email}</div>
-                            <div><span className="font-semibold">{t('phoneNumber')}:</span> {selectedBeneficiary.phone_number}</div>
-                            <div><span className="font-semibold">{t('relationship')}:</span> {selectedBeneficiary.relationship?.key ? t('relationships.' + selectedBeneficiary.relationship.key) : ''}</div>
-                            <div><span className="font-semibold">{t('notes')}:</span> {selectedBeneficiary.notes}</div>
-                            <div><span className="font-semibold">{t('status')}:</span> <StatusBadge status={selectedBeneficiary.status} /></div>
-                        </div>
-                        <div className="flex justify-end gap-2 mt-6">
-                            <Button variant="outline" onClick={() => { setSelectedBeneficiary(null); handleEditBeneficiary(selectedBeneficiary); }}>{t('edit')}</Button>
-                            <Button variant="destructive" onClick={() => { handleDeleteBeneficiary(selectedBeneficiary.id); setSelectedBeneficiary(null); }}>{t('delete')}</Button>
-                            <Button onClick={() => setSelectedBeneficiary(null)}>{t('cancel')}</Button>
+            {
+                selectedBeneficiary && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-2 sm:hidden">
+                        <div className="bg-white dark:bg-gray-900 rounded-lg shadow-lg p-6 w-full max-w-sm border border-gray-200 dark:border-gray-700">
+                            <h3 className="text-lg font-bold mb-4 text-gray-900 dark:text-white">{selectedBeneficiary.full_name}</h3>
+                            <div className="space-y-2">
+                                <div><span className="font-semibold">{t('email')}:</span> {selectedBeneficiary.email}</div>
+                                <div><span className="font-semibold">{t('phoneNumber')}:</span> {selectedBeneficiary.phone_number}</div>
+                                <div><span className="font-semibold">{t('relationship')}:</span> {selectedBeneficiary.relationship?.key ? t('relationships.' + selectedBeneficiary.relationship.key) : ''}</div>
+                                <div><span className="font-semibold">{t('notes')}:</span> {selectedBeneficiary.notes}</div>
+                                <div><span className="font-semibold">{t('status')}:</span> <StatusBadge status={selectedBeneficiary.status} /></div>
+                            </div>
+                            <div className="flex justify-end gap-2 mt-6">
+                                <Button variant="outline" onClick={() => { setSelectedBeneficiary(null); handleEditBeneficiary(selectedBeneficiary); }}>{t('edit')}</Button>
+                                <Button variant="destructive" onClick={() => { handleDeleteBeneficiary(selectedBeneficiary.id); setSelectedBeneficiary(null); }}>{t('delete')}</Button>
+                                <Button onClick={() => setSelectedBeneficiary(null)}>{t('cancel')}</Button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 } 

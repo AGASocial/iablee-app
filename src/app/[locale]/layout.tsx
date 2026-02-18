@@ -4,6 +4,7 @@ import "../globals.css";
 import { NextIntlClientProvider } from 'next-intl';
 import { notFound } from 'next/navigation';
 import ThemeRegistry from "@/components/ThemeRegistry";
+import QueryProvider from "@/components/QueryProvider";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -41,11 +42,13 @@ export default async function RootLayout({
   return (
     <html lang={locale} suppressHydrationWarning>
       <body className={`${inter.variable} ${outfit.variable} font-sans antialiased`} suppressHydrationWarning>
-        <ThemeRegistry>
-          <NextIntlClientProvider locale={locale} messages={messages}>
-            {children}
-          </NextIntlClientProvider>
-        </ThemeRegistry>
+        <QueryProvider>
+          <ThemeRegistry>
+            <NextIntlClientProvider locale={locale} messages={messages}>
+              {children}
+            </NextIntlClientProvider>
+          </ThemeRegistry>
+        </QueryProvider>
       </body>
     </html>
   );

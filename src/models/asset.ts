@@ -6,6 +6,10 @@ export interface AssetTypeDetails {
   name: string;
   description: string;
   icon: string;
+  required_fields?: string[];
+  optional_fields?: string[];
+  custom_fields?: unknown[];
+  file_accept?: string;
 }
 
 export interface AssetAttachment {

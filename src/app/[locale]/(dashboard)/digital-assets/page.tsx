@@ -4,10 +4,13 @@ import { useTranslations } from 'next-intl';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import AddAssetModal from '@/components/AddAssetModal';
+import AssetDetailsModal from '@/components/AssetDetailsModal';
 import AssetAttachmentsModal from '@/components/AssetAttachmentsModal';
+import { FilterBar } from '@/components/FilterBar';
 import { useState, useEffect, useCallback } from 'react';
 
-import { Pencil, Trash2, Plus, Paperclip, LucideIcon, Mail, Mic, Camera, Video, File } from "lucide-react";
+import { Trash2, Plus, Paperclip, LucideIcon, Mail, Mic, Camera, Video, File } from "lucide-react";
+import DeleteConfirmationModal from '@/components/DeleteConfirmationModal';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter } from '@/components/ui/dialog';
 import type { Asset } from '@/models/asset';
 import { Beneficiary } from '@/models/beneficiary';
@@ -24,7 +27,6 @@ export default function DigitalAssetsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editAsset, setEditAsset] = useState<Asset | null>(null);
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
@@ -34,6 +36,70 @@ export default function DigitalAssetsPage() {
   const [selectedAssetForAttachments, setSelectedAssetForAttachments] = useState<Asset | null>(null);
   const [limitReached, setLimitReached] = useState(true);
   const [limitInfo, setLimitInfo] = useState<{ limit?: number; current?: number } | null>(null);
+
+  // Filtering State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeFilters, setActiveFilters] = useState<Record<string, string>>({});
+
+  // Derived filtered assets
+  const filteredAssets = assets.filter(asset => {
+    // Search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      const matchesName = asset.asset_name.toLowerCase().includes(query);
+      const matchesDescription = asset.description?.toLowerCase().includes(query);
+      if (!matchesName && !matchesDescription) return false;
+    }
+
+    // Type filter
+    if (activeFilters.type && activeFilters.type !== 'all') {
+      if (asset.asset_type_details.name !== activeFilters.type) return false;
+    }
+
+    // Beneficiary filter
+    if (activeFilters.beneficiary && activeFilters.beneficiary !== 'all') {
+      const hasBeneficiary = !!asset.beneficiary;
+      if (activeFilters.beneficiary === 'assigned' && !hasBeneficiary) return false;
+      if (activeFilters.beneficiary === 'unassigned' && hasBeneficiary) return false;
+    }
+
+    // Attachments filter
+    if (activeFilters.attachments && activeFilters.attachments !== 'all') {
+      const hasAttachments = (asset.number_of_files || 0) > 0 || (asset.files && asset.files.length > 0);
+      if (activeFilters.attachments === 'yes' && !hasAttachments) return false;
+      if (activeFilters.attachments === 'no' && hasAttachments) return false;
+    }
+
+    return true;
+  });
+
+  // Extract unique asset types for filter options
+  const assetTypeOptions = Array.from(new Set(assets.map(a => a.asset_type_details.name)))
+    .map(type => ({ label: t(type), value: type }));
+
+  const filterConfigs = [
+    {
+      key: 'type',
+      label: t('assetType') || 'Asset Type',
+      options: assetTypeOptions,
+    },
+    {
+      key: 'beneficiary',
+      label: t('beneficiaryStatus') || 'Beneficiary Status',
+      options: [
+        { label: t('assigned') || 'Assigned', value: 'assigned' },
+        { label: t('unassigned') || 'Unassigned', value: 'unassigned' },
+      ],
+    },
+    {
+      key: 'attachments',
+      label: t('attachments') || 'Attachments',
+      options: [
+        { label: t('yes') || 'Yes', value: 'yes' },
+        { label: t('no') || 'No', value: 'no' },
+      ],
+    },
+  ];
 
   const fetchAssets = useCallback(async () => {
     setLoading(true);
@@ -58,7 +124,7 @@ export default function DigitalAssetsPage() {
     }
   }, [t]);
 
-  const fetchBeneficiaries = async () => {
+  const fetchBeneficiaries = useCallback(async () => {
     try {
       const res = await fetch('/api/beneficiaries');
       if (res.ok) {
@@ -68,7 +134,7 @@ export default function DigitalAssetsPage() {
     } catch (error) {
       console.error('Error fetching beneficiaries:', error);
     }
-  };
+  }, []);
 
   const fetchLimitStatus = useCallback(async () => {
     try {
@@ -96,36 +162,70 @@ export default function DigitalAssetsPage() {
     if (!locked && !securityLoading) {
       fetchAssets();
       fetchLimitStatus();
+      fetchBeneficiaries();
     }
-  }, [fetchAssets, fetchLimitStatus, locked, securityLoading]);
+  }, [fetchAssets, fetchLimitStatus, fetchBeneficiaries, locked, securityLoading]);
 
   // Auto-open modal when ?action=add is present in the URL
   useEffect(() => {
-    if (searchParams.get('action') === 'add') {
+    const action = searchParams.get('action');
+    if (action === 'add') {
       setModalOpen(true);
-      router.replace(window.location.pathname, { scroll: false });
+      const params = new URLSearchParams(searchParams);
+      params.delete('action');
+      router.replace(`${window.location.pathname}?${params.toString()}`, { scroll: false });
     }
   }, [searchParams, router]);
 
-  async function handleDeleteAsset(id: string) {
-    if (!confirm(t('deleteConfirmDigitalAsset'))) return;
+  useEffect(() => {
+    const assetId = searchParams.get('assetId');
+    // ... existing existing existing
+    if (assetId && assets.length > 0 && !selectedAssetDetails) {
+      const assetToOpen = assets.find(a => a.id === assetId);
+      if (assetToOpen) {
+        setSelectedAssetDetails(assetToOpen);
+      }
+    }
+  }, [searchParams, assets, selectedAssetDetails]);
+
+  // Sync selectedAssetDetails with assets list when it changes (e.g. after edit)
+  useEffect(() => {
+    if (selectedAssetDetails) {
+      const updatedAsset = assets.find(a => a.id === selectedAssetDetails.id);
+      if (updatedAsset && JSON.stringify(updatedAsset) !== JSON.stringify(selectedAssetDetails)) {
+        setSelectedAssetDetails(updatedAsset);
+      }
+    }
+  }, [assets, selectedAssetDetails]);
+
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [assetToDelete, setAssetToDelete] = useState<string | null>(null);
+
+  function handleDeleteAsset(id: string) {
+    setAssetToDelete(id);
+    setDeleteModalOpen(true);
+  }
+
+  async function confirmDeleteAsset() {
+    if (!assetToDelete) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/assets/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/assets/${assetToDelete}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete');
       fetchAssets();
       fetchLimitStatus();
+      setDeleteModalOpen(false);
+      setAssetToDelete(null);
     } catch {
-      alert('Error deleting asset');
+      // Use toast instead of alert for consistency if available, but keeping alert based on previous code or transitioning
+      // The previous code used alert('Error deleting asset'). Let's use toast if available or stick to alert. 
+      // The file imports 'toast' from 'sonner'.
+      toast.error(t('errorDeletingAsset') || 'Error deleting asset');
     } finally {
       setLoading(false);
     }
   }
 
-  function handleEditAsset(asset: Asset) {
-    setEditAsset(asset);
-    setModalOpen(true);
-  }
 
   const openAssignModal = (asset: Asset) => {
     setSelectedAsset(asset);
@@ -135,7 +235,9 @@ export default function DigitalAssetsPage() {
   };
 
   const handleAssignBeneficiary = async (beneficiaryId: string | null = selectedBeneficiaryId) => {
-    if (!selectedAsset) return;
+    const targetAsset = selectedAsset || selectedAssetDetails;
+    if (!targetAsset) return;
+
     setLoading(true);
     try {
       // Determine if we're assigning or removing a beneficiary
@@ -144,7 +246,7 @@ export default function DigitalAssetsPage() {
         beneficiary_id: beneficiaryId,
         status: isRemoving ? 'unassigned' : 'assigned',
       };
-      const res = await fetch(`/api/assets/${selectedAsset.id}`, {
+      const res = await fetch(`/api/assets/${targetAsset.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updateData),
@@ -154,7 +256,24 @@ export default function DigitalAssetsPage() {
       setAssignModalOpen(false);
       setSelectedAsset(null);
       setSelectedBeneficiaryId(null);
-      fetchAssets();
+
+      await fetchAssets();
+
+      // Update the selectedAssetDetails if it's open so the UI updates immediately
+      if (selectedAssetDetails && selectedAssetDetails.id === targetAsset.id) {
+        // Re-fetch or update locally. Since fetchAssets updates 'assets', we need to find the updated asset
+        // and update selectedAssetDetails. 
+        // Helper function to get the updated asset from the list would be best, but we can't easily access the verify fresh state here immediately after fetchAssets without a ref or waiting. 
+        // Actually, fetchAssets awaits the update. So 'assets' state won't be updated in this closure yet.
+        // Let's manually verify by fetching the single asset or just manually updating the local state object.
+        // Manually updating is faster for UI responsiveness.
+
+        // We need the beneficiary object to display it. Since we only have ID, we can find it in 'beneficiaries'.
+        const newBeneficiary = beneficiaries.find(b => b.id === beneficiaryId) || undefined;
+
+        setSelectedAssetDetails(prev => prev ? ({ ...prev, beneficiary: newBeneficiary, beneficiary_id: beneficiaryId || undefined }) : null);
+      }
+
     } catch {
       alert('Error updating beneficiary assignment');
     } finally {
@@ -176,13 +295,9 @@ export default function DigitalAssetsPage() {
     <ProtectedRoute>
       <div className="p-4 sm:p-8">
         <AddAssetModal
-          key={editAsset ? editAsset.id : 'new'}
+          key="new"
           open={modalOpen}
-          onOpenChange={(open) => {
-            setModalOpen(open);
-            if (!open) setEditAsset(null);
-          }}
-          asset={editAsset || undefined}
+          onOpenChange={setModalOpen}
           onAssetAdded={() => { fetchAssets(); fetchLimitStatus(); }}
         />
         {selectedAssetForAttachments && (
@@ -210,14 +325,18 @@ export default function DigitalAssetsPage() {
           </div>
           <Button className="hidden sm:inline-flex rounded-full px-6 py-2 text-base font-medium bg-gray-800 text-gray-100" onClick={handleAddAsset} disabled={limitReached}>{t('addNewAsset')}</Button>
         </div>
-        <Button
-          className="sm:hidden w-full mb-4 flex items-center justify-center gap-2"
-          onClick={handleAddAsset}
-          disabled={limitReached}
-          aria-label={t('addNewAsset')}
-        >
-          <Plus className="w-5 h-5" />
-        </Button>
+
+
+        <FilterBar
+          onSearch={setSearchQuery}
+          onFilterChange={(key, value) => setActiveFilters(prev => ({ ...prev, [key]: value }))}
+          onClearFilters={() => { setSearchQuery(''); setActiveFilters({}); }}
+          filters={filterConfigs}
+          activeFilters={activeFilters}
+          searchQuery={searchQuery}
+          placeholder={t('searchAssets') || 'Search assets...'}
+        />
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-fade-in-up delay-100">
           {loading ? (
             <div className="col-span-full flex items-center justify-center py-20 text-muted-foreground">
@@ -226,19 +345,21 @@ export default function DigitalAssetsPage() {
                 <p>{t('loading') || 'Loading...'}</p>
               </div>
             </div>
-          ) : assets.length === 0 ? (
+          ) : filteredAssets.length === 0 ? (
             <div className="col-span-full flex flex-col items-center justify-center py-20 text-center glass-panel rounded-2xl border-dashed border-2 border-muted">
               <div className="h-20 w-20 rounded-full bg-muted/30 flex items-center justify-center mb-6">
                 <File className="h-10 w-10 text-muted-foreground" />
               </div>
               <h3 className="text-xl font-semibold mb-2">{t('noAssetsFound')}</h3>
-              <p className="text-muted-foreground mb-6 max-w-sm">{t('startByAddingAsset')}</p>
-              <Button className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/25" onClick={handleAddAsset} disabled={limitReached}>
-                <Plus className="mr-2 h-4 w-4" /> {t('addAsset')}
-              </Button>
+              <p className="text-muted-foreground mb-6 max-w-sm">{searchQuery || Object.keys(activeFilters).length > 0 ? t('tryAdjustingFilters') || 'Try adjusting your filters' : t('startByAddingAsset')}</p>
+              {!(searchQuery || Object.keys(activeFilters).length > 0) && (
+                <Button className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/25" onClick={handleAddAsset} disabled={limitReached}>
+                  <Plus className="mr-2 h-4 w-4" /> {t('addAsset')}
+                </Button>
+              )}
             </div>
           ) : (
-            assets.map((asset, index) => {
+            filteredAssets.map((asset, index) => {
               const iconMap: Record<string, LucideIcon> = {
                 Mail,
                 Mic,
@@ -266,9 +387,6 @@ export default function DigitalAssetsPage() {
                       Active
                     </div> */}
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 absolute top-4 right-4 bg-background/80 backdrop-blur-sm rounded-lg p-1 shadow-sm border border-border/50">
-                      <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-blue-500" onClick={(e) => { e.stopPropagation(); handleEditAsset(asset); }} title={t('edit')}>
-                        <Pencil className="w-4 h-4" />
-                      </Button>
                       <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-red-500" onClick={(e) => { e.stopPropagation(); handleDeleteAsset(asset.id); }} title={t('delete')}>
                         <Trash2 className="w-4 h-4" />
                       </Button>
@@ -323,38 +441,23 @@ export default function DigitalAssetsPage() {
             })
           )}
         </div>
-        {/* Mobile details modal */}
-        {selectedAssetDetails && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-2">
-            <div className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-lg shadow-lg p-6 w-full max-w-sm border border-gray-200 dark:border-gray-700">
-              <h3 className="text-lg font-bold mb-4 text-gray-900 dark:text-white">{selectedAssetDetails.asset_name}</h3>
-              <div className="space-y-2">
-                <div><span className="font-semibold dark:text-white">{t('assetType')}:</span> {t(selectedAssetDetails.asset_type)}</div>
-                <div><span className="font-semibold dark:text-white">{t('assignedBeneficiary')}:</span> {selectedAssetDetails.beneficiary?.full_name || '-'}</div>
-                {/* <div><span className="font-semibold dark:text-white">{t('status')}:</span> <StatusBadge status={selectedAssetDetails.status} /></div> */}
-                <div><span className="font-semibold dark:text-white">{t('validUntil')}:</span> {selectedAssetDetails.valid_until ? new Date(selectedAssetDetails.valid_until).toISOString().slice(0, 10) : '-'}</div>
-                <div>
-                  <span className="font-semibold">{t('numberOfFiles')}:</span>
-                  <button
-                    onClick={() => {
-                      setSelectedAssetDetails(null);
-                      openAttachmentsModal(selectedAssetDetails);
-                    }}
-                    className="ml-2 flex items-center gap-1 text-blue-600 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200"
-                  >
-                    <Paperclip className="w-3 h-3" />
-                    {getFileCount(selectedAssetDetails)}
-                  </button>
-                </div>
-              </div>
-              <div className="flex justify-end gap-2 mt-6">
-                <Button variant="outline" onClick={() => { setSelectedAssetDetails(null); handleEditAsset(selectedAssetDetails); }}>{t('edit')}</Button>
-                <Button variant="destructive" onClick={() => { handleDeleteAsset(selectedAssetDetails.id); setSelectedAssetDetails(null); }}>{t('delete')}</Button>
-                <Button onClick={() => setSelectedAssetDetails(null)}>{t('cancel')}</Button>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Details Modal */}
+        <AssetDetailsModal
+          asset={selectedAssetDetails}
+          open={!!selectedAssetDetails}
+          onClose={() => setSelectedAssetDetails(null)}
+          onDelete={(id) => {
+            setSelectedAssetDetails(null);
+            handleDeleteAsset(id);
+          }}
+          onManageFiles={(asset) => {
+            setSelectedAssetDetails(null);
+            openAttachmentsModal(asset);
+          }}
+          beneficiaries={beneficiaries}
+          onAssignBeneficiary={handleAssignBeneficiary}
+          onAssetUpdated={fetchAssets}
+        />
         <Dialog open={assignModalOpen} onOpenChange={(open) => { setAssignModalOpen(open); if (!open) { setSelectedAsset(null); setSelectedBeneficiaryId(null); } }}>
           <DialogContent className="max-w-lg w-full bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-700 p-4 sm:p-8">
             <DialogHeader>
@@ -398,6 +501,17 @@ export default function DigitalAssetsPage() {
           </DialogContent>
         </Dialog>
       </div>
-    </ProtectedRoute>
+      <DeleteConfirmationModal
+        open={deleteModalOpen}
+        onClose={() => {
+          setDeleteModalOpen(false);
+          setAssetToDelete(null);
+        }}
+        onConfirm={confirmDeleteAsset}
+        title={t('delete')}
+        description={t('deleteConfirmDigitalAsset')}
+        loading={loading}
+      />
+    </ProtectedRoute >
   );
 } 
