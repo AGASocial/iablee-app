@@ -169,8 +169,8 @@ export default function BillingPage() {
   return (
     <div className="container mx-auto py-10 space-y-8 px-2">
       <div>
-        <h1 className="text-3xl font-bold mb-2 text-black dark:text-white">{t('billingDashboard')}</h1>
-        <p className="text-muted-foreground">{t('manageBilling')}</p>
+        <h1 className="mb-2 text-3xl font-bold text-foreground dark:text-white">{t('billingDashboard')}</h1>
+        <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{t('manageBilling')}</p>
       </div>
 
       {/* Subscription Details */}

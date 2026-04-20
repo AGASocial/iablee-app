@@ -161,7 +161,7 @@ export function AuthForm({ type }: AuthFormProps) {
       : 'https://appleid.cdn-apple.com/appleid/button?height=38&width=300&color=black';
 
   return (
-    <div className="mx-auto p-4 flex w-full flex-col justify-center space-y-6 sm:w-[350px] rounded-lg ">
+    <div className="mx-auto flex w-full flex-col justify-center space-y-6">
       <div className="flex flex-col space-y-2 text-center">
         <h1 className="text-2xl font-semibold tracking-tight">
           {type === "login" ? t("welcome") : t("createAnAccount")}
@@ -176,7 +176,7 @@ export function AuthForm({ type }: AuthFormProps) {
       <Button
         type="button"
         variant="outline"
-        className="w-full max-w-[300px] mx-auto flex items-center justify-center gap-2"
+        className="mx-auto flex w-full max-w-[300px] items-center justify-center gap-2 border-border/70 bg-background/70 text-foreground hover:bg-accent/80 dark:border-white/15 dark:bg-background/80"
         onClick={handleGoogleSignIn}
         disabled={isLoading}
       >
@@ -201,10 +201,10 @@ export function AuthForm({ type }: AuthFormProps) {
 
       <div className="relative my-4">
         <div className="absolute inset-0 flex items-center">
-          <span className="w-full border-t" />
+          <span className="w-full border-t border-border/80" />
         </div>
         <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-background px-2 text-muted-foreground">{t("or")}</span>
+          <span className="bg-background/80 px-2 text-muted-foreground backdrop-blur-sm">{t("or")}</span>
         </div>
       </div>
 
@@ -218,7 +218,12 @@ export function AuthForm({ type }: AuthFormProps) {
                 <FormItem>
                   <FormLabel>{t("fullName")}</FormLabel>
                   <FormControl>
-                    <Input placeholder="John Doe" autoComplete="name" {...field} />
+                    <Input
+                      placeholder="John Doe"
+                      autoComplete="name"
+                      className="bg-background/80 dark:bg-background/70"
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -232,7 +237,13 @@ export function AuthForm({ type }: AuthFormProps) {
               <FormItem>
                 <FormLabel>{t("email")}</FormLabel>
                 <FormControl>
-                  <Input placeholder="name@example.com" type="email" autoComplete="email" {...field} />
+                  <Input
+                    placeholder="name@example.com"
+                    type="email"
+                    autoComplete="email"
+                    className="bg-background/80 dark:bg-background/70"
+                    {...field}
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -245,7 +256,13 @@ export function AuthForm({ type }: AuthFormProps) {
               <FormItem>
                 <FormLabel>{t("password")}</FormLabel>
                 <FormControl>
-                  <Input placeholder="••••••••" type="password" autoComplete={type === "login" ? "current-password" : "new-password"} {...field} />
+                  <Input
+                    placeholder="••••••••"
+                    type="password"
+                    autoComplete={type === "login" ? "current-password" : "new-password"}
+                    className="bg-background/80 dark:bg-background/70"
+                    {...field}
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>

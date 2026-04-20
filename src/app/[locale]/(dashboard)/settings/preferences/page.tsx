@@ -29,7 +29,7 @@ export default function PreferencesSettingsPage() {
     return (
         <div className="space-y-6">
             <div>
-                <h3 className="text-lg font-medium">{t('settings.preferences')}</h3>
+                <h3 className="text-xl font-semibold text-foreground dark:text-white">{t('settings.preferences')}</h3>
                 {/* <p className="text-sm text-muted-foreground">
                     {t('settings.languageDescription')}
                 </p> */}

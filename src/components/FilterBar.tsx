@@ -48,7 +48,7 @@ export function FilterBar({
                     placeholder={placeholder || t('search') || 'Search...'}
                     value={searchQuery}
                     onChange={(e) => onSearch(e.target.value)}
-                    className="pl-9"
+                    className="pl-9 dark:placeholder:text-slate-600"
                 />
             </div>
 
@@ -59,7 +59,7 @@ export function FilterBar({
                             value={activeFilters[filter.key] || "all"}
                             onValueChange={(value) => onFilterChange(filter.key, value === "all" ? "" : value)}
                         >
-                            <SelectTrigger>
+                            <SelectTrigger className="dark:data-[placeholder]:text-slate-600">
                                 <SelectValue placeholder={filter.label} />
                             </SelectTrigger>
                             <SelectContent>

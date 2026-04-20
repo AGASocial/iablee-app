@@ -260,7 +260,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
 
       {/* Main Content */}
       <main className={cn(
-        "flex-1 flex flex-col transition-all duration-300 bg-main-background-dark light:bg-main-background",
+        "flex-1 flex flex-col transition-all duration-300 bg-main-background dark:bg-main-background-dark",
         sidebarCollapsed ? "md:pl-20" : "md:pl-72"
       )}>
         <Navbar onMenuClick={() => setSidebarOpen(true)} />

@@ -105,12 +105,14 @@ export default function DashboardPage() {
 
   return (
     <div className="flex-1 space-y-8 p-4 sm:p-8 pt-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
-            {t('dashboard')}
+          <h2 className="text-2xl font-bold tracking-tight text-foreground drop-shadow-[0_1px_1px_rgba(0,0,0,0.18)] dark:text-white sm:text-3xl">
+            {t('dashboard') || 'Dashboard'}
           </h2>
-          <p className="text-sm text-muted-foreground mt-1">{t('overviewDigitalAssets')}</p>
+          <p className="mt-1 text-sm font-medium text-slate-700 dark:text-slate-200">
+            {t('overviewDigitalAssets')}
+          </p>
         </div>
       </div>
 
@@ -185,11 +187,11 @@ export default function DashboardPage() {
       {/* Main Content Cards */}
       <div className="grid gap-6 grid-cols-1 md:grid-cols-2 animate-fade-in-up delay-[500ms]">
         {/* Digital Assets Card */}
-        <Card className="col-span-1 glass-card border-none shadow-xl bg-card/30">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b border-white/5 pb-4">
+        <Card className="col-span-1 glass-card border border-border/60 bg-card/90 shadow-xl dark:bg-card/90 dark:shadow-black/40">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b border-border/50 pb-4">
             <div>
-              <CardTitle className="text-xl">{t('yourDigitalAssets')}</CardTitle>
-              <CardDescription className="text-base">{t('overviewDigitalAssets')}</CardDescription>
+              <CardTitle className="text-xl text-foreground dark:text-slate-100">{t('yourDigitalAssets')}</CardTitle>
+              <CardDescription className="text-base text-muted-foreground dark:text-slate-300">{t('overviewDigitalAssets')}</CardDescription>
             </div>
           </CardHeader>
           <CardContent className="pt-6">
@@ -215,7 +217,7 @@ export default function DashboardPage() {
             ) : (
               <div className="space-y-3">
                 {assets.map((asset) => (
-                  <div key={asset.id} className="group flex items-center justify-between p-4 border border-transparent rounded-xl bg-white/5 hover:bg-white/10 transition-all hover:scale-[1.01] hover:border-primary/10 hover:shadow-lg">
+                  <div key={asset.id} className="group flex items-center justify-between rounded-xl border border-border/40 bg-background/70 p-4 transition-all hover:scale-[1.01] hover:border-primary/25 hover:bg-background/85 hover:shadow-lg dark:bg-background/65 dark:hover:bg-background/80">
                     <div className="flex items-center space-x-4">
                       <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-colors">
                         <Key className="h-5 w-5" />
@@ -234,11 +236,11 @@ export default function DashboardPage() {
         </Card>
 
         {/* Beneficiaries Card */}
-        <Card className="col-span-1 glass-card border-none shadow-xl bg-card/30">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b border-white/5 pb-4">
+        <Card className="col-span-1 glass-card border border-border/60 bg-card/90 shadow-xl dark:bg-card/90 dark:shadow-black/40">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b border-border/50 pb-4">
             <div>
-              <CardTitle className="text-xl">{t('recentBeneficiaries')}</CardTitle>
-              <CardDescription className="text-base">{t('manageBeneficiaries')}</CardDescription>
+              <CardTitle className="text-xl text-foreground dark:text-slate-100">{t('recentBeneficiaries')}</CardTitle>
+              <CardDescription className="text-base text-muted-foreground dark:text-slate-300">{t('manageBeneficiaries')}</CardDescription>
             </div>
           </CardHeader>
           <CardContent className="pt-6">
@@ -258,7 +260,7 @@ export default function DashboardPage() {
             ) : (
               <div className="space-y-3">
                 {beneficiaries.map((beneficiary) => (
-                  <div key={beneficiary.id} className="group flex flex-col md:flex-row md:items-center md:justify-between p-4 border border-transparent rounded-xl bg-white/5 hover:bg-white/10 transition-all hover:scale-[1.01] hover:border-primary/10 hover:shadow-lg">
+                  <div key={beneficiary.id} className="group flex flex-col rounded-xl border border-border/40 bg-background/70 p-4 transition-all hover:scale-[1.01] hover:border-primary/25 hover:bg-background/85 hover:shadow-lg dark:bg-background/65 dark:hover:bg-background/80 md:flex-row md:items-center md:justify-between">
                     <div className="flex flex-col space-y-1">
                       <span className="font-semibold text-foreground group-hover:text-primary transition-colors">{beneficiary.full_name}</span>
                       <span className="text-sm text-muted-foreground">{beneficiary.email}</span>

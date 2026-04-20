@@ -311,9 +311,9 @@ export default function DigitalAssetsPage() {
             onFilesUpdated={fetchAssets}
           />
         )}
-        <div className="flex items-center justify-between mb-8">
+        <div className="mb-8 flex items-center justify-between">
           <div>
-            <h1 className="text-4xl font-bold text-gray-900 dark:text-white">{t('digitalAssetsTitle')}</h1>
+            <h1 className="text-3xl font-bold text-foreground dark:text-white sm:text-4xl">{t('digitalAssetsTitle')}</h1>
             {limitReached && limitInfo && (
               <p className="text-sm text-amber-600 dark:text-amber-400 mt-1">
                 {t('assetLimitReachedDescription', { limit: limitInfo.limit ?? 0 })} —{' '}
@@ -323,7 +323,13 @@ export default function DigitalAssetsPage() {
               </p>
             )}
           </div>
-          <Button className="hidden sm:inline-flex rounded-full px-6 py-2 text-base font-medium bg-gray-800 text-gray-100" onClick={handleAddAsset} disabled={limitReached}>{t('addNewAsset')}</Button>
+          <Button
+            className="hidden sm:inline-flex rounded-full bg-primary px-6 py-2 text-base font-medium text-primary-foreground shadow-lg shadow-primary/25 hover:bg-primary/90"
+            onClick={handleAddAsset}
+            disabled={limitReached}
+          >
+            {t('addNewAsset')}
+          </Button>
         </div>
 
 
