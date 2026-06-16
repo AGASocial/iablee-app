@@ -254,7 +254,17 @@ export function AuthForm({ type }: AuthFormProps) {
             name="password"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>{t("password")}</FormLabel>
+                <div className="flex items-center justify-between">
+                  <FormLabel>{t("password")}</FormLabel>
+                  {type === "login" && (
+                    <Link
+                      href="/auth/forgot-password"
+                      className="text-xs text-muted-foreground underline-offset-4 hover:text-primary hover:underline"
+                    >
+                      {t("forgotPassword")}
+                    </Link>
+                  )}
+                </div>
                 <FormControl>
                   <Input
                     placeholder="••••••••"
