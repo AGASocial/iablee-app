@@ -186,19 +186,22 @@ export function AuthHero({ quote, author, children }: { quote: string; author: s
         </div>
       </div>
 
-      {/* Gradient overlay - Primary color with modern gradient */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/70 via-primary/50 to-primary/70 backdrop-blur-[2px]" />
+      {/* Gradient overlay - calmer in dark mode to reduce visual noise */}
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/70 via-primary/50 to-primary/70 backdrop-blur-[2px] dark:from-slate-950/85 dark:via-indigo-950/55 dark:to-slate-950/85" />
 
-      {/* Additional overlay for depth and text readability - lightened */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/30" />
+      {/* Additional overlay for depth and readability */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/30 dark:from-black/70 dark:via-black/20 dark:to-black/60" />
 
-      {/* Subtle vignette effect - reduced opacity */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_transparent_0%,_rgba(0,0,0,0.1)_100%)]" />
+      {/* Subtle vignette effect */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_transparent_10%,_rgba(0,0,0,0.12)_100%)] dark:bg-[radial-gradient(ellipse_at_center,_transparent_20%,_rgba(0,0,0,0.42)_100%)]" />
 
-      {/* Animated gradient orbs for extra visual interest */}
+      {/* Animated gradient orbs for visual interest (muted in dark mode) */}
       <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/20 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-primary/30 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
+        <div className="absolute left-1/4 top-1/4 h-96 w-96 rounded-full bg-primary/20 blur-3xl animate-pulse dark:bg-indigo-500/12 dark:blur-[140px] dark:opacity-60" />
+        <div
+          className="absolute bottom-1/4 right-1/4 h-96 w-96 rounded-full bg-primary/30 blur-3xl animate-pulse dark:bg-blue-500/10 dark:blur-[150px] dark:opacity-50"
+          style={{ animationDelay: '1s' }}
+        />
       </div>
 
       {/* Content */}
@@ -215,7 +218,7 @@ export function AuthHero({ quote, author, children }: { quote: string; author: s
       {/* Quote at bottom - Shown on desktop/tablet, hidden on mobile to make room for form */}
       <div className="relative z-20 mt-auto hidden lg:block">
         <blockquote className="space-y-3">
-          <div className="p-4 sm:p-6 rounded-xl bg-white/5 backdrop-blur-md border border-white/10 shadow-2xl">
+          <div className="rounded-xl border border-white/10 bg-white/5 p-4 shadow-2xl backdrop-blur-md dark:border-white/15 dark:bg-black/20 sm:p-6">
             <p className="text-base sm:text-lg font-medium leading-relaxed drop-shadow-lg text-white/95">
               &ldquo;{quote}&rdquo;
             </p>

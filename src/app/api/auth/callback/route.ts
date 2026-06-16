@@ -9,12 +9,18 @@ function sanitizeNextPath(nextParam: string | null): string {
   return nextParam;
 }
 
+function localeFromNextPath(nextPath: string): string {
+  const match = nextPath.match(/^\/(en|es)(\/|$)/);
+  return match?.[1] ?? 'es';
+}
+
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get('code');
   const tokenHash = requestUrl.searchParams.get('token_hash');
   const otpType = requestUrl.searchParams.get('type') as EmailOtpType | null;
   const nextPath = sanitizeNextPath(requestUrl.searchParams.get('next'));
+  const locale = localeFromNextPath(nextPath);
   const supabase = await createRouteClient();
 
   let error: Error | null = null;
@@ -28,13 +34,21 @@ export async function GET(request: NextRequest) {
     });
     error = result.error;
   } else {
-    return NextResponse.redirect(new URL('/en/auth/login?error=missing_code', request.url));
+    return NextResponse.redirect(
+      new URL(`/${locale}/auth/login?error=missing_code`, request.url)
+    );
   }
 
   if (error) {
     console.error('Auth callback exchange error:', error);
-    return NextResponse.redirect(new URL('/en/auth/login?error=auth_callback_failed', request.url));
+    const errorResponse = NextResponse.redirect(
+      new URL(`/${locale}/auth/forgot-password?error=auth_callback_failed`, request.url)
+    );
+    errorResponse.cookies.delete('auth_callback_next');
+    return errorResponse;
   }
 
-  return NextResponse.redirect(new URL(nextPath, request.url));
+  const successResponse = NextResponse.redirect(new URL(nextPath, request.url));
+  successResponse.cookies.delete('auth_callback_next');
+  return successResponse;
 }

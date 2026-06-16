@@ -7,16 +7,26 @@ I can see your Supabase configuration already has:
   - `https://app.iablee.com`
   - `http://localhost:3000`
 
-## 🔧 Missing URLs for OAuth
+## 🔧 Required redirect URLs
 
-You need to add **locale-specific callback URLs** for OAuth providers to work properly:
+Password reset, email verification, and OAuth all rely on `/api/auth/callback`. If this URL is missing from the allowlist, Supabase falls back to **Site URL only** (`http://localhost:3000`) and the recovery link will land on the home page with a `code` query param instead of the reset-password page.
 
-### Add These URLs to Redirect URLs:
+### Add these URLs in Supabase → Authentication → URL Configuration → Redirect URLs:
+
+```
+http://localhost:3000/api/auth/callback
+http://localhost:3000/api/auth/callback?next=/en/auth/reset-password
+http://localhost:3000/api/auth/callback?next=/es/auth/reset-password
+https://app.iablee.com/api/auth/callback
+https://app.iablee.com/api/auth/callback?next=/en/auth/reset-password
+https://app.iablee.com/api/auth/callback?next=/es/auth/reset-password
+```
+
+Optional (legacy client callback page):
 
 ```
 http://localhost:3000/en/auth/callback
 http://localhost:3000/es/auth/callback
-http://localhost:3000/auth/callback
 ```
 
 ### Step-by-Step:

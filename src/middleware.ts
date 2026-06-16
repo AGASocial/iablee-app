@@ -64,6 +64,30 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // Supabase auth links may land on Site URL (e.g. /?code=...) instead of /api/auth/callback.
+  // Forward auth params to the callback handler before any login redirect.
+  const authCode = request.nextUrl.searchParams.get('code');
+  const tokenHash = request.nextUrl.searchParams.get('token_hash');
+  const authType = request.nextUrl.searchParams.get('type');
+
+  if ((authCode || tokenHash) && !pathname.startsWith('/api/auth/callback')) {
+    const callbackUrl = request.nextUrl.clone();
+    callbackUrl.pathname = '/api/auth/callback';
+
+    if (!callbackUrl.searchParams.get('next')) {
+      const pendingNext = request.cookies.get('auth_callback_next')?.value;
+      if (pendingNext?.startsWith('/')) {
+        callbackUrl.searchParams.set('next', pendingNext);
+      } else if (authType === 'recovery') {
+        callbackUrl.searchParams.set('next', `/${locale}/auth/reset-password`);
+      } else {
+        callbackUrl.searchParams.set('next', `/${locale}/dashboard`);
+      }
+    }
+
+    return NextResponse.redirect(callbackUrl);
+  }
+
   // Protected routes check
   if (!user && !pathname.includes('/auth/')) {
     // If we are on a protected route and not logged in, redirect to login

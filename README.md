@@ -73,6 +73,7 @@ The app includes automatic authentication redirects:
 
 Detailed documentation for specific features and implementations can be found in the `docs/` directory:
 
+-   **[Deployment (Fresh Supabase)](docs/DEPLOYMENT.md)**: Full deployment guide: migration order, all tables/triggers/RLS, Storage, Auth redirects, env vars, and optional billing/encryption for a new Supabase project.
 -   **[File Encryption & Security](docs/encryption.md)**: Details the Envelope Encryption system, key management, and database hardening measures.
 -   **[Billing Setup](docs/BILLING-SETUP.md)**: Guide for setting up and managing billing integration.
 -   **[Technical Specifications](docs/TECHNICAL-SPECIFICATIONS.md)**: In-depth technical specs for the application.
