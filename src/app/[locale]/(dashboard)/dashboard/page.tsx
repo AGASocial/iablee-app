@@ -107,10 +107,10 @@ export default function DashboardPage() {
     <div className="flex-1 space-y-8 p-4 sm:p-8 pt-6">
       <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground drop-shadow-[0_1px_1px_rgba(0,0,0,0.18)] dark:text-white sm:text-3xl">
+          <h2 className="text-2xl font-bold tracking-tight text-foreground drop-shadow-[0_1px_1px_rgba(0,0,0,0.18)] dark:text-slate-700 sm:text-3xl">
             {t('dashboard') || 'Dashboard'}
           </h2>
-          <p className="mt-1 text-sm font-medium text-slate-700 dark:text-slate-200">
+          <p className="mt-1 text-sm font-medium text-slate-700 dark:text-slate-700">
             {t('overviewDigitalAssets')}
           </p>
         </div>

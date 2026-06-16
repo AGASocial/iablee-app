@@ -313,7 +313,7 @@ export default function DigitalAssetsPage() {
         )}
         <div className="mb-8 flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-foreground dark:text-white sm:text-4xl">{t('digitalAssetsTitle')}</h1>
+            <h1 className="text-3xl font-bold text-foreground dark:text-slate-700 sm:text-4xl">{t('digitalAssetsTitle')}</h1>
             {limitReached && limitInfo && (
               <p className="text-sm text-amber-600 dark:text-amber-400 mt-1">
                 {t('assetLimitReachedDescription', { limit: limitInfo.limit ?? 0 })} —{' '}
