@@ -53,10 +53,10 @@ export function getPaymentGateway(): PaymentGateway {
   }
 }
 
-/**
- * Initialize the billing service with Supabase client and payment gateway
- */
-export async function getBillingService(): Promise<BillingService> {
+let billingServiceInstance: BillingService | null = null;
+let billingServicePromise: Promise<BillingService> | null = null;
+
+async function createBillingService(): Promise<BillingService> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -66,8 +66,28 @@ export async function getBillingService(): Promise<BillingService> {
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
   const gateway = getPaymentGateway();
-
   return new BillingService(supabase, gateway);
+}
+
+/**
+ * Initialize the billing service with Supabase client and payment gateway.
+ * Module singleton — reuses the same instance across requests.
+ */
+export async function getBillingService(): Promise<BillingService> {
+  if (billingServiceInstance) {
+    return billingServiceInstance;
+  }
+  if (!billingServicePromise) {
+    billingServicePromise = createBillingService();
+  }
+  billingServiceInstance = await billingServicePromise;
+  return billingServiceInstance;
+}
+
+/** Reset singleton (for tests) */
+export function resetBillingService(): void {
+  billingServiceInstance = null;
+  billingServicePromise = null;
 }
 
 /**
@@ -94,6 +114,6 @@ export function errorResponse(message: string, status = 400) {
 /**
  * Create success response
  */
-export function successResponse(data: unknown, status = 200) {
-  return Response.json(data, { status });
+export function successResponse(data: unknown, status = 200, headers?: Record<string, string>) {
+  return Response.json(data, { status, headers });
 }

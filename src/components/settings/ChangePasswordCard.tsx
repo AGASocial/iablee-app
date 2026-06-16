@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from 'next-intl';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,37 +13,16 @@ import {
     CardDescription,
     CardHeader,
     CardTitle,
-} from "@/components/ui/card"
-
-interface UserProfile {
-    id: string;
-    email?: string;
-    full_name?: string;
-    identities?: { provider: string }[];
-}
+} from "@/components/ui/card";
+import { useUserProfile } from '@/hooks/useDataQueries';
 
 export function ChangePasswordCard() {
     const t = useTranslations();
     const [loading, setLoading] = useState(false);
-    const [user, setUser] = useState<UserProfile | null>(null);
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [showPasswordChange, setShowPasswordChange] = useState(false);
-
-    useEffect(() => {
-        const fetchUser = async () => {
-            try {
-                const res = await fetch('/api/user/profile');
-                if (res.ok) {
-                    const data = await res.json();
-                    setUser(data);
-                }
-            } catch (error) {
-                console.error("Failed to fetch user profile", error);
-            }
-        };
-        fetchUser();
-    }, []);
+    const { data: user, isLoading } = useUserProfile();
 
     const handleChangePassword = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -78,24 +57,17 @@ export function ChangePasswordCard() {
         }
     };
 
-    // Helper to determine connected providers
-    const getProviders = () => {
-        if (!user?.identities) return [];
-        return user.identities.map((id: { provider: string }) => id.provider);
-    };
-
-    const providers = getProviders();
+    const providers = user?.identities?.map((id) => id.provider) ?? [];
     const isEmailProvider = providers.includes('email');
 
-    if (!user) return null;
-    // If the user does not have an email identity (e.g. only Google/Apple), they cannot change password here.
+    if (isLoading || !user) return null;
     if (!isEmailProvider) return null;
 
     return (
         <Card>
             <CardHeader>
                 <CardTitle>{t('settings.changePassword')}</CardTitle>
-                <CardDescription>{t('settings.languageDescription') ? "" : ""}</CardDescription> {/* Placeholder just to match structure if needed */}
+                <CardDescription>{t('settings.languageDescription') ? "" : ""}</CardDescription>
             </CardHeader>
             <CardContent>
                 {!showPasswordChange ? (

@@ -2,191 +2,144 @@ import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import AddAssetForm from '../AddAssetForm';
-import { supabase } from '@/lib/supabase';
-import { ASSET_TYPES, getAssetType } from '@/constants/assetTypes';
+import { useAssetType } from '@/lib/assetTypes';
 
-// Mock dependencies
-jest.mock('@/lib/supabase');
-jest.mock('@/constants/assetTypes', () => ({
-  ...jest.requireActual('@/constants/assetTypes'),
-  getAssetType: jest.fn(),
+jest.mock('@/lib/assetTypes', () => ({
+  useAssetType: jest.fn(),
 }));
 
-describe('AddAssetForm', () => {
-  const mockSupabase = supabase as jest.Mocked<typeof supabase>;
-  const mockUser = {
-    id: 'user-123',
-    email: 'test@example.com',
-  };
+const mockCartasType = {
+  id: '1',
+  key: 'cartas',
+  label: 'Cartas',
+  icon: 'Mail',
+  requiredFields: ['asset_name'],
+  optionalFields: ['description', 'email'],
+  customFields: [],
+  displayOrder: 1,
+  isActive: true,
+};
 
+const mockDocumentosType = {
+  id: '2',
+  key: 'documentos',
+  label: 'Documentos',
+  icon: 'File',
+  requiredFields: ['asset_name'],
+  optionalFields: ['description', 'files'],
+  fileAccept: '.pdf,.doc',
+  customFields: [],
+  displayOrder: 2,
+  isActive: true,
+};
+
+describe('AddAssetForm', () => {
+  const mockUseAssetType = useAssetType as jest.Mock;
   const mockOnSuccess = jest.fn();
   const mockOnCancel = jest.fn();
+  const mockFetch = jest.fn();
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockSupabase.auth.getUser = jest.fn().mockResolvedValue({
-      data: { user: mockUser },
-      error: null,
-    });
-    mockSupabase.storage.from = jest.fn().mockReturnValue({
-      upload: jest.fn().mockResolvedValue({
-        data: { path: 'test-path' },
-        error: null,
-      }),
-    });
-    mockSupabase.from = jest.fn().mockReturnValue({
-      insert: jest.fn().mockResolvedValue({
-        data: null,
-        error: null,
-      }),
-      update: jest.fn().mockReturnValue({
-        eq: jest.fn().mockResolvedValue({
-          data: null,
-          error: null,
-        }),
-      }),
-    });
+    global.fetch = mockFetch;
 
-    // Mock getAssetType
-    (getAssetType as jest.Mock).mockImplementation((key: string) => {
-      return ASSET_TYPES.find(t => t.key === key);
-    });
+    mockUseAssetType.mockImplementation((key: string) => ({
+      data: key === 'documentos' ? mockDocumentosType : mockCartasType,
+      isLoading: false,
+    }));
   });
 
   it('should render form with required fields', () => {
     render(
-      <AddAssetForm
-        assetType="cartas"
-        onSuccess={mockOnSuccess}
-        onCancel={mockOnCancel}
-      />
+      <AddAssetForm assetType="cartas" onSuccess={mockOnSuccess} onCancel={mockOnCancel} />
     );
-
     expect(screen.getByLabelText(/assetName/i)).toBeInTheDocument();
   });
 
   it('should show asset type specific fields', () => {
     render(
-      <AddAssetForm
-        assetType="cartas"
-        onSuccess={mockOnSuccess}
-        onCancel={mockOnCancel}
-      />
+      <AddAssetForm assetType="cartas" onSuccess={mockOnSuccess} onCancel={mockOnCancel} />
     );
-
-    // Cartas should have description field
     expect(screen.getByLabelText(/description/i)).toBeInTheDocument();
   });
 
   it('should submit form with valid data', async () => {
     const user = userEvent.setup();
-    const mockInsert = jest.fn().mockResolvedValue({
-      data: null,
-      error: null,
-    });
-
-    mockSupabase.from = jest.fn().mockReturnValue({
-      insert: mockInsert,
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
     });
 
     render(
-      <AddAssetForm
-        assetType="cartas"
-        onSuccess={mockOnSuccess}
-        onCancel={mockOnCancel}
-      />
+      <AddAssetForm assetType="cartas" onSuccess={mockOnSuccess} onCancel={mockOnCancel} />
     );
 
-    const assetNameInput = screen.getByLabelText(/assetName/i);
-    await user.type(assetNameInput, 'Test Asset');
-
-    const saveButton = screen.getByRole('button', { name: /save/i });
-    await user.click(saveButton);
+    await user.type(screen.getByLabelText(/assetName/i), 'Test Asset');
+    await user.click(screen.getByRole('button', { name: /save/i }));
 
     await waitFor(() => {
-      expect(mockInsert).toHaveBeenCalled();
+      expect(mockFetch).toHaveBeenCalledWith('/api/assets', expect.objectContaining({ method: 'POST' }));
       expect(mockOnSuccess).toHaveBeenCalled();
     });
   });
 
   it('should show error on submission failure', async () => {
     const user = userEvent.setup();
-    const errorMessage = 'Failed to create asset';
-
-    mockSupabase.from = jest.fn().mockReturnValue({
-      insert: jest.fn().mockResolvedValue({
-        data: null,
-        error: { message: errorMessage },
-      }),
+    mockFetch.mockResolvedValue({
+      ok: false,
+      json: async () => ({ error: 'Failed to create asset' }),
     });
 
     render(
-      <AddAssetForm
-        assetType="cartas"
-        onSuccess={mockOnSuccess}
-        onCancel={mockOnCancel}
-      />
+      <AddAssetForm assetType="cartas" onSuccess={mockOnSuccess} onCancel={mockOnCancel} />
     );
 
-    const assetNameInput = screen.getByLabelText(/assetName/i);
-    await user.type(assetNameInput, 'Test Asset');
-
-    const saveButton = screen.getByRole('button', { name: /save/i });
-    await user.click(saveButton);
+    await user.type(screen.getByLabelText(/assetName/i), 'Test Asset');
+    await user.click(screen.getByRole('button', { name: /save/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(errorMessage)).toBeInTheDocument();
+      expect(screen.getByText('Failed to create asset')).toBeInTheDocument();
     });
   });
 
   it('should handle file upload', async () => {
     const user = userEvent.setup();
-    const mockUpload = jest.fn().mockResolvedValue({
-      data: { path: 'user-123/test-file.pdf' },
-      error: null,
-    });
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          path: 'user-123/test-file.pdf',
+          fileName: 'test.pdf',
+          fileType: 'document',
+          fileSize: 100,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({}),
+      });
 
-    mockSupabase.storage.from = jest.fn().mockReturnValue({
-      upload: mockUpload,
-    });
-
-    render(
-      <AddAssetForm
-        assetType="documentos"
-        onSuccess={mockOnSuccess}
-        onCancel={mockOnCancel}
-      />
+    const { container } = render(
+      <AddAssetForm assetType="documentos" onSuccess={mockOnSuccess} onCancel={mockOnCancel} />
     );
 
-    const fileInput = screen.getByLabelText(/uploadFiles/i);
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
     const file = new File(['content'], 'test.pdf', { type: 'application/pdf' });
     await user.upload(fileInput, file);
-
-    const assetNameInput = screen.getByLabelText(/assetName/i);
-    await user.type(assetNameInput, 'Test Document');
-
-    const saveButton = screen.getByRole('button', { name: /save/i });
-    await user.click(saveButton);
+    await user.type(screen.getByLabelText(/assetName/i), 'Test Document');
+    await user.click(screen.getByRole('button', { name: /save/i }));
 
     await waitFor(() => {
-      expect(mockUpload).toHaveBeenCalled();
+      expect(mockFetch).toHaveBeenCalledWith('/api/storage/upload', expect.any(Object));
     });
   });
 
   it('should call onCancel when cancel button is clicked', async () => {
     const user = userEvent.setup();
-
     render(
-      <AddAssetForm
-        assetType="cartas"
-        onSuccess={mockOnSuccess}
-        onCancel={mockOnCancel}
-      />
+      <AddAssetForm assetType="cartas" onSuccess={mockOnSuccess} onCancel={mockOnCancel} />
     );
-
-    const cancelButton = screen.getByRole('button', { name: /cancel/i });
-    await user.click(cancelButton);
-
+    await user.click(screen.getByRole('button', { name: /cancel/i }));
     expect(mockOnCancel).toHaveBeenCalled();
   });
 
@@ -201,7 +154,7 @@ describe('AddAssetForm', () => {
       files: [],
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any;
 
     render(
@@ -227,18 +180,12 @@ describe('AddAssetForm', () => {
       files: [],
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any;
 
-    const mockEq = jest.fn().mockResolvedValue({
-      data: null,
-      error: null,
-    });
-
-    mockSupabase.from = jest.fn().mockReturnValue({
-      update: jest.fn().mockReturnValue({
-        eq: mockEq,
-      }),
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
     });
 
     render(
@@ -253,14 +200,14 @@ describe('AddAssetForm', () => {
     const assetNameInput = screen.getByDisplayValue('Existing Asset');
     await user.clear(assetNameInput);
     await user.type(assetNameInput, 'Updated Asset');
-
-    const saveButton = screen.getByRole('button', { name: /save/i });
-    await user.click(saveButton);
+    await user.click(screen.getByRole('button', { name: /save/i }));
 
     await waitFor(() => {
-      expect(mockEq).toHaveBeenCalledWith('id', 'asset-123');
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/assets/asset-123',
+        expect.objectContaining({ method: 'PUT' })
+      );
       expect(mockOnSuccess).toHaveBeenCalled();
     });
   });
 });
-

@@ -1,53 +1,62 @@
-import { NextResponse } from 'next/server';
-import { createAuthenticatedRouteClient, checkSecuritySession } from '@/lib/supabase-server';
+import { NextRequest, NextResponse } from 'next/server';
+import { getAuthenticatedContext } from '@/lib/auth-context';
 import { canCreateBeneficiary } from '@/lib/subscription/limits';
+import { parsePaginationParams, buildPaginatedResponse } from '@/lib/pagination';
+import { withTiming } from '@/lib/observability';
 
-export async function GET() {
-    const { supabase, user } = await createAuthenticatedRouteClient();
-
-    if (!user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+/**
+ * GET /api/beneficiaries
+ *
+ * Paginated list of beneficiaries.
+ * Query params: limit (default 20, max 100), cursor (base64url JSON { id, sortValue })
+ * Response: { data: Beneficiary[], pagination: { limit, hasMore, nextCursor } }
+ */
+export const GET = withTiming('GET /api/beneficiaries', async (request: NextRequest) => {
+    const auth = await getAuthenticatedContext();
+    if (!auth.ok) {
+        return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
+    const { supabase, user } = auth.ctx;
 
-    const hasSecuritySession = await checkSecuritySession();
-    if (!hasSecuritySession) {
-        const { data: userData } = await supabase.from('users').select('security_pin_hash').eq('id', user.id).single();
-        if (userData?.security_pin_hash) {
-            return NextResponse.json({ error: 'Security PIN required' }, { status: 403 });
-        }
-    }
+    const { limit, cursor } = parsePaginationParams(request.nextUrl.searchParams);
 
-    const { data, error } = await supabase
+    let query = supabase
         .from('beneficiaries')
         .select('*, relationship:relationships(key)')
         .eq('user_id', user.id)
-        .order('full_name', { ascending: true });
+        .order('full_name', { ascending: true })
+        .order('id', { ascending: true })
+        .limit(limit + 1);
+
+    if (cursor) {
+        query = query.or(
+            `full_name.gt.${cursor.sortValue},and(full_name.eq.${cursor.sortValue},id.gt.${cursor.id})`
+        );
+    }
+
+    const { data, error } = await query;
 
     if (error) {
         console.error('Supabase error fetching beneficiaries:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json(data);
-}
+    const result = buildPaginatedResponse(data ?? [], limit, (row) => ({
+        id: row.id as string,
+        sortValue: row.full_name as string,
+    }));
 
-export async function POST(request: Request) {
-    const { supabase, user } = await createAuthenticatedRouteClient();
+    return NextResponse.json(result);
+});
 
-    if (!user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+export const POST = withTiming('POST /api/beneficiaries', async (request: Request) => {
+    const auth = await getAuthenticatedContext();
+    if (!auth.ok) {
+        return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
-
-    const hasSecuritySession = await checkSecuritySession();
-    if (!hasSecuritySession) {
-        const { data: userData } = await supabase.from('users').select('security_pin_hash').eq('id', user.id).single();
-        if (userData?.security_pin_hash) {
-            return NextResponse.json({ error: 'Security PIN required' }, { status: 403 });
-        }
-    }
+    const { supabase, user } = auth.ctx;
 
     try {
-        // Enforce subscription limit
         const limitCheck = await canCreateBeneficiary(supabase, user.id);
         if (!limitCheck.allowed) {
             return NextResponse.json(
@@ -87,4 +96,4 @@ export async function POST(request: Request) {
     } catch {
         return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
     }
-}
+});

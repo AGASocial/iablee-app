@@ -1,7 +1,9 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { usePathname } from 'next/navigation';
+import React, { createContext, useContext, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useSecuritySession } from '@/hooks/useDataQueries';
+import { queryKeys } from '@/lib/query-keys';
 
 interface SecurityState {
     hasPin: boolean;
@@ -13,49 +15,23 @@ interface SecurityState {
 const SecurityContext = createContext<SecurityState | undefined>(undefined);
 
 export function SecurityProvider({ children }: { children: React.ReactNode }) {
-    const [state, setState] = useState<{
-        hasPin: boolean;
-        locked: boolean;
-        loading: boolean;
-    }>({
-        hasPin: false,
-        locked: true,
-        loading: true,
-    });
-    const pathname = usePathname();
+    const queryClient = useQueryClient();
+    const { data, isLoading, refetch } = useSecuritySession();
 
     const checkStatus = useCallback(async () => {
-        try {
-            const res = await fetch("/api/security/check-session");
-            if (res.ok) {
-                const data = await res.json();
-                // data: { authenticated, hasPin, locked }
-                if (data.authenticated) {
-                    setState({
-                        hasPin: data.hasPin,
-                        locked: data.locked,
-                        loading: false
-                    });
-                } else {
-                    // Not authenticated, irrelevant
-                    setState({ hasPin: false, locked: false, loading: false });
-                }
-            } else {
-                setState(prev => ({ ...prev, loading: false }));
-            }
-        } catch (error) {
-            console.error("Failed to check security status", error);
-            setState(prev => ({ ...prev, loading: false }));
-        }
-    }, []);
+        await queryClient.invalidateQueries({ queryKey: queryKeys.security.session() });
+        await refetch();
+    }, [queryClient, refetch]);
 
-    useEffect(() => {
-        // eslint-disable-next-line
-        checkStatus();
-    }, [checkStatus, pathname]);
+    const state: SecurityState = {
+        hasPin: data?.hasPin ?? false,
+        locked: data?.locked ?? true,
+        loading: isLoading,
+        checkStatus,
+    };
 
     return (
-        <SecurityContext.Provider value={{ ...state, checkStatus }}>
+        <SecurityContext.Provider value={state}>
             {children}
         </SecurityContext.Provider>
     );

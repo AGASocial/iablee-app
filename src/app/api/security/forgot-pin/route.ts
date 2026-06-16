@@ -1,15 +1,31 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createAuthenticatedRouteClient } from "@/lib/supabase-server";
+import { supabaseAdmin } from "@/lib/supabase-admin";
+import { checkRateLimit, getClientIp, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
 import { Resend } from 'resend';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-export async function POST() {
+export async function POST(request: NextRequest) {
     try {
-        const { supabase, user } = await createAuthenticatedRouteClient();
+        const ip = getClientIp(request);
+        const rateLimit = checkRateLimit(`security:forgot-pin:${ip}`, RATE_LIMITS.securityPin);
+        if (!rateLimit.allowed) {
+            return rateLimitResponse(rateLimit.resetAt);
+        }
+
+        const { user } = await createAuthenticatedRouteClient();
 
         if (!user || !user.email) {
             return NextResponse.json({ error: "User not authenticated or email missing" }, { status: 401 });
+        }
+
+        const userRateLimit = checkRateLimit(
+            `security:forgot-pin:user:${user.id}`,
+            RATE_LIMITS.securityPin
+        );
+        if (!userRateLimit.allowed) {
+            return rateLimitResponse(userRateLimit.resetAt);
         }
 
         // Generate 6-digit code
@@ -18,8 +34,8 @@ export async function POST() {
         // Define expiry (15 mins from now)
         const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
-        // Store OTP in database
-        const { error: dbError } = await supabase
+        // Store OTP via admin client (RLS denies client access on security_otps)
+        const { error: dbError } = await supabaseAdmin
             .from('security_otps')
             .insert({
                 user_id: user.id,

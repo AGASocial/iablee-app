@@ -83,23 +83,7 @@ export function AuthForm({ type }: AuthFormProps) {
 
         window.dispatchEvent(new Event('auth-changed'))
         toast.success("Login successful!")
-
-        // Check if user has any assets via API
-        try {
-          const res = await fetch('/api/assets');
-          if (res.ok) {
-            const assets = await res.json();
-            if (!assets || assets.length === 0) {
-              router.push(`/${locale}/wizard`);
-            } else {
-              router.push(`/${locale}/dashboard`);
-            }
-          } else {
-            router.push(`/${locale}/dashboard`);
-          }
-        } catch {
-          router.push(`/${locale}/dashboard`);
-        }
+        router.push(`/${locale}`)
       }
     } catch (error) {
       console.error('Auth error:', error)
@@ -313,7 +297,7 @@ export function AuthForm({ type }: AuthFormProps) {
       </p>
 
       <p className="px-8 text-center text-xs text-muted-foreground">
-        {t("version")} 2.2.0
+        {t("version")} 2.4.0
         <br />
         Copyright © 2026
       </p>

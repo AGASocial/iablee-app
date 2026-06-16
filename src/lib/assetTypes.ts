@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from './query-keys';
 import type { Database } from './supabase';
 
 type AssetTypeRow = Database['public']['Tables']['asset_types']['Row'];
@@ -39,11 +40,12 @@ export async function getAssetTypes(): Promise<AssetType[]> {
 /**
  * Hook to fetch all asset types with caching
  */
-export function useAssetTypes() {
+export function useAssetTypes(options?: { enabled?: boolean }) {
   return useQuery({
-    queryKey: ['asset-types'],
+    queryKey: queryKeys.assetTypes.list(),
     queryFn: getAssetTypes,
-    staleTime: 1000 * 60 * 30, // 30 minutes cache for types
+    staleTime: 1000 * 60 * 30,
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -79,10 +81,10 @@ export async function getAssetType(key: string): Promise<AssetType | undefined> 
  */
 export function useAssetType(key: string | null | undefined) {
   return useQuery({
-    queryKey: ['asset-type', key],
+    queryKey: key ? queryKeys.assetTypes.detail(key) : queryKeys.assetTypes.all,
     queryFn: () => (key ? getAssetType(key) : Promise.resolve(undefined)),
     enabled: !!key,
-    staleTime: 1000 * 60 * 30, // 30 minutes cache
+    staleTime: 1000 * 60 * 30,
   });
 }
 
