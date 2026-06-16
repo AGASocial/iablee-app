@@ -86,6 +86,33 @@ Ejecutar una prueba específica:
 npm run test:e2e -- e2e/auth.spec.ts
 ```
 
+### Pruebas de rendimiento E2E
+
+`e2e/performance.spec.ts` valida límites de llamadas API en dashboard y que la navegación no refetch `check-session` cuando el cache está activo.
+
+```bash
+npm run test:e2e -- e2e/performance.spec.ts
+```
+
+### Load tests (k6)
+
+Scripts en `plan/load-tests/`:
+
+```bash
+# Instalar k6: https://k6.io/docs/get-started/installation/
+export BASE_URL=http://localhost:3000
+export AUTH_COOKIE="your-session-cookie"
+
+k6 run plan/load-tests/dashboard.js
+k6 run plan/load-tests/assets-list.js
+k6 run plan/load-tests/auth-check-session.js
+k6 run plan/load-tests/verify-pin-smoke.js
+```
+
+Variables de entorno: `BASE_URL`, `AUTH_COOKIE`, `TEST_EMAIL`, `TEST_PASSWORD`.
+
+Baseline documentada en `plan/qa/AUTH-SECURITY-MATRIX.md` y `docs/TEST_SUMMARY.md`.
+
 ### Ejecutar Todas las Pruebas
 
 Para ejecutar tanto pruebas unitarias como e2e:

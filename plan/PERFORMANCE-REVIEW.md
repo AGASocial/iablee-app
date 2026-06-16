@@ -130,6 +130,18 @@
 - **Storage:** Upload duration, bytes in/out, failed encrypt/decrypt count
 - **Business:** Assets/beneficiaries per user (payload size proxy)
 
+### Alert thresholds (route timing via `withTiming`)
+
+| Level | Duration | Action |
+|-------|----------|--------|
+| ok | < 500ms | Normal |
+| warn | 500ms – 2000ms | Investigate hot route |
+| critical | > 2000ms | Page on-call; check DB/Supabase latency |
+
+Instrumented routes: `GET /api/assets`, `GET /api/beneficiaries`, `GET /api/dashboard`, `GET /api/security/check-session`.
+
+Configure Vercel log drain to capture structured `route_timing` JSON logs for APM dashboards.
+
 ---
 
 ## Finding ID reference (for user stories)

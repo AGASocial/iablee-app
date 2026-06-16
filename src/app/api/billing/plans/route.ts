@@ -3,20 +3,12 @@
  * Get all available billing plans
  */
 
-import { createClient } from '@supabase/supabase-js';
-import { errorResponse, successResponse } from '@/lib/billing/server';
+import { errorResponse, successResponse, getBillingService } from '@/lib/billing/server';
 
 export async function GET() {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!supabaseUrl || !supabaseServiceKey) {
-      return errorResponse('Server configuration error', 500);
-    }
-
-    // Create Supabase client to fetch plans
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const billingService = await getBillingService();
+    const supabase = billingService.getSupabaseClient();
 
     const { data: plans, error } = await supabase
       .from('billing_plans')
@@ -38,7 +30,9 @@ export async function GET() {
       providerPriceMap: plan.provider_price_map,
     }));
 
-    return successResponse({ plans: transformedPlans || [] });
+    return successResponse({ plans: transformedPlans || [] }, 200, {
+      'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400',
+    });
   } catch (error) {
     console.error('Error fetching plans:', error);
     return errorResponse(

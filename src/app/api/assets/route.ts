@@ -1,70 +1,66 @@
-import { NextResponse } from 'next/server';
-import { createAuthenticatedRouteClient, checkSecuritySession } from '@/lib/supabase-server';
+import { NextRequest, NextResponse } from 'next/server';
+import { getAuthenticatedContext } from '@/lib/auth-context';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { canCreateAsset } from '@/lib/subscription/limits';
+import { parsePaginationParams, buildPaginatedResponse } from '@/lib/pagination';
+import { withTiming } from '@/lib/observability';
 
-export async function GET() {
-    const { supabase, user } = await createAuthenticatedRouteClient();
-
-    if (!user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+/**
+ * GET /api/assets
+ *
+ * Paginated list of digital assets.
+ * Query params: limit (default 20, max 100), cursor (base64url JSON { id, sortValue })
+ * Response: { data: Asset[], pagination: { limit, hasMore, nextCursor } }
+ *
+ * List view excludes decrypted_password and decrypted_custom_fields.
+ * Use GET /api/assets/[assetId] for full detail including credentials.
+ */
+export const GET = withTiming('GET /api/assets', async (request: NextRequest) => {
+    const auth = await getAuthenticatedContext();
+    if (!auth.ok) {
+        return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
+    const { user } = auth.ctx;
 
-    const hasSecuritySession = await checkSecuritySession();
-    if (!hasSecuritySession) {
-        // Check if user HAS a pin at all? The middleware/frontend handles redirection to setup.
-        // But here, if no session, we deny.
-        // Exception: If the user has NO pin set, maybe we allow?
-        // Policy: "at some point thought in a extra password... needs the additional security password to do stuff"
-        // Strict mode: If user has a PIN, they NEED session.
-        // If user has NO PIN, they technically need to set it up.
-        // For now, let's just check the session cookie.
-        const { data: userData } = await supabase.from('users').select('security_pin_hash').eq('id', user.id).single();
-        if (userData?.security_pin_hash) {
-            return NextResponse.json({ error: 'Security PIN required' }, { status: 403 });
-        }
-    }
+    const { limit, cursor } = parsePaginationParams(request.nextUrl.searchParams);
 
-    const { data, error } = await supabaseAdmin
+    let query = supabaseAdmin
         .from('decrypted_digital_assets')
-        .select('id, asset_name, asset_type, status, email, decrypted_password, website, valid_until, description, files, decrypted_custom_fields, beneficiary_id, beneficiary:beneficiary_id(id, full_name), asset_type_details:asset_type(id, name, description, icon)')
+        .select('id, asset_name, asset_type, status, email, website, valid_until, description, files, beneficiary_id, beneficiary:beneficiary_id(id, full_name), asset_type_details:asset_type(id, name, description, icon)')
         .eq('user_id', user.id)
-        .order('asset_name', { ascending: true });
+        .order('asset_name', { ascending: true })
+        .order('id', { ascending: true })
+        .limit(limit + 1);
+
+    if (cursor) {
+        query = query.or(
+            `asset_name.gt.${cursor.sortValue},and(asset_name.eq.${cursor.sortValue},id.gt.${cursor.id})`
+        );
+    }
+
+    const { data, error } = await query;
 
     if (error) {
         console.error('Supabase error fetching digital_assets:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Map decrypted fields back to their original names and parse custom_fields JSON
-    const mapped = data?.map((row: Record<string, unknown>) => ({
-        ...row,
-        password: row.decrypted_password ?? null,
-        custom_fields: row.decrypted_custom_fields ? (() => { try { return JSON.parse(row.decrypted_custom_fields as string); } catch { return null; } })() : null,
-        decrypted_password: undefined,
-        decrypted_custom_fields: undefined,
+    const result = buildPaginatedResponse(data ?? [], limit, (row) => ({
+        id: row.id as string,
+        sortValue: row.asset_name as string,
     }));
 
-    return NextResponse.json(mapped);
-}
+    return NextResponse.json(result);
+});
 
-export async function POST(request: Request) {
-    const { supabase, user } = await createAuthenticatedRouteClient();
-
-    if (!user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+export const POST = withTiming('POST /api/assets', async (request: Request) => {
+    const auth = await getAuthenticatedContext();
+    if (!auth.ok) {
+        return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
-
-    const hasSecuritySession = await checkSecuritySession();
-    if (!hasSecuritySession) {
-        const { data: userData } = await supabase.from('users').select('security_pin_hash').eq('id', user.id).single();
-        if (userData?.security_pin_hash) {
-            return NextResponse.json({ error: 'Security PIN required' }, { status: 403 });
-        }
-    }
+    const { supabase, user } = auth.ctx;
 
     try {
-        // Enforce subscription limit
         const limitCheck = await canCreateAsset(supabase, user.id);
         if (!limitCheck.allowed) {
             return NextResponse.json(
@@ -105,7 +101,6 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: error.message }, { status: 500 });
         }
 
-        // Create asset_attachments records for each uploaded file
         if (fileMetadata && Array.isArray(fileMetadata) && fileMetadata.length > 0) {
             const attachmentRows = fileMetadata.map((fm: { path: string; fileName: string; fileType: string; fileSize: number }) => ({
                 asset_id: data.id,
@@ -121,7 +116,6 @@ export async function POST(request: Request) {
 
             if (attachError) {
                 console.error('Error creating asset attachments:', attachError);
-                // Don't fail the whole request — asset was created. Log and continue.
             }
         }
 
@@ -129,4 +123,4 @@ export async function POST(request: Request) {
     } catch {
         return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
     }
-}
+});

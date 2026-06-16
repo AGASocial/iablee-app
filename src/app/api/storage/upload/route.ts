@@ -1,7 +1,8 @@
-
-import { NextResponse } from 'next/server';
-import { createAuthenticatedRouteClient } from '@/lib/supabase-server';
+import { NextRequest, NextResponse } from 'next/server';
+import { getAuthenticatedContext } from '@/lib/auth-context';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { getSubscriptionLimits } from '@/lib/subscription/limits';
+import { checkRateLimit, getClientIp, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 import {
     encryptUserKey,
     generateUserKey,
@@ -10,11 +11,70 @@ import {
 } from '@/lib/encryption';
 import { Readable } from 'stream';
 
-export async function POST(request: Request) {
-    const { user } = await createAuthenticatedRouteClient();
+/** Per-request cache for user encryption key lookup */
+const requestKeyCache = new Map<string, Buffer>();
 
-    if (!user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+async function getUserStorageKey(userId: string): Promise<Buffer> {
+  const cached = requestKeyCache.get(userId);
+  if (cached) return cached;
+
+  const { data: userData, error: userError } = await supabaseAdmin
+    .from('users')
+    .select('encrypted_storage_key')
+    .eq('id', userId)
+    .single();
+
+  if (userError) {
+    throw new Error('Failed to fetch user storage key');
+  }
+
+  let storageKey: Buffer;
+
+  if (!userData?.encrypted_storage_key) {
+    const newKey = generateUserKey();
+    const encryptedKey = encryptUserKey(newKey);
+
+    await supabaseAdmin
+      .from('users')
+      .update({ encrypted_storage_key: encryptedKey })
+      .eq('id', userId)
+      .is('encrypted_storage_key', null);
+
+    const { data: finalUserData } = await supabaseAdmin
+      .from('users')
+      .select('encrypted_storage_key')
+      .eq('id', userId)
+      .single();
+
+    if (!finalUserData?.encrypted_storage_key) {
+      throw new Error('Failed to generate/retrieve user storage key');
+    }
+
+    storageKey = decryptUserKey(finalUserData.encrypted_storage_key);
+  } else {
+    storageKey = decryptUserKey(userData.encrypted_storage_key);
+  }
+
+  requestKeyCache.set(userId, storageKey);
+  return storageKey;
+}
+
+export async function POST(request: NextRequest) {
+    const ip = getClientIp(request);
+    const rateLimit = checkRateLimit(`upload:${ip}`, RATE_LIMITS.upload);
+    if (!rateLimit.allowed) {
+        return rateLimitResponse(rateLimit.resetAt);
+    }
+
+    const auth = await getAuthenticatedContext();
+    if (!auth.ok) {
+        return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+    const { user, supabase } = auth.ctx;
+
+    const userRateLimit = checkRateLimit(`upload:user:${user.id}`, RATE_LIMITS.upload);
+    if (!userRateLimit.allowed) {
+        return rateLimitResponse(userRateLimit.resetAt);
     }
 
     try {
@@ -25,79 +85,37 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'No file provided' }, { status: 400 });
         }
 
-        // --- 1. Get or Create User Key (Atomic-ish) ---
-        // Fetch current key
-        const { data: userData, error: userError } = await supabaseAdmin
-            .from('users')
-            .select('encrypted_storage_key')
-            .eq('id', user.id)
-            .single();
-
-        if (userError) {
-            console.error('Error fetching user key:', userError);
+        const limits = await getSubscriptionLimits(supabase, user.id);
+        const maxBytes = limits.maxFileSizeMb * 1024 * 1024;
+        if (file.size > maxBytes) {
             return NextResponse.json(
-                { error: 'Internal Server Error' },
-                { status: 500 }
+                { error: `File exceeds maximum size of ${limits.maxFileSizeMb}MB` },
+                { status: 413 }
             );
         }
 
-        let storageKey: Buffer;
-
-        if (!userData?.encrypted_storage_key) {
-            // Generate new key
-            const newKey = generateUserKey();
-            const encryptedKey = encryptUserKey(newKey);
-
-            // Save to DB (Only if still null - simple race condition check)
-            await supabaseAdmin
-                .from('users')
-                .update({ encrypted_storage_key: encryptedKey })
-                .eq('id', user.id)
-                .is('encrypted_storage_key', null); // Conditional update
-
-            // Fetch again to ensure we use the committed key (ours or someone else's)
-            const { data: finalUserData } = await supabaseAdmin
-                .from('users')
-                .select('encrypted_storage_key')
-                .eq('id', user.id)
-                .single();
-
-            if (!finalUserData?.encrypted_storage_key) {
-                throw new Error('Failed to generate/retrieve user storage key');
-            }
-
-            storageKey = decryptUserKey(finalUserData.encrypted_storage_key);
-        } else {
-            storageKey = decryptUserKey(userData.encrypted_storage_key);
+        if (!file.stream) {
+            return NextResponse.json(
+                { error: 'Streaming upload required; non-stream files are rejected' },
+                { status: 400 }
+            );
         }
 
-        // --- 2. Prepare Encryption Stream ---
+        const storageKey = await getUserStorageKey(user.id);
 
-        // Convert File to Web Stream -> Node Stream
-        const fileStream = file.stream
-            ? Readable.fromWeb(file.stream() as unknown as import('stream/web').ReadableStream)
-            : Readable.from(Buffer.from(await file.arrayBuffer()));
-
+        const fileStream = Readable.fromWeb(
+            file.stream() as unknown as import('stream/web').ReadableStream
+        );
         const encryptionStream = createEncryptionStream(storageKey);
-
-        // Pipe: File -> Encrypt
         const encryptedStream = fileStream.pipe(encryptionStream);
 
-        // --- 3. Upload to Supabase ---
-        // We need 'duplex: "half"' for Node fetch with streams, Supabase client handles this mostly
-        // But Supabase storage.upload expects a BodyInit.
-        // In Node 18+, ReadableStream is supported.
-        // However, `encryptedStream` is a Node Transform stream. We might need to convert it back to Web ReadableStream
-        // or pass it as is if Supabase JS client supports Node Streams (it does via 'duplex').
-
-        // Sanitize file name
         const safeFileName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
         const filePath = `${user.id}/${Date.now()}-${safeFileName}`;
 
         const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
             .from('assets')
             .upload(filePath, encryptedStream as unknown as BodyInit, {
-                duplex: 'half', // Required for streaming uploads in Node
+                duplex: 'half',
                 contentType: file.type,
             });
 
@@ -109,11 +127,10 @@ export async function POST(request: Request) {
         return NextResponse.json(
             {
                 path: uploadData.path,
-                fileName: safeFileName, // Return the sanitized name for the DB record
-                originalName: file.name, // Keep original if needed for UI, but primary name is now safe
+                fileName: safeFileName,
+                originalName: file.name,
                 fileType: file.type,
-                fileSize: file.size, // Note: Encrypted size is slightly larger, but we return original for UI?
-                // Actually, returning original size is fine for UI, but maybe we should note it.
+                fileSize: file.size,
             },
             { status: 201 }
         );

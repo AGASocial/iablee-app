@@ -1,15 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAuthenticatedRouteClient } from "@/lib/supabase-server";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 import { createSecuritySessionToken } from "@/lib/security";
+import { checkRateLimit, getClientIp, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
+import {
+    isPinLocked,
+    nextLockoutExpiry,
+    PIN_LOCKOUT_MAX_ATTEMPTS,
+} from "@/lib/pin-lockout";
 
 export async function POST(req: NextRequest) {
     try {
-        const { supabase, user } = await createAuthenticatedRouteClient();
+        const ip = getClientIp(req);
+        const rateLimit = checkRateLimit(`security:verify-pin:${ip}`, RATE_LIMITS.securityPin);
+        if (!rateLimit.allowed) {
+            return rateLimitResponse(rateLimit.resetAt);
+        }
+
+        const { user } = await createAuthenticatedRouteClient();
 
         if (!user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
+        const userRateLimit = checkRateLimit(
+            `security:verify-pin:user:${user.id}`,
+            RATE_LIMITS.securityPin
+        );
+        if (!userRateLimit.allowed) {
+            return rateLimitResponse(userRateLimit.resetAt);
         }
 
         const body = await req.json();
@@ -19,10 +40,9 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "PIN is required" }, { status: 400 });
         }
 
-        // Fetch the user's PIN hash
-        const { data: userData, error: fetchError } = await supabase
+        const { data: userData, error: fetchError } = await supabaseAdmin
             .from("users")
-            .select("security_pin_hash")
+            .select("security_pin_hash, pin_failed_attempts, pin_locked_until")
             .eq("id", user.id)
             .single();
 
@@ -31,6 +51,17 @@ export async function POST(req: NextRequest) {
             return NextResponse.json(
                 { error: "Failed to verify PIN" },
                 { status: 500 }
+            );
+        }
+
+        if (isPinLocked(userData.pin_locked_until)) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: "PIN locked due to too many failed attempts",
+                    lockedUntil: userData.pin_locked_until,
+                },
+                { status: 423 }
             );
         }
 
@@ -44,16 +75,50 @@ export async function POST(req: NextRequest) {
         const isValid = await bcrypt.compare(pin, userData.security_pin_hash);
 
         if (!isValid) {
-            return NextResponse.json({ success: false, error: "Invalid PIN" }, { status: 401 });
+            const attempts = (userData.pin_failed_attempts ?? 0) + 1;
+            const updatePayload: {
+                pin_failed_attempts: number;
+                pin_locked_until?: string;
+            } = { pin_failed_attempts: attempts };
+
+            if (attempts >= PIN_LOCKOUT_MAX_ATTEMPTS) {
+                updatePayload.pin_locked_until = nextLockoutExpiry();
+            }
+
+            await supabaseAdmin
+                .from("users")
+                .update(updatePayload)
+                .eq("id", user.id);
+
+            if (attempts >= PIN_LOCKOUT_MAX_ATTEMPTS) {
+                return NextResponse.json(
+                    {
+                        success: false,
+                        error: "PIN locked due to too many failed attempts",
+                        lockedUntil: updatePayload.pin_locked_until,
+                    },
+                    { status: 423 }
+                );
+            }
+
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: "Invalid PIN",
+                    remainingAttempts: PIN_LOCKOUT_MAX_ATTEMPTS - attempts,
+                },
+                { status: 401 }
+            );
         }
 
-        // Generate signed token
+        await supabaseAdmin
+            .from("users")
+            .update({ pin_failed_attempts: 0, pin_locked_until: null })
+            .eq("id", user.id);
+
         const token = await createSecuritySessionToken(user.id);
 
-        // specific name for the security cookie
         const cookieStore = await cookies();
-        // Set a short-lived session cookie for the security PIN access
-        // 15 minutes expiration
         const expiry = new Date(Date.now() + 15 * 60 * 1000);
 
         cookieStore.set("security_session", token, {

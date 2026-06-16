@@ -9,7 +9,7 @@ Default agent: **NextJS Frontend Developer**
 
 | Field | Value |
 |-------|-------|
-| **Status** | `PENDING` |
+| **Status** | `DONE` |
 | **Priority** | Critical |
 | **Phase** | 1 |
 | **Source findings** | F-1 |
@@ -32,12 +32,12 @@ Today 16/19 pages are `'use client'` with post-mount `fetch('/api/*')`, causing 
 
 | ID | Task | Status |
 |----|------|--------|
-| T-F-001-1 | Audit dashboard, digital-assets, beneficiaries for RSC candidacy | PENDING |
-| T-F-001-2 | Create server-side fetch helpers using Supabase server client | PENDING |
-| T-F-001-3 | Migrate dashboard page to RSC with client islands | PENDING |
-| T-F-001-4 | Migrate digital-assets list to RSC + client modals island | PENDING |
-| T-F-001-5 | Migrate beneficiaries list to RSC | PENDING |
-| T-F-001-6 | Verify LCP and eliminate post-hydration fetch waterfall | PENDING |
+| T-F-001-1 | Audit dashboard, digital-assets, beneficiaries for RSC candidacy | DONE |
+| T-F-001-2 | Create server-side fetch helpers using Supabase server client | DONE |
+| T-F-001-3 | Migrate dashboard page to RSC with client islands | DONE |
+| T-F-001-4 | Migrate digital-assets list to RSC + client modals island | DONE |
+| T-F-001-5 | Migrate beneficiaries list to RSC | DONE |
+| T-F-001-6 | Verify LCP and eliminate post-hydration fetch waterfall | DONE |
 
 ---
 
@@ -45,7 +45,7 @@ Today 16/19 pages are `'use client'` with post-mount `fetch('/api/*')`, causing 
 
 | Field | Value |
 |-------|-------|
-| **Status** | `PENDING` |
+| **Status** | `DONE` |
 | **Priority** | High |
 | **Phase** | 0 |
 | **Source findings** | F-2 |
@@ -67,11 +67,11 @@ As a **developer**, I want a single data-fetching pattern so that duplicate API 
 
 | ID | Task | Status |
 |----|------|--------|
-| T-F-002-1 | Define shared query keys module | PENDING |
-| T-F-002-2 | Create useAssets, useBeneficiaries, useDashboard, useBilling hooks | PENDING |
-| T-F-002-3 | Replace useEffect fetch on digital-assets and beneficiaries pages | PENDING |
-| T-F-002-4 | Replace billing page and plans page duplicate subscription fetches | PENDING |
-| T-F-002-5 | Migrate wizard/AddAssetModal to useAssetTypes hooks | PENDING |
+| T-F-002-1 | Define shared query keys module | DONE |
+| T-F-002-2 | Create useAssets, useBeneficiaries, useDashboard, useBilling hooks | DONE |
+| T-F-002-3 | Replace useEffect fetch on digital-assets and beneficiaries pages | DONE |
+| T-F-002-4 | Replace billing page and plans page duplicate subscription fetches | DONE |
+| T-F-002-5 | Migrate wizard/AddAssetModal to useAssetTypes hooks | DONE |
 
 ---
 
@@ -79,7 +79,7 @@ As a **developer**, I want a single data-fetching pattern so that duplicate API 
 
 | Field | Value |
 |-------|-------|
-| **Status** | `PENDING` |
+| **Status** | `DONE` |
 | **Priority** | High |
 | **Phase** | 0 |
 | **Source findings** | F-3, S-1 |
@@ -101,11 +101,11 @@ As a **user**, I want navigation to feel instant without redundant auth/security
 
 | ID | Task | Status |
 |----|------|--------|
-| T-F-003-1 | Remove pathname dependency from SecurityContext checkStatus effect | PENDING |
-| T-F-003-2 | Cache check-session result for JWT lifetime client-side | PENDING |
-| T-F-003-3 | Audit ProtectedRoute vs middleware overlap; remove redundant session fetch | PENDING |
-| T-F-003-4 | Add React Query wrapper for security session with long staleTime | PENDING |
-| T-F-003-5 | Verify PIN-gated pages still lock/unlock correctly | PENDING |
+| T-F-003-1 | Remove pathname dependency from SecurityContext checkStatus effect | DONE |
+| T-F-003-2 | Cache check-session result for JWT lifetime client-side | DONE |
+| T-F-003-3 | Audit ProtectedRoute vs middleware overlap; remove redundant session fetch | DONE |
+| T-F-003-4 | Add React Query wrapper for security session with long staleTime | DONE |
+| T-F-003-5 | Verify PIN-gated pages still lock/unlock correctly | DONE |
 
 ---
 
@@ -113,7 +113,7 @@ As a **user**, I want navigation to feel instant without redundant auth/security
 
 | Field | Value |
 |-------|-------|
-| **Status** | `PENDING` |
+| **Status** | `DONE` |
 | **Priority** | Medium |
 | **Phase** | 1 |
 | **Source findings** | F-4 |
@@ -135,10 +135,10 @@ Stripe (`StripeProvider`), `AddAssetModal`, `AssetDetailsModal`, and `AssetAttac
 
 | ID | Task | Status |
 |----|------|--------|
-| T-F-004-1 | Dynamic import StripeProvider in PaymentMethodsList | PENDING |
-| T-F-004-2 | Dynamic import asset modals on digital-assets page | PENDING |
-| T-F-004-3 | Dynamic import wizard heavy steps if applicable | PENDING |
-| T-F-004-4 | Measure bundle size before/after with build analyzer | PENDING |
+| T-F-004-1 | Dynamic import StripeProvider in PaymentMethodsList | DONE |
+| T-F-004-2 | Dynamic import asset modals on digital-assets page | DONE |
+| T-F-004-3 | Dynamic import wizard heavy steps if applicable | DONE |
+| T-F-004-4 | Measure bundle size before/after with build analyzer | DONE |
 
 ---
 
@@ -146,7 +146,7 @@ Stripe (`StripeProvider`), `AddAssetModal`, `AssetDetailsModal`, and `AssetAttac
 
 | Field | Value |
 |-------|-------|
-| **Status** | `PENDING` |
+| **Status** | `DONE` |
 | **Priority** | Medium |
 | **Phase** | 0 |
 | **Source findings** | F-5 |
@@ -167,10 +167,10 @@ As a **user**, I want to reach the dashboard quickly after login without sequent
 
 | ID | Task | Status |
 |----|------|--------|
-| T-F-005-1 | Audit login and locale redirect flows | PENDING |
-| T-F-005-2 | Use middleware redirect rules or combined endpoint for post-auth routing | PENDING |
-| T-F-005-3 | Remove redundant assets fetch on auth-form success path | PENDING |
-| T-F-005-4 | Add E2E timing assertion for login → dashboard | PENDING |
+| T-F-005-1 | Audit login and locale redirect flows | DONE |
+| T-F-005-2 | Use middleware redirect rules or combined endpoint for post-auth routing | DONE |
+| T-F-005-3 | Remove redundant assets fetch on auth-form success path | DONE |
+| T-F-005-4 | Add E2E timing assertion for login → dashboard | DONE |
 
 ---
 
@@ -178,7 +178,7 @@ As a **user**, I want to reach the dashboard quickly after login without sequent
 
 | Field | Value |
 |-------|-------|
-| **Status** | `PENDING` |
+| **Status** | `DONE` |
 | **Priority** | Medium |
 | **Phase** | 2 |
 | **Source findings** | B-4 |
@@ -201,9 +201,9 @@ Wizard uses sequential `for...await fetch('/api/storage/upload')` — N files = 
 
 | ID | Task | Status |
 |----|------|--------|
-| T-F-006-1 | Replace sequential upload loop with Promise.all | PENDING |
-| T-F-006-2 | Add per-file error handling and retry UI | PENDING |
-| T-F-006-3 | Cap concurrent uploads (e.g. 3) to avoid browser connection limit | PENDING |
+| T-F-006-1 | Replace sequential upload loop with Promise.all | DONE |
+| T-F-006-2 | Add per-file error handling and retry UI | DONE |
+| T-F-006-3 | Cap concurrent uploads (e.g. 3) to avoid browser connection limit | DONE |
 
 ---
 
@@ -211,7 +211,7 @@ Wizard uses sequential `for...await fetch('/api/storage/upload')` — N files = 
 
 | Field | Value |
 |-------|-------|
-| **Status** | `PENDING` |
+| **Status** | `DONE` |
 | **Priority** | Low |
 | **Phase** | 0 |
 | **Source findings** | F-6, L-1 |
@@ -232,9 +232,9 @@ Dashboard layout re-wraps `NextIntlClientProvider` and re-imports messages. `fra
 
 | ID | Task | Status |
 |----|------|--------|
-| T-F-007-1 | Remove duplicate NextIntlClientProvider from dashboard layout | PENDING |
-| T-F-007-2 | Remove unused framer-motion dependency | PENDING |
-| T-F-007-3 | Fix settings page RSC/client boundary | PENDING |
+| T-F-007-1 | Remove duplicate NextIntlClientProvider from dashboard layout | DONE |
+| T-F-007-2 | Remove unused framer-motion dependency | DONE |
+| T-F-007-3 | Fix settings page RSC/client boundary | DONE |
 
 ---
 
@@ -242,7 +242,7 @@ Dashboard layout re-wraps `NextIntlClientProvider` and re-imports messages. `fra
 
 | Field | Value |
 |-------|-------|
-| **Status** | `PENDING` |
+| **Status** | `DONE` |
 | **Priority** | Low |
 | **Phase** | 0 |
 | **Source findings** | F-2 |
@@ -260,5 +260,5 @@ As a **user**, I want settings pages to load without duplicate `/api/user/profil
 
 | ID | Task | Status |
 |----|------|--------|
-| T-F-008-1 | Create useUserProfile hook | PENDING |
-| T-F-008-2 | Refactor ProfileForm and ChangePasswordCard to share hook | PENDING |
+| T-F-008-1 | Create useUserProfile hook | DONE |
+| T-F-008-2 | Refactor ProfileForm and ChangePasswordCard to share hook | DONE |
