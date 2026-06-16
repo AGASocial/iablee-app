@@ -1,13 +1,15 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
 import { CreditCard, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
-import StripeProvider from './StripeProvider';
-import AddPaymentMethodForm from './AddPaymentMethodForm';
+
+const StripeProvider = dynamic(() => import('./StripeProvider'), { ssr: false });
+const AddPaymentMethodForm = dynamic(() => import('./AddPaymentMethodForm'), { ssr: false });
 
 interface PaymentMethod {
   id: string;

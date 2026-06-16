@@ -13,7 +13,8 @@ import { useAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
-import { getAvailableAssetTypes, getAssetType, type AssetType as DatabaseAssetType } from '@/lib/assetTypes';
+import { useAssetTypes, useAssetType } from '@/lib/assetTypes';
+import { uploadWithConcurrency } from '@/lib/upload-concurrency';
 
 type WizardStep = 'welcome' | 'asset-type' | 'asset-details' | 'beneficiary' | 'final';
 
@@ -23,12 +24,8 @@ export default function WizardPage() {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState<WizardStep>('welcome');
   const [loading, setLoading] = useState(false);
-  const [assetTypesLoading, setAssetTypesLoading] = useState(true);
   const [relationships, setRelationships] = useState<Array<{ id: number, key: string }>>([]);
-  const [assetTypes, setAssetTypes] = useState<DatabaseAssetType[]>([]);
-  const [currentAssetType, setCurrentAssetType] = useState<DatabaseAssetType | null>(null);
 
-  // Asset form data
   const [assetData, setAssetData] = useState({
     assetType: '',
     assetName: '',
@@ -41,6 +38,10 @@ export default function WizardPage() {
     customFields: {} as Record<string, string | number | boolean | string[]>,
   });
 
+  const { data: assetTypes = [], isLoading: assetTypesLoading } = useAssetTypes();
+  const { data: currentAssetType = null } = useAssetType(assetData.assetType || null);
+  const [, setUploadStatuses] = useState<Record<string, 'pending' | 'uploading' | 'done' | 'failed'>>({});
+
   // Beneficiary form data
   const [beneficiaryData, setBeneficiaryData] = useState({
     fullName: '',
@@ -50,55 +51,13 @@ export default function WizardPage() {
     notes: ''
   });
 
-  // Fetch relationships and asset types from database
+  // Fetch relationships from database
   useEffect(() => {
-    async function fetchRelationships() {
-      try {
-        const res = await fetch('/api/relationships?minGenerationLevel=3');
-        if (res.ok) {
-          const data = await res.json();
-          setRelationships(data);
-        }
-      } catch (error) {
-        console.error('Error fetching relationships:', error);
-      }
-    }
-
-    async function fetchAssetTypes() {
-      try {
-        setAssetTypesLoading(true);
-        const availableAssetTypes = await getAvailableAssetTypes();
-        setAssetTypes(availableAssetTypes);
-      } catch (error) {
-        console.error('Error fetching asset types:', error);
-        toast.error('Failed to load asset types');
-      } finally {
-        setAssetTypesLoading(false);
-      }
-    }
-
-    fetchRelationships();
-    fetchAssetTypes();
+    fetch('/api/relationships?minGenerationLevel=3')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setRelationships(data))
+      .catch((error) => console.error('Error fetching relationships:', error));
   }, []);
-
-  // Fetch current asset type when asset type changes
-  useEffect(() => {
-    async function fetchCurrentAssetType() {
-      if (assetData.assetType) {
-        try {
-          const assetTypeData = await getAssetType(assetData.assetType);
-          setCurrentAssetType(assetTypeData || null);
-        } catch (error) {
-          console.error('Error fetching asset type:', error);
-          setCurrentAssetType(null);
-        }
-      } else {
-        setCurrentAssetType(null);
-      }
-    }
-
-    fetchCurrentAssetType();
-  }, [assetData.assetType]);
 
   const handleNext = () => {
     switch (currentStep) {
@@ -177,25 +136,58 @@ export default function WizardPage() {
       const fileUrls: string[] = [];
       const fileMetadata: { path: string; fileName: string; fileType: string; fileSize: number }[] = [];
       if (assetData.files.length > 0) {
-        for (const file of assetData.files) {
-          const formData = new FormData();
-          formData.append('file', file);
-          const uploadRes = await fetch('/api/storage/upload', {
-            method: 'POST',
-            body: formData,
-          });
-          if (!uploadRes.ok) {
-            const err = await uploadRes.json();
-            throw new Error(err.error || 'Upload failed');
+        const initialStatuses = Object.fromEntries(
+          assetData.files.map((f) => [f.name, 'uploading' as const])
+        );
+        setUploadStatuses(initialStatuses);
+
+        const uploadResults = await uploadWithConcurrency(
+          assetData.files,
+          async (file) => {
+            const formData = new FormData();
+            formData.append('file', file);
+            const uploadRes = await fetch('/api/storage/upload', {
+              method: 'POST',
+              body: formData,
+            });
+            if (!uploadRes.ok) {
+              const err = await uploadRes.json();
+              throw new Error(err.error || 'Upload failed');
+            }
+            return uploadRes.json() as Promise<{
+              path: string;
+              fileName: string;
+              fileType: string;
+              fileSize: number;
+            }>;
+          },
+          3
+        );
+
+        const failed = uploadResults.filter((r) => !r.ok);
+        uploadResults.forEach((r) => {
+          setUploadStatuses((prev) => ({
+            ...prev,
+            [r.file.name]: r.ok ? 'done' : 'failed',
+          }));
+        });
+
+        if (failed.length > 0) {
+          throw new Error(
+            `Upload failed for: ${failed.map((f) => f.file.name).join(', ')}`
+          );
+        }
+
+        for (const result of uploadResults) {
+          if (result.ok && result.data) {
+            fileUrls.push(result.data.path);
+            fileMetadata.push({
+              path: result.data.path,
+              fileName: result.data.fileName,
+              fileType: result.data.fileType,
+              fileSize: result.data.fileSize,
+            });
           }
-          const uploadData = await uploadRes.json();
-          fileUrls.push(uploadData.path);
-          fileMetadata.push({
-            path: uploadData.path,
-            fileName: uploadData.fileName,
-            fileType: uploadData.fileType,
-            fileSize: uploadData.fileSize,
-          });
         }
       }
 

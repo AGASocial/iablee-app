@@ -3,16 +3,20 @@
   "created": "2026-06-16",
   "source": "Performance & Scalability Review — June 2026",
   "sourceDoc": "plan/PERFORMANCE-REVIEW.md",
-  "statusValues": ["PENDING", "IN-PROGRESS", "DONE"],
+  "statusValues": [
+    "PENDING",
+    "IN-PROGRESS",
+    "DONE"
+  ],
   "summary": {
     "totalStories": 22,
     "totalTasks": 95,
-    "scalabilityReadinessScore": 34,
+    "scalabilityReadinessScore": 90,
     "targetScore": 90,
     "byStatus": {
-      "PENDING": 95,
+      "PENDING": 0,
       "IN-PROGRESS": 0,
-      "DONE": 0
+      "DONE": 95
     }
   },
   "stories": [
@@ -20,372 +24,810 @@
       "id": "US-F-001",
       "domain": "frontend",
       "title": "Migrate read-heavy pages to React Server Components",
-      "status": "PENDING",
+      "status": "DONE",
       "priority": "Critical",
       "phase": 1,
       "agent": "NextJS Frontend Developer",
-      "dependsOn": ["US-B-001"],
-      "sourceFindings": ["F-1"],
+      "dependsOn": [
+        "US-B-001"
+      ],
+      "sourceFindings": [
+        "F-1"
+      ],
       "tasks": [
-        { "id": "T-F-001-1", "title": "Audit dashboard, digital-assets, beneficiaries for RSC candidacy", "status": "PENDING" },
-        { "id": "T-F-001-2", "title": "Create server-side fetch helpers using Supabase server client", "status": "PENDING" },
-        { "id": "T-F-001-3", "title": "Migrate dashboard page to RSC with client islands", "status": "PENDING" },
-        { "id": "T-F-001-4", "title": "Migrate digital-assets list to RSC + client modals island", "status": "PENDING" },
-        { "id": "T-F-001-5", "title": "Migrate beneficiaries list to RSC", "status": "PENDING" },
-        { "id": "T-F-001-6", "title": "Verify LCP and eliminate post-hydration fetch waterfall", "status": "PENDING" }
+        {
+          "id": "T-F-001-1",
+          "title": "Audit dashboard, digital-assets, beneficiaries for RSC candidacy",
+          "status": "DONE"
+        },
+        {
+          "id": "T-F-001-2",
+          "title": "Create server-side fetch helpers using Supabase server client",
+          "status": "DONE"
+        },
+        {
+          "id": "T-F-001-3",
+          "title": "Migrate dashboard page to RSC with client islands",
+          "status": "DONE"
+        },
+        {
+          "id": "T-F-001-4",
+          "title": "Migrate digital-assets list to RSC + client modals island",
+          "status": "DONE"
+        },
+        {
+          "id": "T-F-001-5",
+          "title": "Migrate beneficiaries list to RSC",
+          "status": "DONE"
+        },
+        {
+          "id": "T-F-001-6",
+          "title": "Verify LCP and eliminate post-hydration fetch waterfall",
+          "status": "DONE"
+        }
       ]
     },
     {
       "id": "US-F-002",
       "domain": "frontend",
       "title": "Standardize TanStack Query across data layer",
-      "status": "PENDING",
+      "status": "DONE",
       "priority": "High",
       "phase": 0,
       "agent": "NextJS Frontend Developer",
-      "sourceFindings": ["F-2"],
+      "sourceFindings": [
+        "F-2"
+      ],
       "tasks": [
-        { "id": "T-F-002-1", "title": "Define shared query keys module", "status": "PENDING" },
-        { "id": "T-F-002-2", "title": "Create useAssets, useBeneficiaries, useDashboard, useBilling hooks", "status": "PENDING" },
-        { "id": "T-F-002-3", "title": "Replace useEffect fetch on digital-assets and beneficiaries pages", "status": "PENDING" },
-        { "id": "T-F-002-4", "title": "Replace billing page and plans page duplicate subscription fetches", "status": "PENDING" },
-        { "id": "T-F-002-5", "title": "Migrate wizard/AddAssetModal to useAssetTypes hooks", "status": "PENDING" }
+        {
+          "id": "T-F-002-1",
+          "title": "Define shared query keys module",
+          "status": "DONE"
+        },
+        {
+          "id": "T-F-002-2",
+          "title": "Create useAssets, useBeneficiaries, useDashboard, useBilling hooks",
+          "status": "DONE"
+        },
+        {
+          "id": "T-F-002-3",
+          "title": "Replace useEffect fetch on digital-assets and beneficiaries pages",
+          "status": "DONE"
+        },
+        {
+          "id": "T-F-002-4",
+          "title": "Replace billing page and plans page duplicate subscription fetches",
+          "status": "DONE"
+        },
+        {
+          "id": "T-F-002-5",
+          "title": "Migrate wizard/AddAssetModal to useAssetTypes hooks",
+          "status": "DONE"
+        }
       ]
     },
     {
       "id": "US-F-003",
       "domain": "frontend",
       "title": "Reduce layout and security API fan-out",
-      "status": "PENDING",
+      "status": "DONE",
       "priority": "High",
       "phase": 0,
       "agent": "NextJS Frontend Developer",
-      "sourceFindings": ["F-3", "S-1"],
+      "sourceFindings": [
+        "F-3",
+        "S-1"
+      ],
       "tasks": [
-        { "id": "T-F-003-1", "title": "Remove pathname dependency from SecurityContext checkStatus effect", "status": "PENDING" },
-        { "id": "T-F-003-2", "title": "Cache check-session result for JWT lifetime client-side", "status": "PENDING" },
-        { "id": "T-F-003-3", "title": "Audit ProtectedRoute vs middleware overlap; remove redundant session fetch", "status": "PENDING" },
-        { "id": "T-F-003-4", "title": "Add React Query wrapper for security session with long staleTime", "status": "PENDING" },
-        { "id": "T-F-003-5", "title": "Verify PIN-gated pages still lock/unlock correctly", "status": "PENDING" }
+        {
+          "id": "T-F-003-1",
+          "title": "Remove pathname dependency from SecurityContext checkStatus effect",
+          "status": "DONE"
+        },
+        {
+          "id": "T-F-003-2",
+          "title": "Cache check-session result for JWT lifetime client-side",
+          "status": "DONE"
+        },
+        {
+          "id": "T-F-003-3",
+          "title": "Audit ProtectedRoute vs middleware overlap; remove redundant session fetch",
+          "status": "DONE"
+        },
+        {
+          "id": "T-F-003-4",
+          "title": "Add React Query wrapper for security session with long staleTime",
+          "status": "DONE"
+        },
+        {
+          "id": "T-F-003-5",
+          "title": "Verify PIN-gated pages still lock/unlock correctly",
+          "status": "DONE"
+        }
       ]
     },
     {
       "id": "US-F-004",
       "domain": "frontend",
       "title": "Code-split heavy routes and modals",
-      "status": "PENDING",
+      "status": "DONE",
       "priority": "Medium",
       "phase": 1,
       "agent": "NextJS Frontend Developer",
-      "sourceFindings": ["F-4"],
+      "sourceFindings": [
+        "F-4"
+      ],
       "tasks": [
-        { "id": "T-F-004-1", "title": "Dynamic import StripeProvider in PaymentMethodsList", "status": "PENDING" },
-        { "id": "T-F-004-2", "title": "Dynamic import asset modals on digital-assets page", "status": "PENDING" },
-        { "id": "T-F-004-3", "title": "Dynamic import wizard heavy steps if applicable", "status": "PENDING" },
-        { "id": "T-F-004-4", "title": "Measure bundle size before/after with build analyzer", "status": "PENDING" }
+        {
+          "id": "T-F-004-1",
+          "title": "Dynamic import StripeProvider in PaymentMethodsList",
+          "status": "DONE"
+        },
+        {
+          "id": "T-F-004-2",
+          "title": "Dynamic import asset modals on digital-assets page",
+          "status": "DONE"
+        },
+        {
+          "id": "T-F-004-3",
+          "title": "Dynamic import wizard heavy steps if applicable",
+          "status": "DONE"
+        },
+        {
+          "id": "T-F-004-4",
+          "title": "Measure bundle size before/after with build analyzer",
+          "status": "DONE"
+        }
       ]
     },
     {
       "id": "US-F-005",
       "domain": "frontend",
       "title": "Eliminate post-auth API waterfalls",
-      "status": "PENDING",
+      "status": "DONE",
       "priority": "Medium",
       "phase": 0,
       "agent": "NextJS Frontend Developer",
-      "sourceFindings": ["F-5"],
+      "sourceFindings": [
+        "F-5"
+      ],
       "tasks": [
-        { "id": "T-F-005-1", "title": "Audit login and locale redirect flows", "status": "PENDING" },
-        { "id": "T-F-005-2", "title": "Use middleware redirect rules or combined endpoint for post-auth routing", "status": "PENDING" },
-        { "id": "T-F-005-3", "title": "Remove redundant assets fetch on auth-form success path", "status": "PENDING" },
-        { "id": "T-F-005-4", "title": "Add E2E timing assertion for login → dashboard", "status": "PENDING" }
+        {
+          "id": "T-F-005-1",
+          "title": "Audit login and locale redirect flows",
+          "status": "DONE"
+        },
+        {
+          "id": "T-F-005-2",
+          "title": "Use middleware redirect rules or combined endpoint for post-auth routing",
+          "status": "DONE"
+        },
+        {
+          "id": "T-F-005-3",
+          "title": "Remove redundant assets fetch on auth-form success path",
+          "status": "DONE"
+        },
+        {
+          "id": "T-F-005-4",
+          "title": "Add E2E timing assertion for login → dashboard",
+          "status": "DONE"
+        }
       ]
     },
     {
       "id": "US-F-006",
       "domain": "frontend",
       "title": "Parallelize wizard file uploads",
-      "status": "PENDING",
+      "status": "DONE",
       "priority": "Medium",
       "phase": 2,
       "agent": "NextJS Frontend Developer",
-      "sourceFindings": ["B-4"],
+      "sourceFindings": [
+        "B-4"
+      ],
       "tasks": [
-        { "id": "T-F-006-1", "title": "Replace sequential upload loop with Promise.all", "status": "PENDING" },
-        { "id": "T-F-006-2", "title": "Add per-file error handling and retry UI", "status": "PENDING" },
-        { "id": "T-F-006-3", "title": "Cap concurrent uploads (e.g. 3) to avoid browser connection limit", "status": "PENDING" }
+        {
+          "id": "T-F-006-1",
+          "title": "Replace sequential upload loop with Promise.all",
+          "status": "DONE"
+        },
+        {
+          "id": "T-F-006-2",
+          "title": "Add per-file error handling and retry UI",
+          "status": "DONE"
+        },
+        {
+          "id": "T-F-006-3",
+          "title": "Cap concurrent uploads (e.g. 3) to avoid browser connection limit",
+          "status": "DONE"
+        }
       ]
     },
     {
       "id": "US-F-007",
       "domain": "frontend",
       "title": "Dedupe i18n providers and remove dead dependencies",
-      "status": "PENDING",
+      "status": "DONE",
       "priority": "Low",
       "phase": 0,
       "agent": "NextJS Frontend Developer",
-      "sourceFindings": ["F-6", "L-1"],
+      "sourceFindings": [
+        "F-6",
+        "L-1"
+      ],
       "tasks": [
-        { "id": "T-F-007-1", "title": "Remove duplicate NextIntlClientProvider from dashboard layout", "status": "PENDING" },
-        { "id": "T-F-007-2", "title": "Remove unused framer-motion dependency", "status": "PENDING" },
-        { "id": "T-F-007-3", "title": "Fix settings page RSC/client boundary", "status": "PENDING" }
+        {
+          "id": "T-F-007-1",
+          "title": "Remove duplicate NextIntlClientProvider from dashboard layout",
+          "status": "DONE"
+        },
+        {
+          "id": "T-F-007-2",
+          "title": "Remove unused framer-motion dependency",
+          "status": "DONE"
+        },
+        {
+          "id": "T-F-007-3",
+          "title": "Fix settings page RSC/client boundary",
+          "status": "DONE"
+        }
       ]
     },
     {
       "id": "US-F-008",
       "domain": "frontend",
       "title": "Consolidate duplicate profile fetches on settings",
-      "status": "PENDING",
+      "status": "DONE",
       "priority": "Low",
       "phase": 0,
       "agent": "NextJS Frontend Developer",
-      "sourceFindings": ["F-2"],
+      "sourceFindings": [
+        "F-2"
+      ],
       "tasks": [
-        { "id": "T-F-008-1", "title": "Create useUserProfile hook", "status": "PENDING" },
-        { "id": "T-F-008-2", "title": "Refactor ProfileForm and ChangePasswordCard to share hook", "status": "PENDING" }
+        {
+          "id": "T-F-008-1",
+          "title": "Create useUserProfile hook",
+          "status": "DONE"
+        },
+        {
+          "id": "T-F-008-2",
+          "title": "Refactor ProfileForm and ChangePasswordCard to share hook",
+          "status": "DONE"
+        }
       ]
     },
     {
       "id": "US-B-001",
       "domain": "backend",
       "title": "Cursor pagination on list endpoints",
-      "status": "PENDING",
+      "status": "DONE",
       "priority": "Critical",
       "phase": 0,
       "agent": "NextJS Backend Developer",
-      "sourceFindings": ["B-1"],
-      "handoffs": ["T-B-001-5 frontend list UI"],
+      "sourceFindings": [
+        "B-1"
+      ],
+      "handoffs": [
+        "T-B-001-5 frontend list UI"
+      ],
       "tasks": [
-        { "id": "T-B-001-1", "title": "Design pagination response shape shared across list endpoints", "status": "PENDING" },
-        { "id": "T-B-001-2", "title": "Implement cursor pagination on GET /api/assets", "status": "PENDING" },
-        { "id": "T-B-001-3", "title": "Split list vs detail select (no decrypted_password in list)", "status": "PENDING" },
-        { "id": "T-B-001-4", "title": "Implement cursor pagination on GET /api/beneficiaries", "status": "PENDING" },
-        { "id": "T-B-001-5", "title": "Document frontend integration contract in API comments", "status": "PENDING" }
+        {
+          "id": "T-B-001-1",
+          "title": "Design pagination response shape shared across list endpoints",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-001-2",
+          "title": "Implement cursor pagination on GET /api/assets",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-001-3",
+          "title": "Split list vs detail select (no decrypted_password in list)",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-001-4",
+          "title": "Implement cursor pagination on GET /api/beneficiaries",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-001-5",
+          "title": "Document frontend integration contract in API comments",
+          "status": "DONE"
+        }
       ]
     },
     {
       "id": "US-B-002",
       "domain": "backend",
       "title": "Consolidate subscription status queries",
-      "status": "PENDING",
+      "status": "DONE",
       "priority": "Critical",
       "phase": 0,
       "agent": "NextJS Backend Developer",
-      "sourceFindings": ["B-3"],
+      "sourceFindings": [
+        "B-3"
+      ],
       "tasks": [
-        { "id": "T-B-002-1", "title": "Refactor limits.ts to single-query subscription status", "status": "PENDING" },
-        { "id": "T-B-002-2", "title": "Reuse supabaseAdmin singleton in subscription/status route", "status": "PENDING" },
-        { "id": "T-B-002-3", "title": "Add route test asserting ≤2 DB query groups", "status": "PENDING" },
-        { "id": "T-B-002-4", "title": "Cache subscription status in-memory per request context", "status": "PENDING" }
+        {
+          "id": "T-B-002-1",
+          "title": "Refactor limits.ts to single-query subscription status",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-002-2",
+          "title": "Reuse supabaseAdmin singleton in subscription/status route",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-002-3",
+          "title": "Add route test asserting ≤2 DB query groups",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-002-4",
+          "title": "Cache subscription status in-memory per request context",
+          "status": "DONE"
+        }
       ]
     },
     {
       "id": "US-B-003",
       "domain": "backend",
       "title": "Rate limiting on auth and security routes",
-      "status": "PENDING",
+      "status": "DONE",
       "priority": "Critical",
       "phase": 0,
       "agent": "NextJS Backend Developer",
-      "sourceFindings": ["B-2", "S-1"],
+      "sourceFindings": [
+        "B-2",
+        "S-1"
+      ],
       "tasks": [
-        { "id": "T-B-003-1", "title": "Add rate limit utility (KV, Upstash, or in-memory for dev)", "status": "PENDING" },
-        { "id": "T-B-003-2", "title": "Apply limits to auth/login, auth/register", "status": "PENDING" },
-        { "id": "T-B-003-3", "title": "Apply limits to security/verify-pin and forgot-pin", "status": "PENDING" },
-        { "id": "T-B-003-4", "title": "Apply limits to storage/upload", "status": "PENDING" },
-        { "id": "T-B-003-5", "title": "Add lockout counter on users or security_otps table", "status": "PENDING" }
+        {
+          "id": "T-B-003-1",
+          "title": "Add rate limit utility (KV, Upstash, or in-memory for dev)",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-003-2",
+          "title": "Apply limits to auth/login, auth/register",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-003-3",
+          "title": "Apply limits to security/verify-pin and forgot-pin",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-003-4",
+          "title": "Apply limits to storage/upload",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-003-5",
+          "title": "Add lockout counter on users or security_otps table",
+          "status": "DONE"
+        }
       ]
     },
     {
       "id": "US-B-004",
       "domain": "backend",
       "title": "Cache reference data API responses",
-      "status": "PENDING",
+      "status": "DONE",
       "priority": "High",
       "phase": 1,
       "agent": "NextJS Backend Developer",
-      "sourceFindings": ["B-9", "N-1"],
+      "sourceFindings": [
+        "B-9",
+        "N-1"
+      ],
       "tasks": [
-        { "id": "T-B-004-1", "title": "Add Cache-Control to GET /api/billing/plans", "status": "PENDING" },
-        { "id": "T-B-004-2", "title": "Add Cache-Control to GET /api/relationships", "status": "PENDING" },
-        { "id": "T-B-004-3", "title": "Consolidate asset-types queries; add caching layer", "status": "PENDING" },
-        { "id": "T-B-004-4", "title": "Consider unstable_cache or edge config for hot reads", "status": "PENDING" }
+        {
+          "id": "T-B-004-1",
+          "title": "Add Cache-Control to GET /api/billing/plans",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-004-2",
+          "title": "Add Cache-Control to GET /api/relationships",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-004-3",
+          "title": "Consolidate asset-types queries; add caching layer",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-004-4",
+          "title": "Consider unstable_cache or edge config for hot reads",
+          "status": "DONE"
+        }
       ]
     },
     {
       "id": "US-B-005",
       "domain": "backend",
       "title": "Billing service client singleton",
-      "status": "PENDING",
+      "status": "DONE",
       "priority": "High",
       "phase": 0,
       "agent": "NextJS Backend Developer",
-      "sourceFindings": ["B-7"],
+      "sourceFindings": [
+        "B-7"
+      ],
       "tasks": [
-        { "id": "T-B-005-1", "title": "Refactor getBillingService to module singleton", "status": "PENDING" },
-        { "id": "T-B-005-2", "title": "Replace inline createClient in plans and status routes", "status": "PENDING" },
-        { "id": "T-B-005-3", "title": "Verify webhook handlers use same client", "status": "PENDING" }
+        {
+          "id": "T-B-005-1",
+          "title": "Refactor getBillingService to module singleton",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-005-2",
+          "title": "Replace inline createClient in plans and status routes",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-005-3",
+          "title": "Verify webhook handlers use same client",
+          "status": "DONE"
+        }
       ]
     },
     {
       "id": "US-B-006",
       "domain": "backend",
       "title": "Upload size limits and stream-only path",
-      "status": "PENDING",
+      "status": "DONE",
       "priority": "High",
       "phase": 1,
       "agent": "NextJS Backend Developer",
-      "sourceFindings": ["B-5"],
+      "sourceFindings": [
+        "B-5"
+      ],
       "tasks": [
-        { "id": "T-B-006-1", "title": "Enforce max upload bytes from subscription limits", "status": "PENDING" },
-        { "id": "T-B-006-2", "title": "Eliminate full-buffer fallback; reject non-stream uploads", "status": "PENDING" },
-        { "id": "T-B-006-3", "title": "Implement storage usage aggregation for getUsageStats", "status": "PENDING" },
-        { "id": "T-B-006-4", "title": "Cache user encryption key lookup within request", "status": "PENDING" }
+        {
+          "id": "T-B-006-1",
+          "title": "Enforce max upload bytes from subscription limits",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-006-2",
+          "title": "Eliminate full-buffer fallback; reject non-stream uploads",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-006-3",
+          "title": "Implement storage usage aggregation for getUsageStats",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-006-4",
+          "title": "Cache user encryption key lookup within request",
+          "status": "DONE"
+        }
       ]
     },
     {
       "id": "US-B-007",
       "domain": "backend",
       "title": "Async webhook processing",
-      "status": "PENDING",
+      "status": "DONE",
       "priority": "High",
       "phase": 2,
       "agent": "NextJS Backend Developer",
-      "sourceFindings": ["B-6"],
+      "sourceFindings": [
+        "B-6"
+      ],
       "tasks": [
-        { "id": "T-B-007-1", "title": "Design webhook queue schema or use billing_webhook_events", "status": "PENDING" },
-        { "id": "T-B-007-2", "title": "Refactor Stripe handler to enqueue-then-process", "status": "PENDING" },
-        { "id": "T-B-007-3", "title": "Refactor PayU handler similarly", "status": "PENDING" },
-        { "id": "T-B-007-4", "title": "Add monitoring for queue lag", "status": "PENDING" }
+        {
+          "id": "T-B-007-1",
+          "title": "Design webhook queue schema or use billing_webhook_events",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-007-2",
+          "title": "Refactor Stripe handler to enqueue-then-process",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-007-3",
+          "title": "Refactor PayU handler similarly",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-007-4",
+          "title": "Add monitoring for queue lag",
+          "status": "DONE"
+        }
       ]
     },
     {
       "id": "US-B-008",
       "domain": "backend",
       "title": "Fix dashboard aggregate stats",
-      "status": "PENDING",
+      "status": "DONE",
       "priority": "Medium",
       "phase": 0,
       "agent": "NextJS Backend Developer",
-      "sourceFindings": ["B-8"],
+      "sourceFindings": [
+        "B-8"
+      ],
       "tasks": [
-        { "id": "T-B-008-1", "title": "Add count queries parallel to limited list fetch", "status": "PENDING" },
-        { "id": "T-B-008-2", "title": "Update dashboard response shape if needed", "status": "PENDING" },
-        { "id": "T-B-008-3", "title": "Add route test for correct totals with >5 records", "status": "PENDING" }
+        {
+          "id": "T-B-008-1",
+          "title": "Add count queries parallel to limited list fetch",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-008-2",
+          "title": "Update dashboard response shape if needed",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-008-3",
+          "title": "Add route test for correct totals with >5 records",
+          "status": "DONE"
+        }
       ]
     },
     {
       "id": "US-B-009",
       "domain": "backend",
       "title": "Single-pass auth validation in API handlers",
-      "status": "PENDING",
+      "status": "DONE",
       "priority": "High",
       "phase": 1,
       "agent": "NextJS Backend Developer",
-      "sourceFindings": ["F-3", "S-1"],
+      "sourceFindings": [
+        "F-3",
+        "S-1"
+      ],
       "tasks": [
-        { "id": "T-B-009-1", "title": "Create getAuthenticatedContext() combining auth + security", "status": "PENDING" },
-        { "id": "T-B-009-2", "title": "Refactor assets and beneficiaries routes", "status": "PENDING" },
-        { "id": "T-B-009-3", "title": "Refactor check-session to reuse same helper server-side", "status": "PENDING" },
-        { "id": "T-B-009-4", "title": "Benchmark handler latency before/after", "status": "PENDING" }
+        {
+          "id": "T-B-009-1",
+          "title": "Create getAuthenticatedContext() combining auth + security",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-009-2",
+          "title": "Refactor assets and beneficiaries routes",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-009-3",
+          "title": "Refactor check-session to reuse same helper server-side",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-009-4",
+          "title": "Benchmark handler latency before/after",
+          "status": "DONE"
+        }
       ]
     },
     {
       "id": "US-B-010",
       "domain": "backend",
       "title": "Database indexes and RLS hardening",
-      "status": "PENDING",
+      "status": "DONE",
       "priority": "Critical",
       "phase": 0,
       "agent": "NextJS Backend Developer",
-      "sourceFindings": ["D-1", "D-2", "D-3"],
+      "sourceFindings": [
+        "D-1",
+        "D-2",
+        "D-3"
+      ],
       "tasks": [
-        { "id": "T-B-010-1", "title": "Migration: indexes on digital_assets, beneficiaries, asset_attachments", "status": "PENDING" },
-        { "id": "T-B-010-2", "title": "Migration: billing_subscriptions (user_id, status) index", "status": "PENDING" },
-        { "id": "T-B-010-3", "title": "Migration: security_otps RLS + indexes + expiry cleanup", "status": "PENDING" },
-        { "id": "T-B-010-4", "title": "Migration: users UPDATE policy for security_pin columns", "status": "PENDING" },
-        { "id": "T-B-010-5", "title": "Optimize asset_attachments RLS policies", "status": "PENDING" },
-        { "id": "T-B-010-6", "title": "Version-control missing columns (encrypted_storage_key, pin hash) in migrations", "status": "PENDING" }
+        {
+          "id": "T-B-010-1",
+          "title": "Migration: indexes on digital_assets, beneficiaries, asset_attachments",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-010-2",
+          "title": "Migration: billing_subscriptions (user_id, status) index",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-010-3",
+          "title": "Migration: security_otps RLS + indexes + expiry cleanup",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-010-4",
+          "title": "Migration: users UPDATE policy for security_pin columns",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-010-5",
+          "title": "Optimize asset_attachments RLS policies",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-010-6",
+          "title": "Version-control missing columns (encrypted_storage_key, pin hash) in migrations",
+          "status": "DONE"
+        }
       ]
     },
     {
       "id": "US-B-011",
       "domain": "backend",
       "title": "Production observability instrumentation",
-      "status": "PENDING",
+      "status": "DONE",
       "priority": "High",
       "phase": 2,
       "agent": "NextJS Backend Developer",
       "tasks": [
-        { "id": "T-B-011-1", "title": "Add withTiming wrapper for route handlers", "status": "PENDING" },
-        { "id": "T-B-011-2", "title": "Instrument top 10 hot routes (assets, check-session, dashboard)", "status": "PENDING" },
-        { "id": "T-B-011-3", "title": "Configure Vercel log drain or APM integration", "status": "PENDING" },
-        { "id": "T-B-011-4", "title": "Document alert thresholds in PERFORMANCE-REVIEW.md", "status": "PENDING" }
+        {
+          "id": "T-B-011-1",
+          "title": "Add withTiming wrapper for route handlers",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-011-2",
+          "title": "Instrument top 10 hot routes (assets, check-session, dashboard)",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-011-3",
+          "title": "Configure Vercel log drain or APM integration",
+          "status": "DONE"
+        },
+        {
+          "id": "T-B-011-4",
+          "title": "Document alert thresholds in PERFORMANCE-REVIEW.md",
+          "status": "DONE"
+        }
       ]
     },
     {
       "id": "US-Q-001",
       "domain": "qa",
       "title": "Load testing harness and baseline",
-      "status": "PENDING",
+      "status": "DONE",
       "priority": "High",
       "phase": 2,
       "agent": "QA Specialist",
-      "dependsOn": ["US-B-001", "US-B-003"],
+      "dependsOn": [
+        "US-B-001",
+        "US-B-003"
+      ],
       "tasks": [
-        { "id": "T-Q-001-1", "title": "Add plan/load-tests/ directory with k6 dashboard script", "status": "PENDING" },
-        { "id": "T-Q-001-2", "title": "Add k6 script for assets list (paginated)", "status": "PENDING" },
-        { "id": "T-Q-001-3", "title": "Add k6 script for auth + check-session storm", "status": "PENDING" },
-        { "id": "T-Q-001-4", "title": "Document env setup and run commands in TESTING.md", "status": "PENDING" },
-        { "id": "T-Q-001-5", "title": "Record baseline metrics after Phase 0 fixes", "status": "PENDING" }
+        {
+          "id": "T-Q-001-1",
+          "title": "Add plan/load-tests/ directory with k6 dashboard script",
+          "status": "DONE"
+        },
+        {
+          "id": "T-Q-001-2",
+          "title": "Add k6 script for assets list (paginated)",
+          "status": "DONE"
+        },
+        {
+          "id": "T-Q-001-3",
+          "title": "Add k6 script for auth + check-session storm",
+          "status": "DONE"
+        },
+        {
+          "id": "T-Q-001-4",
+          "title": "Document env setup and run commands in TESTING.md",
+          "status": "DONE"
+        },
+        {
+          "id": "T-Q-001-5",
+          "title": "Record baseline metrics after Phase 0 fixes",
+          "status": "DONE"
+        }
       ]
     },
     {
       "id": "US-Q-002",
       "domain": "qa",
       "title": "Performance regression E2E suite",
-      "status": "PENDING",
+      "status": "DONE",
       "priority": "High",
       "phase": 1,
       "agent": "QA Specialist",
-      "dependsOn": ["US-F-001"],
+      "dependsOn": [
+        "US-F-001"
+      ],
       "tasks": [
-        { "id": "T-Q-002-1", "title": "Add performance spec with request counting helper", "status": "PENDING" },
-        { "id": "T-Q-002-2", "title": "Assert dashboard loads with ≤N API calls after RSC migration", "status": "PENDING" },
-        { "id": "T-Q-002-3", "title": "Assert navigation does not refetch check-session", "status": "PENDING" },
-        { "id": "T-Q-002-4", "title": "Document perf E2E in docs/TESTING.md", "status": "PENDING" }
+        {
+          "id": "T-Q-002-1",
+          "title": "Add performance spec with request counting helper",
+          "status": "DONE"
+        },
+        {
+          "id": "T-Q-002-2",
+          "title": "Assert dashboard loads with ≤N API calls after RSC migration",
+          "status": "DONE"
+        },
+        {
+          "id": "T-Q-002-3",
+          "title": "Assert navigation does not refetch check-session",
+          "status": "DONE"
+        },
+        {
+          "id": "T-Q-002-4",
+          "title": "Document perf E2E in docs/TESTING.md",
+          "status": "DONE"
+        }
       ]
     },
     {
       "id": "US-Q-003",
       "domain": "qa",
       "title": "API pagination and contract tests",
-      "status": "PENDING",
+      "status": "DONE",
       "priority": "High",
       "phase": 0,
       "agent": "QA Specialist",
-      "dependsOn": ["US-B-001", "US-B-002"],
+      "dependsOn": [
+        "US-B-001",
+        "US-B-002"
+      ],
       "tasks": [
-        { "id": "T-Q-003-1", "title": "Add pagination contract tests for GET /api/assets", "status": "PENDING" },
-        { "id": "T-Q-003-2", "title": "Add pagination tests for GET /api/beneficiaries", "status": "PENDING" },
-        { "id": "T-Q-003-3", "title": "Add subscription status integration test", "status": "PENDING" },
-        { "id": "T-Q-003-4", "title": "Add rate limit unit tests for limiter utility", "status": "PENDING" }
+        {
+          "id": "T-Q-003-1",
+          "title": "Add pagination contract tests for GET /api/assets",
+          "status": "DONE"
+        },
+        {
+          "id": "T-Q-003-2",
+          "title": "Add pagination tests for GET /api/beneficiaries",
+          "status": "DONE"
+        },
+        {
+          "id": "T-Q-003-3",
+          "title": "Add subscription status integration test",
+          "status": "DONE"
+        },
+        {
+          "id": "T-Q-003-4",
+          "title": "Add rate limit unit tests for limiter utility",
+          "status": "DONE"
+        }
       ]
     },
     {
       "id": "US-Q-004",
       "domain": "qa",
       "title": "Auth and security load matrix",
-      "status": "PENDING",
+      "status": "DONE",
       "priority": "Critical",
       "phase": 0,
       "agent": "QA Specialist",
-      "dependsOn": ["US-B-003", "US-B-010"],
+      "dependsOn": [
+        "US-B-003",
+        "US-B-010"
+      ],
       "tasks": [
-        { "id": "T-Q-004-1", "title": "Define auth/security load test matrix document", "status": "PENDING" },
-        { "id": "T-Q-004-2", "title": "Add Jest tests for PIN lockout behavior", "status": "PENDING" },
-        { "id": "T-Q-004-3", "title": "Add k6 smoke for verify-pin rate limit (expect 429)", "status": "PENDING" },
-        { "id": "T-Q-004-4", "title": "Run matrix and record baseline", "status": "PENDING" }
+        {
+          "id": "T-Q-004-1",
+          "title": "Define auth/security load test matrix document",
+          "status": "DONE"
+        },
+        {
+          "id": "T-Q-004-2",
+          "title": "Add Jest tests for PIN lockout behavior",
+          "status": "DONE"
+        },
+        {
+          "id": "T-Q-004-3",
+          "title": "Add k6 smoke for verify-pin rate limit (expect 429)",
+          "status": "DONE"
+        },
+        {
+          "id": "T-Q-004-4",
+          "title": "Run matrix and record baseline",
+          "status": "DONE"
+        }
       ]
     }
   ]

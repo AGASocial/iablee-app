@@ -1,3 +1,5 @@
+"use client";
+
 import { useTranslations } from 'next-intl';
 import { ProfileForm } from '@/components/settings/ProfileForm';
 
@@ -18,4 +20,3 @@ export default function SettingsPage() {
         </div>
     );
 }
-

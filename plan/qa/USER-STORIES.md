@@ -9,7 +9,7 @@ Default agent: **QA Specialist**
 
 | Field | Value |
 |-------|-------|
-| **Status** | `PENDING` |
+| **Status** | `DONE` |
 | **Priority** | High |
 | **Phase** | 2 |
 | **Source findings** | (load strategy) |
@@ -32,11 +32,11 @@ No load tests exist today (unlike CADENZA's load-tests folder).
 
 | ID | Task | Status |
 |----|------|--------|
-| T-Q-001-1 | Add plan/load-tests/ directory with k6 dashboard script | PENDING |
-| T-Q-001-2 | Add k6 script for assets list (paginated) | PENDING |
-| T-Q-001-3 | Add k6 script for auth + check-session storm | PENDING |
-| T-Q-001-4 | Document env setup and run commands in TESTING.md | PENDING |
-| T-Q-001-5 | Record baseline metrics after Phase 0 fixes | PENDING |
+| T-Q-001-1 | Add plan/load-tests/ directory with k6 dashboard script | DONE |
+| T-Q-001-2 | Add k6 script for assets list (paginated) | DONE |
+| T-Q-001-3 | Add k6 script for auth + check-session storm | DONE |
+| T-Q-001-4 | Document env setup and run commands in TESTING.md | DONE |
+| T-Q-001-5 | Record baseline metrics after Phase 0 fixes | DONE |
 
 ---
 
@@ -44,7 +44,7 @@ No load tests exist today (unlike CADENZA's load-tests folder).
 
 | Field | Value |
 |-------|-------|
-| **Status** | `PENDING` |
+| **Status** | `DONE` |
 | **Priority** | High |
 | **Phase** | 1 |
 | **Source findings** | F-1, F-5 |
@@ -65,10 +65,10 @@ As a **team**, we want Playwright traces that assert API call counts and navigat
 
 | ID | Task | Status |
 |----|------|--------|
-| T-Q-002-1 | Add performance spec with request counting helper | PENDING |
-| T-Q-002-2 | Assert dashboard loads with ≤N API calls after RSC migration | PENDING |
-| T-Q-002-3 | Assert navigation does not refetch check-session | PENDING |
-| T-Q-002-4 | Document perf E2E in docs/TESTING.md | PENDING |
+| T-Q-002-1 | Add performance spec with request counting helper | DONE |
+| T-Q-002-2 | Assert dashboard loads with ≤N API calls after RSC migration | DONE |
+| T-Q-002-3 | Assert navigation does not refetch check-session | DONE |
+| T-Q-002-4 | Document perf E2E in docs/TESTING.md | DONE |
 
 ---
 
@@ -76,7 +76,7 @@ As a **team**, we want Playwright traces that assert API call counts and navigat
 
 | Field | Value |
 |-------|-------|
-| **Status** | `PENDING` |
+| **Status** | `DONE` |
 | **Priority** | High |
 | **Phase** | 0 |
 | **Source findings** | B-1, B-2 |
@@ -97,10 +97,10 @@ As a **team**, we want Jest tests that verify pagination contracts and subscript
 
 | ID | Task | Status |
 |----|------|--------|
-| T-Q-003-1 | Add pagination contract tests for GET /api/assets | PENDING |
-| T-Q-003-2 | Add pagination tests for GET /api/beneficiaries | PENDING |
-| T-Q-003-3 | Add subscription status integration test | PENDING |
-| T-Q-003-4 | Add rate limit unit tests for limiter utility | PENDING |
+| T-Q-003-1 | Add pagination contract tests for GET /api/assets | DONE |
+| T-Q-003-2 | Add pagination tests for GET /api/beneficiaries | DONE |
+| T-Q-003-3 | Add subscription status integration test | DONE |
+| T-Q-003-4 | Add rate limit unit tests for limiter utility | DONE |
 
 ---
 
@@ -108,7 +108,7 @@ As a **team**, we want Jest tests that verify pagination contracts and subscript
 
 | Field | Value |
 |-------|-------|
-| **Status** | `PENDING` |
+| **Status** | `DONE` |
 | **Priority** | Critical |
 | **Phase** | 0 |
 | **Source findings** | B-2, S-1, D-2 |
@@ -129,10 +129,10 @@ As a **team**, we want a documented matrix of auth/security endpoints under load
 
 | ID | Task | Status |
 |----|------|--------|
-| T-Q-004-1 | Define auth/security load test matrix document | PENDING |
-| T-Q-004-2 | Add Jest tests for PIN lockout behavior | PENDING |
-| T-Q-004-3 | Add k6 smoke for verify-pin rate limit (expect 429) | PENDING |
-| T-Q-004-4 | Run matrix and record baseline | PENDING |
+| T-Q-004-1 | Define auth/security load test matrix document | DONE |
+| T-Q-004-2 | Add Jest tests for PIN lockout behavior | DONE |
+| T-Q-004-3 | Add k6 smoke for verify-pin rate limit (expect 429) | DONE |
+| T-Q-004-4 | Run matrix and record baseline | DONE |
 
 ---
 

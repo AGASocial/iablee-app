@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
+import { useBilling, useInvalidateData } from '@/hooks/useDataQueries';
 import { FileText, Calendar, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -44,6 +45,8 @@ interface Invoice {
 export default function BillingPage() {
   const t = useTranslations();
   const router = useRouter();
+  const { data: subscriptionStatus } = useBilling();
+  const { invalidateBilling } = useInvalidateData();
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -100,6 +103,7 @@ export default function BillingPage() {
       if (!response.ok) throw new Error('Failed to cancel subscription');
 
       toast.success(t('subscriptionCanceledSuccess'));
+      await invalidateBilling();
       fetchBillingData();
     } catch (error) {
       console.error('Error canceling subscription:', error);
@@ -126,6 +130,7 @@ export default function BillingPage() {
       if (!response.ok) throw new Error('Failed to resume subscription');
 
       toast.success(t('subscriptionResumedSuccess'));
+      await invalidateBilling();
       fetchBillingData();
     } catch (error) {
       console.error('Error resuming subscription:', error);
@@ -254,6 +259,35 @@ export default function BillingPage() {
               </Button>
             )}
           </div>
+
+          {/* Usage from subscription status hook */}
+          {subscriptionStatus && (
+            <div>
+              <h3 className="font-semibold mb-3">{t('usage') || 'Usage'}</h3>
+              <div className="grid md:grid-cols-3 gap-3 text-sm">
+                <div className="flex justify-between p-2 bg-muted rounded">
+                  <span>{t('totalAssets')}</span>
+                  <span className="font-semibold">
+                    {subscriptionStatus.usage.assetsCount}
+                    {subscriptionStatus.limits.maxAssets !== -1 && ` / ${subscriptionStatus.limits.maxAssets}`}
+                  </span>
+                </div>
+                <div className="flex justify-between p-2 bg-muted rounded">
+                  <span>{t('beneficiariesStat')}</span>
+                  <span className="font-semibold">
+                    {subscriptionStatus.usage.beneficiariesCount}
+                    {subscriptionStatus.limits.maxBeneficiaries !== -1 && ` / ${subscriptionStatus.limits.maxBeneficiaries}`}
+                  </span>
+                </div>
+                <div className="flex justify-between p-2 bg-muted rounded">
+                  <span>{t('maxStorage')}</span>
+                  <span className="font-semibold">
+                    {subscriptionStatus.usage.storageUsedMb} / {subscriptionStatus.limits.maxStorageMb} MB
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Plan Features */}
           <div>

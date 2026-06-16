@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteClient } from '@/lib/supabase-server';
+import { checkRateLimit, getClientIp, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 
 function getAppOrigin(request: NextRequest): string {
   const origin = request.headers.get('origin');
@@ -17,6 +18,12 @@ function getAppOrigin(request: NextRequest): string {
 
 export async function POST(request: NextRequest) {
   try {
+    const ip = getClientIp(request);
+    const rateLimit = checkRateLimit(`auth:register:${ip}`, RATE_LIMITS.auth);
+    if (!rateLimit.allowed) {
+      return rateLimitResponse(rateLimit.resetAt);
+    }
+
     const { email, password, fullName, locale } = await request.json();
 
     if (!email || !password) {

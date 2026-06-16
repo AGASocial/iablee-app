@@ -9,7 +9,7 @@ Default agent: **NextJS Backend Developer**
 
 | Field | Value |
 |-------|-------|
-| **Status** | `PENDING` |
+| **Status** | `DONE` |
 | **Priority** | Critical |
 | **Phase** | 0 |
 | **Source findings** | B-1 |
@@ -32,11 +32,11 @@ As the **platform**, I want paginated list APIs so that asset and beneficiary re
 
 | ID | Task | Status |
 |----|------|--------|
-| T-B-001-1 | Design pagination response shape shared across list endpoints | PENDING |
-| T-B-001-2 | Implement cursor pagination on GET /api/assets | PENDING |
-| T-B-001-3 | Split list vs detail select (no decrypted_password in list) | PENDING |
-| T-B-001-4 | Implement cursor pagination on GET /api/beneficiaries | PENDING |
-| T-B-001-5 | Document frontend integration contract in API comments | PENDING |
+| T-B-001-1 | Design pagination response shape shared across list endpoints | DONE |
+| T-B-001-2 | Implement cursor pagination on GET /api/assets | DONE |
+| T-B-001-3 | Split list vs detail select (no decrypted_password in list) | DONE |
+| T-B-001-4 | Implement cursor pagination on GET /api/beneficiaries | DONE |
+| T-B-001-5 | Document frontend integration contract in API comments | DONE |
 
 ---
 
@@ -44,7 +44,7 @@ As the **platform**, I want paginated list APIs so that asset and beneficiary re
 
 | Field | Value |
 |-------|-------|
-| **Status** | `PENDING` |
+| **Status** | `DONE` |
 | **Priority** | Critical |
 | **Phase** | 0 |
 | **Source findings** | B-3 |
@@ -66,10 +66,10 @@ As the **platform**, I want subscription status resolved in minimal DB round-tri
 
 | ID | Task | Status |
 |----|------|--------|
-| T-B-002-1 | Refactor limits.ts to single-query subscription status | PENDING |
-| T-B-002-2 | Reuse supabaseAdmin singleton in subscription/status route | PENDING |
-| T-B-002-3 | Add route test asserting ≤2 DB query groups | PENDING |
-| T-B-002-4 | Cache subscription status in-memory per request context | PENDING |
+| T-B-002-1 | Refactor limits.ts to single-query subscription status | DONE |
+| T-B-002-2 | Reuse supabaseAdmin singleton in subscription/status route | DONE |
+| T-B-002-3 | Add route test asserting ≤2 DB query groups | DONE |
+| T-B-002-4 | Cache subscription status in-memory per request context | DONE |
 
 ---
 
@@ -77,7 +77,7 @@ As the **platform**, I want subscription status resolved in minimal DB round-tri
 
 | Field | Value |
 |-------|-------|
-| **Status** | `PENDING` |
+| **Status** | `DONE` |
 | **Priority** | Critical |
 | **Phase** | 0 |
 | **Source findings** | B-2, S-1 |
@@ -99,11 +99,11 @@ No application-level rate limiting exists. PIN verify uses bcrypt with no lockou
 
 | ID | Task | Status |
 |----|------|--------|
-| T-B-003-1 | Add rate limit utility (KV, Upstash, or in-memory for dev) | PENDING |
-| T-B-003-2 | Apply limits to auth/login, auth/register | PENDING |
-| T-B-003-3 | Apply limits to security/verify-pin and forgot-pin | PENDING |
-| T-B-003-4 | Apply limits to storage/upload | PENDING |
-| T-B-003-5 | Add lockout counter on users or security_otps table | PENDING |
+| T-B-003-1 | Add rate limit utility (KV, Upstash, or in-memory for dev) | DONE |
+| T-B-003-2 | Apply limits to auth/login, auth/register | DONE |
+| T-B-003-3 | Apply limits to security/verify-pin and forgot-pin | DONE |
+| T-B-003-4 | Apply limits to storage/upload | DONE |
+| T-B-003-5 | Add lockout counter on users or security_otps table | DONE |
 
 ---
 
@@ -111,7 +111,7 @@ No application-level rate limiting exists. PIN verify uses bcrypt with no lockou
 
 | Field | Value |
 |-------|-------|
-| **Status** | `PENDING` |
+| **Status** | `DONE` |
 | **Priority** | High |
 | **Phase** | 1 |
 | **Source findings** | B-9, N-1 |
@@ -132,10 +132,10 @@ As the **platform**, I want rarely-changing data cached at the edge so that plan
 
 | ID | Task | Status |
 |----|------|--------|
-| T-B-004-1 | Add Cache-Control to GET /api/billing/plans | PENDING |
-| T-B-004-2 | Add Cache-Control to GET /api/relationships | PENDING |
-| T-B-004-3 | Consolidate asset-types queries; add caching layer | PENDING |
-| T-B-004-4 | Consider unstable_cache or edge config for hot reads | PENDING |
+| T-B-004-1 | Add Cache-Control to GET /api/billing/plans | DONE |
+| T-B-004-2 | Add Cache-Control to GET /api/relationships | DONE |
+| T-B-004-3 | Consolidate asset-types queries; add caching layer | DONE |
+| T-B-004-4 | Consider unstable_cache or edge config for hot reads | DONE |
 
 ---
 
@@ -143,7 +143,7 @@ As the **platform**, I want rarely-changing data cached at the edge so that plan
 
 | Field | Value |
 |-------|-------|
-| **Status** | `PENDING` |
+| **Status** | `DONE` |
 | **Priority** | High |
 | **Phase** | 0 |
 | **Source findings** | B-7 |
@@ -164,9 +164,9 @@ As a **developer**, I want a reused Supabase service client for billing so that 
 
 | ID | Task | Status |
 |----|------|--------|
-| T-B-005-1 | Refactor getBillingService to module singleton | PENDING |
-| T-B-005-2 | Replace inline createClient in plans and status routes | PENDING |
-| T-B-005-3 | Verify webhook handlers use same client | PENDING |
+| T-B-005-1 | Refactor getBillingService to module singleton | DONE |
+| T-B-005-2 | Replace inline createClient in plans and status routes | DONE |
+| T-B-005-3 | Verify webhook handlers use same client | DONE |
 
 ---
 
@@ -174,7 +174,7 @@ As a **developer**, I want a reused Supabase service client for billing so that 
 
 | Field | Value |
 |-------|-------|
-| **Status** | `PENDING` |
+| **Status** | `DONE` |
 | **Priority** | High |
 | **Phase** | 1 |
 | **Source findings** | B-5 |
@@ -196,10 +196,10 @@ Upload route has no max size; falls back to `arrayBuffer()` full-buffer path. St
 
 | ID | Task | Status |
 |----|------|--------|
-| T-B-006-1 | Enforce max upload bytes from subscription limits | PENDING |
-| T-B-006-2 | Eliminate full-buffer fallback; reject non-stream uploads | PENDING |
-| T-B-006-3 | Implement storage usage aggregation for getUsageStats | PENDING |
-| T-B-006-4 | Cache user encryption key lookup within request | PENDING |
+| T-B-006-1 | Enforce max upload bytes from subscription limits | DONE |
+| T-B-006-2 | Eliminate full-buffer fallback; reject non-stream uploads | DONE |
+| T-B-006-3 | Implement storage usage aggregation for getUsageStats | DONE |
+| T-B-006-4 | Cache user encryption key lookup within request | DONE |
 
 ---
 
@@ -207,7 +207,7 @@ Upload route has no max size; falls back to `arrayBuffer()` full-buffer path. St
 
 | Field | Value |
 |-------|-------|
-| **Status** | `PENDING` |
+| **Status** | `DONE` |
 | **Priority** | High |
 | **Phase** | 2 |
 | **Source findings** | B-6 |
@@ -229,10 +229,10 @@ Stripe and PayU handlers process synchronously in the request thread.
 
 | ID | Task | Status |
 |----|------|--------|
-| T-B-007-1 | Design webhook queue schema or use billing_webhook_events | PENDING |
-| T-B-007-2 | Refactor Stripe handler to enqueue-then-process | PENDING |
-| T-B-007-3 | Refactor PayU handler similarly | PENDING |
-| T-B-007-4 | Add monitoring for queue lag | PENDING |
+| T-B-007-1 | Design webhook queue schema or use billing_webhook_events | DONE |
+| T-B-007-2 | Refactor Stripe handler to enqueue-then-process | DONE |
+| T-B-007-3 | Refactor PayU handler similarly | DONE |
+| T-B-007-4 | Add monitoring for queue lag | DONE |
 
 ---
 
@@ -240,7 +240,7 @@ Stripe and PayU handlers process synchronously in the request thread.
 
 | Field | Value |
 |-------|-------|
-| **Status** | `PENDING` |
+| **Status** | `DONE` |
 | **Priority** | Medium |
 | **Phase** | 0 |
 | **Source findings** | B-8 |
@@ -261,9 +261,9 @@ As a **user**, I want dashboard totals to reflect my full vault, not just the fi
 
 | ID | Task | Status |
 |----|------|--------|
-| T-B-008-1 | Add count queries parallel to limited list fetch | PENDING |
-| T-B-008-2 | Update dashboard response shape if needed | PENDING |
-| T-B-008-3 | Add route test for correct totals with >5 records | PENDING |
+| T-B-008-1 | Add count queries parallel to limited list fetch | DONE |
+| T-B-008-2 | Update dashboard response shape if needed | DONE |
+| T-B-008-3 | Add route test for correct totals with >5 records | DONE |
 
 ---
 
@@ -271,7 +271,7 @@ As a **user**, I want dashboard totals to reflect my full vault, not just the fi
 
 | Field | Value |
 |-------|-------|
-| **Status** | `PENDING` |
+| **Status** | `DONE` |
 | **Priority** | High |
 | **Phase** | 1 |
 | **Source findings** | F-3, S-1 |
@@ -290,10 +290,10 @@ As the **platform**, I want each API handler to validate auth once and reuse con
 
 | ID | Task | Status |
 |----|------|--------|
-| T-B-009-1 | Create getAuthenticatedContext() combining auth + security | PENDING |
-| T-B-009-2 | Refactor assets and beneficiaries routes | PENDING |
-| T-B-009-3 | Refactor check-session to reuse same helper server-side | PENDING |
-| T-B-009-4 | Benchmark handler latency before/after | PENDING |
+| T-B-009-1 | Create getAuthenticatedContext() combining auth + security | DONE |
+| T-B-009-2 | Refactor assets and beneficiaries routes | DONE |
+| T-B-009-3 | Refactor check-session to reuse same helper server-side | DONE |
+| T-B-009-4 | Benchmark handler latency before/after | DONE |
 
 ---
 
@@ -301,7 +301,7 @@ As the **platform**, I want each API handler to validate auth once and reuse con
 
 | Field | Value |
 |-------|-------|
-| **Status** | `PENDING` |
+| **Status** | `DONE` |
 | **Priority** | Critical |
 | **Phase** | 0 |
 | **Source findings** | D-1, D-2, D-3 |
@@ -324,12 +324,12 @@ Missing indexes on `digital_assets.user_id`, `beneficiaries.user_id`, `asset_att
 
 | ID | Task | Status |
 |----|------|--------|
-| T-B-010-1 | Migration: indexes on digital_assets, beneficiaries, asset_attachments | PENDING |
-| T-B-010-2 | Migration: billing_subscriptions (user_id, status) index | PENDING |
-| T-B-010-3 | Migration: security_otps RLS + indexes + expiry cleanup | PENDING |
-| T-B-010-4 | Migration: users UPDATE policy for security_pin columns | PENDING |
-| T-B-010-5 | Optimize asset_attachments RLS policies | PENDING |
-| T-B-010-6 | Version-control missing columns (encrypted_storage_key, pin hash) in migrations | PENDING |
+| T-B-010-1 | Migration: indexes on digital_assets, beneficiaries, asset_attachments | DONE |
+| T-B-010-2 | Migration: billing_subscriptions (user_id, status) index | DONE |
+| T-B-010-3 | Migration: security_otps RLS + indexes + expiry cleanup | DONE |
+| T-B-010-4 | Migration: users UPDATE policy for security_pin columns | DONE |
+| T-B-010-5 | Optimize asset_attachments RLS policies | DONE |
+| T-B-010-6 | Version-control missing columns (encrypted_storage_key, pin hash) in migrations | DONE |
 
 ---
 
@@ -337,7 +337,7 @@ Missing indexes on `digital_assets.user_id`, `beneficiaries.user_id`, `asset_att
 
 | Field | Value |
 |-------|-------|
-| **Status** | `PENDING` |
+| **Status** | `DONE` |
 | **Priority** | High |
 | **Phase** | 2 |
 | **Source findings** | (monitoring gap) |
@@ -357,7 +357,7 @@ As an **operator**, I want request duration and error logging on hot paths so th
 
 | ID | Task | Status |
 |----|------|--------|
-| T-B-011-1 | Add withTiming wrapper for route handlers | PENDING |
-| T-B-011-2 | Instrument top 10 hot routes (assets, check-session, dashboard) | PENDING |
-| T-B-011-3 | Configure Vercel log drain or APM integration | PENDING |
-| T-B-011-4 | Document alert thresholds in PERFORMANCE-REVIEW.md | PENDING |
+| T-B-011-1 | Add withTiming wrapper for route handlers | DONE |
+| T-B-011-2 | Instrument top 10 hot routes (assets, check-session, dashboard) | DONE |
+| T-B-011-3 | Configure Vercel log drain or APM integration | DONE |
+| T-B-011-4 | Document alert thresholds in PERFORMANCE-REVIEW.md | DONE |

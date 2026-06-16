@@ -44,6 +44,11 @@ export class BillingService {
     return this.gateway.getName();
   }
 
+  /** Expose shared service-role Supabase client for billing routes */
+  getSupabaseClient(): SupabaseClient {
+    return this.supabase;
+  }
+
   /**
    * Get all available billing plans
    */
@@ -665,47 +670,85 @@ export class BillingService {
   }
 
   /**
-   * Handle a normalized webhook event
+   * Handle a normalized webhook event — enqueue then process.
+   * Returns after persisting the event; processing runs inline but
+   * the event is stored with handled=false first for queue visibility.
    */
   async handleWebhookEvent(event: NormalizedEvent): Promise<void> {
-    // Store the webhook event
-    await this.storeWebhookEvent(event);
-
-    // Process based on event type
-    switch (event.type) {
-      case 'subscription.created':
-      case 'subscription.updated':
-        await this.handleSubscriptionEvent(event.data as SubscriptionEventData);
-        break;
-      case 'subscription.canceled':
-        await this.handleSubscriptionCanceled(event.data as SubscriptionEventData);
-        break;
-      case 'invoice.paid':
-        await this.handleInvoicePaid(event.data as InvoiceEventData);
-        break;
-      case 'invoice.payment_failed':
-        await this.handleInvoicePaymentFailed(event.data as InvoiceEventData);
-        break;
-      case 'payment_method.attached':
-        await this.handlePaymentMethodAttached(event.data as PaymentMethodEventData);
-        break;
-      default:
-        console.log(`Unhandled webhook event type: ${event.type}`);
-    }
+    const eventId = await this.enqueueWebhookEvent(event);
+    if (!eventId) return; // duplicate
+    await this.processWebhookEvent(event, eventId);
   }
 
   /**
-   * Store webhook event for idempotency and audit
+   * Enqueue webhook event for async processing audit trail.
+   * Returns null if duplicate (idempotency).
    */
-  private async storeWebhookEvent(event: NormalizedEvent): Promise<void> {
-    await this.supabase.from('billing_webhook_events').insert({
-      provider: event.provider,
-      type: event.type,
-      provider_event_id: event.id,
-      raw: event.raw as Record<string, unknown>,
-      handled: true,
-      handled_at: new Date().toISOString(),
-    });
+  async enqueueWebhookEvent(event: NormalizedEvent): Promise<string | null> {
+    const { data, error } = await this.supabase
+      .from('billing_webhook_events')
+      .insert({
+        provider: event.provider,
+        type: event.type,
+        provider_event_id: event.id,
+        raw: event.raw as Record<string, unknown>,
+        handled: false,
+      })
+      .select('id')
+      .single();
+
+    if (error) {
+      if (error.code === '23505') return null; // unique constraint — duplicate
+      throw error;
+    }
+    return data.id;
+  }
+
+  /**
+   * Process a queued webhook event and mark handled.
+   */
+  async processWebhookEvent(event: NormalizedEvent, eventId: string): Promise<void> {
+    try {
+      switch (event.type) {
+        case 'subscription.created':
+        case 'subscription.updated':
+          await this.handleSubscriptionEvent(event.data as SubscriptionEventData);
+          break;
+        case 'subscription.canceled':
+          await this.handleSubscriptionCanceled(event.data as SubscriptionEventData);
+          break;
+        case 'invoice.paid':
+          await this.handleInvoicePaid(event.data as InvoiceEventData);
+          break;
+        case 'invoice.payment_failed':
+          await this.handleInvoicePaymentFailed(event.data as InvoiceEventData);
+          break;
+        case 'payment_method.attached':
+          await this.handlePaymentMethodAttached(event.data as PaymentMethodEventData);
+          break;
+        default:
+          console.log(`Unhandled webhook event type: ${event.type}`);
+      }
+
+      await this.supabase
+        .from('billing_webhook_events')
+        .update({ handled: true, handled_at: new Date().toISOString() })
+        .eq('id', eventId);
+    } catch (err) {
+      console.error(`Webhook processing failed for ${eventId}:`, err);
+      throw err;
+    }
+  }
+
+  /** Queue lag monitoring — count unhandled events older than threshold */
+  async getWebhookQueueLag(thresholdMinutes = 5): Promise<number> {
+    const cutoff = new Date(Date.now() - thresholdMinutes * 60 * 1000).toISOString();
+    const { count } = await this.supabase
+      .from('billing_webhook_events')
+      .select('*', { count: 'exact', head: true })
+      .eq('handled', false)
+      .lt('created_at', cutoff);
+    return count ?? 0;
   }
 
   /**

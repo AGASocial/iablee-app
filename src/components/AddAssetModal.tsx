@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2, Mail, Mic, Camera, Video, File, LucideIcon } from "lucide-react";
 import AddAssetForm from './AddAssetForm';
 import type { Asset } from "@/models/asset";
-import { getAvailableAssetTypes, type AssetType as DatabaseAssetType } from '@/lib/assetTypes';
+import { useAssetTypes, type AssetType } from '@/lib/assetTypes';
 
 // Visual style config per asset type — inspired by the Stitch design
 const typeStyles: Record<string, { gradient: string; iconBg: string; iconColor: string }> = {
@@ -57,34 +57,21 @@ export default function AddAssetModal({ open, onOpenChange, onAssetAdded, asset 
   const t = useTranslations();
   const [step, setStep] = useState(1);
   const [selectedType, setSelectedType] = useState<string | null>(null);
-  const [assetTypes, setAssetTypes] = useState<DatabaseAssetType[]>([]);
-  const [assetTypesLoading, setAssetTypesLoading] = useState(true);
+  const { data: assetTypes = [], isLoading: assetTypesLoading } = useAssetTypes({ enabled: open });
 
-  useEffect(() => {
-    async function fetchAssetTypes() {
-      try {
-        setAssetTypesLoading(true);
-        const availableAssetTypes = await getAvailableAssetTypes();
-        setAssetTypes(availableAssetTypes);
-      } catch (error) {
-        console.error('Error fetching asset types:', error);
-      } finally {
-        setAssetTypesLoading(false);
-      }
-    }
-
-    if (open) {
-      fetchAssetTypes();
-    }
-
-    if (asset) {
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      setStep(1);
+      setSelectedType(null);
+    } else if (asset) {
       setSelectedType(asset.asset_type);
       setStep(2);
-    } else {
-      setSelectedType(null);
-      setStep(1);
     }
-  }, [asset, open]);
+    onOpenChange(nextOpen);
+  };
+
+  const effectiveStep = asset && open ? 2 : step;
+  const effectiveSelectedType = asset && open ? asset.asset_type : selectedType;
 
   const handleTypeSelect = (type: string) => {
     setSelectedType(type);
@@ -108,7 +95,7 @@ export default function AddAssetModal({ open, onOpenChange, onAssetAdded, asset 
   };
 
   // Determine description text for a type
-  const getTypeDescription = (type: DatabaseAssetType): string => {
+  const getTypeDescription = (type: AssetType): string => {
     const descKey = type.description || type.label + 'Desc';
     const translated = t(descKey);
     if (translated !== descKey) return translated;
@@ -116,11 +103,11 @@ export default function AddAssetModal({ open, onOpenChange, onAssetAdded, asset 
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <Dialog open={open} onOpenChange={(v) => (v ? handleOpenChange(true) : handleClose())}>
       <DialogContent className="max-w-2xl w-full bg-card border border-border/60 shadow-2xl p-0 overflow-hidden">
         <DialogHeader className="px-6 pt-6 pb-2">
           <div className="flex items-center gap-3">
-            {step === 2 && !asset && (
+            {effectiveStep === 2 && !asset && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -132,9 +119,9 @@ export default function AddAssetModal({ open, onOpenChange, onAssetAdded, asset 
             )}
             <div className="flex-1 text-center">
               <DialogTitle className="text-2xl font-heading font-bold text-foreground">
-                {step === 1 ? t("chooseAssetType") : t("addAssetDetails")}
+                {effectiveStep === 1 ? t("chooseAssetType") : t("addAssetDetails")}
               </DialogTitle>
-              {step === 1 && (
+              {effectiveStep === 1 && (
                 <p className="text-sm text-muted-foreground mt-1">
                   {t("selectAssetTypeDesc") !== "selectAssetTypeDesc"
                     ? t("selectAssetTypeDesc")
@@ -148,7 +135,7 @@ export default function AddAssetModal({ open, onOpenChange, onAssetAdded, asset 
         </DialogHeader>
 
         <div className="px-6 pb-6">
-          {step === 1 && (
+          {effectiveStep === 1 && (
             <div className="mt-4">
               {assetTypesLoading ? (
                 <div className="flex items-center justify-center py-16">
@@ -157,7 +144,6 @@ export default function AddAssetModal({ open, onOpenChange, onAssetAdded, asset 
                 </div>
               ) : (
                 (() => {
-                  console.log('Asset types:', assetTypes);
                   const firstRow = assetTypes.slice(0, 2);
                   const secondRow = assetTypes.slice(2);
 
@@ -197,9 +183,9 @@ export default function AddAssetModal({ open, onOpenChange, onAssetAdded, asset 
               )}
             </div>
           )}
-          {step === 2 && selectedType && (
+          {effectiveStep === 2 && effectiveSelectedType && (
             <AddAssetForm
-              assetType={selectedType}
+              assetType={effectiveSelectedType}
               asset={asset}
               onSuccess={handleSuccess}
               onCancel={handleClose}
@@ -219,7 +205,7 @@ function AssetTypeCard({
   label,
   onClick,
 }: {
-  type: DatabaseAssetType;
+  type: AssetType;
   style: { gradient: string; iconBg: string; iconColor: string };
   description: string;
   label: string;

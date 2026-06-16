@@ -1,18 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAuthenticatedRouteClient } from "@/lib/supabase-server";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 import { createSecuritySessionToken } from "@/lib/security";
 
 export async function POST(req: NextRequest) {
     try {
         const { code } = await req.json();
-        const { supabase, user } = await createAuthenticatedRouteClient();
+        const { user } = await createAuthenticatedRouteClient();
 
         if (!user || !user.id) {
             return NextResponse.json({ error: "User not authenticated" }, { status: 401 });
         }
 
-        // Verify OTP
-        const { data: otp, error } = await supabase
+        // Verify OTP via admin client (RLS denies client access on security_otps)
+        const { data: otp, error } = await supabaseAdmin
             .from('security_otps')
             .select('*')
             .eq('user_id', user.id)
@@ -25,8 +26,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Invalid or expired code" }, { status: 400 });
         }
 
-        // Mark OTP as verified (optional, or just delete it)
-        await supabase
+        await supabaseAdmin
             .from('security_otps')
             .update({ verified: true })
             .eq('id', otp.id);
