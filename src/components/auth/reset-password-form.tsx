@@ -39,6 +39,7 @@ export function ResetPasswordForm() {
   const [isLoading, setIsLoading] = React.useState(false)
   const [sessionChecked, setSessionChecked] = React.useState(false)
   const [hasSession, setHasSession] = React.useState(false)
+  const [submitError, setSubmitError] = React.useState<string | null>(null)
   const t = useTranslations()
   const locale = useLocale()
   const form = useForm<FormData>({
@@ -76,6 +77,7 @@ export function ResetPasswordForm() {
 
   async function onSubmit(data: FormData) {
     setIsLoading(true)
+    setSubmitError(null)
 
     try {
       const response = await fetch("/api/auth/reset-password", {
@@ -88,7 +90,11 @@ export function ResetPasswordForm() {
       const result = await response.json()
 
       if (!response.ok) {
-        throw new Error(result.error ?? t("resetPasswordError"))
+        const message = typeof result.error === "string" ? result.error : t("resetPasswordError")
+        setSubmitError(message)
+        form.setError("password", { message })
+        toast.error(message)
+        return
       }
 
       await fetch("/api/auth/logout", {
@@ -100,7 +106,9 @@ export function ResetPasswordForm() {
       router.push(`/${locale}/auth/login`)
     } catch (error) {
       console.error("Reset password error:", error)
-      toast.error(error instanceof Error ? error.message : t("resetPasswordError"))
+      const message = error instanceof Error ? error.message : t("resetPasswordError")
+      setSubmitError(message)
+      toast.error(message)
     } finally {
       setIsLoading(false)
     }
@@ -161,6 +169,10 @@ export function ResetPasswordForm() {
                     autoComplete="new-password"
                     className="bg-background/80 dark:bg-background/70"
                     {...field}
+                    onChange={(e) => {
+                      setSubmitError(null)
+                      field.onChange(e)
+                    }}
                   />
                 </FormControl>
                 <FormMessage />
@@ -186,6 +198,11 @@ export function ResetPasswordForm() {
               </FormItem>
             )}
           />
+          {submitError && (
+            <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+              {submitError}
+            </p>
+          )}
           <Button type="submit" className="w-full" disabled={isLoading}>
             {isLoading ? (
               <div className="flex items-center gap-2">
