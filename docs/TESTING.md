@@ -100,18 +100,44 @@ Scripts en `plan/load-tests/`:
 
 ```bash
 # Instalar k6: https://k6.io/docs/get-started/installation/
-export BASE_URL=http://localhost:3000
-export AUTH_COOKIE="your-session-cookie"
 
-k6 run plan/load-tests/dashboard.js
-k6 run plan/load-tests/assets-list.js
-k6 run plan/load-tests/auth-check-session.js
-k6 run plan/load-tests/verify-pin-smoke.js
+# 1. Config simple (URL, credentials)
+cp plan/load-tests/.env.localhost.example plan/load-tests/.env.localhost
+
+# 2. Cookie en archivo aparte (evita errores de shell con = y ;)
+cp plan/load-tests/auth-cookie.localhost.example.txt plan/load-tests/auth-cookie.localhost.txt
+# Pegar UNA línea: el header Cookie completo desde DevTools → Network → Cookie
+
+# 3. Ejecutar
+./plan/load-tests/run-baseline.sh localhost
 ```
 
-Variables de entorno: `BASE_URL`, `AUTH_COOKIE`, `TEST_EMAIL`, `TEST_PASSWORD`.
+Resultados guardados en:
 
-Baseline documentada en `plan/qa/AUTH-SECURITY-MATRIX.md` y `docs/TEST_SUMMARY.md`.
+```
+plan/load-tests/baselines/results/localhost/2026-06-16/
+plan/load-tests/baselines/results/production/2026-06-16/
+```
+
+Comparar dos runs:
+
+```bash
+# Mismo entorno (regresión)
+node plan/load-tests/compare-baselines.mjs \
+  plan/load-tests/baselines/results/localhost/2026-06-16 \
+  plan/load-tests/baselines/results/localhost/2026-06-20
+
+# Localhost vs production
+node plan/load-tests/compare-baselines.mjs \
+  plan/load-tests/baselines/results/localhost/2026-06-16 \
+  plan/load-tests/baselines/results/production/2026-06-16
+```
+
+Variables: `.env.localhost` / `.env.production` (solo `BASE_URL`, etc.) y **`auth-cookie.localhost.txt`** / **`auth-cookie.production.txt`** (cookie en una sola línea).
+
+**No pongas el cookie en `.env`** — los `=` del token rompen `source` en bash. Usa el archivo `auth-cookie.*.txt`.
+
+Ver [plan/load-tests/baselines/README.md](../plan/load-tests/baselines/README.md).
 
 ### Ejecutar Todas las Pruebas
 
