@@ -129,6 +129,7 @@ export type Database = {
           last_notified_at: string | null
           notified: boolean | null
           email_verified: boolean | null
+          email_verified_at: string | null
           created_at: string | null
           updated_at: string | null
         }
@@ -144,6 +145,7 @@ export type Database = {
           last_notified_at?: string | null
           notified?: boolean | null
           email_verified?: boolean | null
+          email_verified_at?: string | null
           created_at?: string | null
           updated_at?: string | null
         }
@@ -159,6 +161,7 @@ export type Database = {
           last_notified_at?: string | null
           notified?: boolean | null
           email_verified?: boolean | null
+          email_verified_at?: string | null
           created_at?: string | null
           updated_at?: string | null
         }

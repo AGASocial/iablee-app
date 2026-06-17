@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createAuthenticatedRouteClient } from '@/lib/supabase-server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { canCreateAsset, canCreateBeneficiary } from '@/lib/subscription/limits';
+import { maybeSendBeneficiaryVerificationEmail } from '@/lib/beneficiary-verification-flow';
 
 export async function POST(request: Request) {
     const { supabase, user } = await createAuthenticatedRouteClient();
@@ -12,7 +13,7 @@ export async function POST(request: Request) {
 
     try {
         const body = await request.json();
-        const { asset, beneficiary, fileUrls, fileMetadata } = body;
+        const { asset, beneficiary, fileUrls, fileMetadata, locale } = body;
 
         if (!asset || !beneficiary) {
             return NextResponse.json({ error: 'Both asset and beneficiary data are required' }, { status: 400 });
@@ -80,16 +81,21 @@ export async function POST(request: Request) {
             }
         }
 
+        const normalizedEmail = beneficiary.email?.trim() || null;
+
         // Create the beneficiary
         const { data: beneficiaryData, error: beneficiaryError } = await supabase
             .from('beneficiaries')
             .insert({
                 user_id: user.id,
                 full_name: beneficiary.fullName,
-                email: beneficiary.email || null,
+                email: normalizedEmail,
                 relationship_id: beneficiary.relationshipId || null,
                 phone_number: beneficiary.phoneNumber || null,
                 notes: beneficiary.notes || null,
+                notified: false,
+                email_verified: false,
+                email_verified_at: null,
                 status: 'active',
             })
             .select()
@@ -99,6 +105,17 @@ export async function POST(request: Request) {
             console.error('Beneficiary creation error:', beneficiaryError);
             return NextResponse.json({ error: beneficiaryError.message }, { status: 500 });
         }
+
+        const { verificationSent } = await maybeSendBeneficiaryVerificationEmail({
+            supabase,
+            userId: user.id,
+            beneficiaryId: beneficiaryData.id,
+            beneficiaryName: beneficiaryData.full_name,
+            email: normalizedEmail,
+            emailChanged: true,
+            isNew: true,
+            locale,
+        });
 
         // Link beneficiary to asset
         const { error: linkError } = await supabaseAdmin
@@ -114,6 +131,7 @@ export async function POST(request: Request) {
         return NextResponse.json({
             asset: assetData,
             beneficiary: beneficiaryData,
+            verificationSent,
         }, { status: 201 });
     } catch {
         return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });

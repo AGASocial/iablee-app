@@ -1,5 +1,5 @@
 "use client";
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Shield, Users, Key, Activity, Sparkles } from "lucide-react";
@@ -28,6 +28,7 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function DashboardClient({ initialData }: DashboardClientProps) {
   const t = useTranslations();
+  const locale = useLocale();
   const { data, isLoading: loading, refetch } = useDashboard({ initialData });
   const { invalidateDashboard } = useInvalidateData();
   const stats = data?.stats ?? {
@@ -45,7 +46,6 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
     phone_number: '',
     relationship: '',
     notes: '',
-    notified: false,
   });
   const [submitting, setSubmitting] = useState(false);
 
@@ -60,7 +60,7 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
           email: form.email,
           phone_number: form.phone_number,
           notes: form.notes,
-          notified: form.notified,
+          locale,
         }),
       });
       if (!res.ok) {
@@ -68,7 +68,7 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
         throw new Error(err.error || 'Failed to add beneficiary');
       }
       setShowAddModal(false);
-      setForm({ full_name: '', email: '', phone_number: '', relationship: '', notes: '', notified: false });
+      setForm({ full_name: '', email: '', phone_number: '', relationship: '', notes: '' });
       await invalidateDashboard();
       await refetch();
     } catch {
@@ -241,9 +241,13 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
                       <span className="text-sm text-muted-foreground">{beneficiary.email}</span>
                       {/* Truncate less important info for cleaner look if needed, keeping mostly same for now */}
                       <div className="flex gap-2 flex-wrap mt-2">
-                        <span className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full font-bold ${beneficiary.notified ? 'bg-green-500/10 text-green-500' : 'bg-muted text-muted-foreground'}`}>
-                          {beneficiary.notified ? t('notified') : t('notNotified')}
-                        </span>
+                        {beneficiary.email && (
+                          <span className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full font-bold ${
+                            beneficiary.email_verified ? 'bg-green-500/10 text-green-500' : 'bg-amber-500/10 text-amber-600'
+                          }`}>
+                            {beneficiary.email_verified ? t('emailVerified') : t('emailNotVerified')}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="mt-3 md:mt-0">
@@ -267,10 +271,9 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
               <input className="w-full p-2 border rounded" placeholder={t('phoneNumber')} value={form.phone_number} onChange={e => setForm(f => ({ ...f, phone_number: e.target.value }))} />
               <input className="w-full p-2 border rounded" placeholder={t('relationship')} value={form.relationship} onChange={e => setForm(f => ({ ...f, relationship: e.target.value }))} />
               <textarea className="w-full p-2 border rounded" placeholder={t('notes')} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
-              <label className="flex items-center gap-2">
-                <input type="checkbox" checked={form.notified} onChange={e => setForm(f => ({ ...f, notified: e.target.checked }))} />
-                {t('notifyNow')}
-              </label>
+              {form.email && (
+                <p className="text-xs text-muted-foreground">{t('verificationEmailHint')}</p>
+              )}
             </div>
             <div className="flex justify-end gap-2 mt-6">
               <Button variant="outline" onClick={() => setShowAddModal(false)}>{t('cancel')}</Button>

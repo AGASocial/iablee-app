@@ -1,29 +1,54 @@
 import { NextResponse } from 'next/server';
-import { createAuthenticatedRouteClient } from '@/lib/supabase-server';
+import { getAuthenticatedContext } from '@/lib/auth-context';
+import {
+    maybeSendBeneficiaryVerificationEmail,
+} from '@/lib/beneficiary-verification-flow';
 
 export async function PUT(
     request: Request,
     { params }: { params: Promise<{ id: string }> }
 ) {
-    const { supabase, user } = await createAuthenticatedRouteClient();
-
-    if (!user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const auth = await getAuthenticatedContext();
+    if (!auth.ok) {
+        return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
+    const { supabase, user } = auth.ctx;
 
     const { id } = await params;
 
     try {
+        const { data: existing, error: existingError } = await supabase
+            .from('beneficiaries')
+            .select('id, email, email_verified, email_verified_at')
+            .eq('id', id)
+            .eq('user_id', user.id)
+            .single();
+
+        if (existingError || !existing) {
+            return NextResponse.json({ error: 'Beneficiary not found' }, { status: 404 });
+        }
+
         const body = await request.json();
-        const { full_name, email, phone_number, relationship_id, notes, notified } = body;
+        const { full_name, email, phone_number, relationship_id, notes, locale } = body;
+
+        const normalizedEmail = email !== undefined ? (email?.trim() || null) : undefined;
+        const emailChanged =
+            normalizedEmail !== undefined &&
+            (normalizedEmail ?? '').toLowerCase() !== (existing.email?.trim().toLowerCase() ?? '');
 
         const updateData: Record<string, unknown> = {};
         if (full_name !== undefined) updateData.full_name = full_name;
-        if (email !== undefined) updateData.email = email;
+        if (normalizedEmail !== undefined) updateData.email = normalizedEmail;
         if (phone_number !== undefined) updateData.phone_number = phone_number;
         if (relationship_id !== undefined) updateData.relationship_id = relationship_id;
         if (notes !== undefined) updateData.notes = notes;
-        if (notified !== undefined) updateData.notified = notified;
+
+        if (emailChanged) {
+            updateData.email_verified = false;
+            updateData.email_verified_at = null;
+            updateData.notified = false;
+            updateData.last_notified_at = null;
+        }
 
         const { data, error } = await supabase
             .from('beneficiaries')
@@ -38,7 +63,18 @@ export async function PUT(
             return NextResponse.json({ error: error.message }, { status: 500 });
         }
 
-        return NextResponse.json(data);
+        const { verificationSent } = await maybeSendBeneficiaryVerificationEmail({
+            supabase,
+            userId: user.id,
+            beneficiaryId: data.id,
+            beneficiaryName: data.full_name,
+            email: data.email,
+            emailChanged,
+            isNew: false,
+            locale,
+        });
+
+        return NextResponse.json({ ...data, verificationSent });
     } catch {
         return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
     }
@@ -48,15 +84,14 @@ export async function DELETE(
     _request: Request,
     { params }: { params: Promise<{ id: string }> }
 ) {
-    const { supabase, user } = await createAuthenticatedRouteClient();
-
-    if (!user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const auth = await getAuthenticatedContext();
+    if (!auth.ok) {
+        return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
+    const { supabase, user } = auth.ctx;
 
     const { id } = await params;
 
-    // Check if the beneficiary is assigned to any assets
     const { count, error: countError } = await supabase
         .from('digital_assets')
         .select('*', { count: 'exact', head: true })
