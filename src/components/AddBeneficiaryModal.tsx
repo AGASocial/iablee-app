@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +22,7 @@ interface AddBeneficiaryModalProps {
 
 export default function AddBeneficiaryModal({ open, onOpenChange, onSuccess, beneficiaryToEdit }: AddBeneficiaryModalProps) {
     const t = useTranslations();
+    const locale = useLocale();
     const [loading, setLoading] = useState(false);
     const [relationships, setRelationships] = useState<{ id: number; key: string }[]>([]);
 
@@ -31,7 +32,6 @@ export default function AddBeneficiaryModal({ open, onOpenChange, onSuccess, ben
         phone_number: "",
         relationship_id: null as number | null,
         notes: "",
-        notified: false,
     });
 
     useEffect(() => {
@@ -60,7 +60,6 @@ export default function AddBeneficiaryModal({ open, onOpenChange, onSuccess, ben
                 phone_number: beneficiaryToEdit.phone_number || "",
                 relationship_id: beneficiaryToEdit.relationship_id || null,
                 notes: beneficiaryToEdit.notes || "",
-                notified: !!beneficiaryToEdit.notified,
             });
         } else {
             setFormData({
@@ -69,7 +68,6 @@ export default function AddBeneficiaryModal({ open, onOpenChange, onSuccess, ben
                 phone_number: "",
                 relationship_id: null,
                 notes: "",
-                notified: false,
             });
         }
     }, [beneficiaryToEdit, open]);
@@ -90,7 +88,7 @@ export default function AddBeneficiaryModal({ open, onOpenChange, onSuccess, ben
                         phone_number: formData.phone_number,
                         relationship_id: formData.relationship_id,
                         notes: formData.notes,
-                        notified: formData.notified,
+                        locale,
                     }),
                 });
 
@@ -98,7 +96,12 @@ export default function AddBeneficiaryModal({ open, onOpenChange, onSuccess, ben
                     const err = await res.json();
                     throw new Error(err.error || 'Failed to update beneficiary');
                 }
-                toast.success(t('beneficiaryUpdatedSuccess') || "Beneficiary updated successfully");
+                const data = await res.json();
+                if (data.verificationSent) {
+                    toast.success(t('verificationEmailSent'));
+                } else {
+                    toast.success(t('beneficiaryUpdatedSuccess') || "Beneficiary updated successfully");
+                }
             } else {
                 // Create
                 const res = await fetch('/api/beneficiaries', {
@@ -110,7 +113,7 @@ export default function AddBeneficiaryModal({ open, onOpenChange, onSuccess, ben
                         phone_number: formData.phone_number,
                         relationship_id: formData.relationship_id,
                         notes: formData.notes,
-                        notified: formData.notified,
+                        locale,
                     }),
                 });
 
@@ -118,7 +121,12 @@ export default function AddBeneficiaryModal({ open, onOpenChange, onSuccess, ben
                     const err = await res.json();
                     throw new Error(err.message || err.error || 'Failed to create beneficiary');
                 }
-                toast.success(t('beneficiaryCreatedSuccess') || "Beneficiary created successfully");
+                const data = await res.json();
+                if (data.verificationSent) {
+                    toast.success(t('verificationEmailSent'));
+                } else {
+                    toast.success(t('beneficiaryCreatedSuccess') || "Beneficiary created successfully");
+                }
             }
 
             onSuccess();
@@ -210,18 +218,11 @@ export default function AddBeneficiaryModal({ open, onOpenChange, onSuccess, ben
                         />
                     </div>
 
-                    <div className="flex items-center space-x-2 pt-2">
-                        <input
-                            type="checkbox"
-                            id="notify"
-                            checked={formData.notified}
-                            onChange={(e) => setFormData({ ...formData, notified: e.target.checked })}
-                            className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4"
-                        />
-                        <Label htmlFor="notify" className="text-sm font-medium leading-none cursor-pointer">
-                            {t('notifyNow')}
-                        </Label>
-                    </div>
+                    {formData.email && (
+                        <p className="text-xs text-muted-foreground pt-1">
+                            {t('verificationEmailHint')}
+                        </p>
+                    )}
 
                     <DialogFooter className="pt-4">
                         <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>

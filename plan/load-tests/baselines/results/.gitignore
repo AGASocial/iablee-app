@@ -1,0 +1,3 @@
+# Large / ephemeral k6 outputs — keep *.summary.json, manifest.json, REPORT.md
+*.raw.json
+*.log

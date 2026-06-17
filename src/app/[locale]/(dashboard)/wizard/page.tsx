@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
 import { Button } from "@/components/ui/button";
 
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ type WizardStep = 'welcome' | 'asset-type' | 'asset-details' | 'beneficiary' | '
 
 export default function WizardPage() {
   const t = useTranslations();
+  const locale = useLocale();
   const { user } = useAuth();
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState<WizardStep>('welcome');
@@ -215,6 +216,7 @@ export default function WizardPage() {
           },
           fileUrls,
           fileMetadata,
+          locale,
         }),
       });
 

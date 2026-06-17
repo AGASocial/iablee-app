@@ -103,7 +103,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Protected routes check
-  if (!user && !pathname.includes('/auth/')) {
+  if (!user && !pathname.includes('/auth/') && !pathname.includes('/verify-beneficiary-email')) {
     // If we are on a protected route and not logged in, redirect to login
     // However, we need to respect internationalized paths.
     // The intlMiddleware handles the locale part, but if we need to redirect...

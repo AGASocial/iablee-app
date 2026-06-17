@@ -3,6 +3,9 @@ import { getAuthenticatedContext } from '@/lib/auth-context';
 import { canCreateBeneficiary } from '@/lib/subscription/limits';
 import { parsePaginationParams, buildPaginatedResponse } from '@/lib/pagination';
 import { withTiming } from '@/lib/observability';
+import {
+    maybeSendBeneficiaryVerificationEmail,
+} from '@/lib/beneficiary-verification-flow';
 
 /**
  * GET /api/beneficiaries
@@ -66,22 +69,26 @@ export const POST = withTiming('POST /api/beneficiaries', async (request: Reques
         }
 
         const body = await request.json();
-        const { full_name, email, phone_number, relationship_id, notes, notified } = body;
+        const { full_name, email, phone_number, relationship_id, notes, locale } = body;
 
         if (!full_name) {
             return NextResponse.json({ error: 'full_name is required' }, { status: 400 });
         }
+
+        const normalizedEmail = email?.trim() || null;
 
         const { data, error } = await supabase
             .from('beneficiaries')
             .insert({
                 user_id: user.id,
                 full_name,
-                email: email || null,
+                email: normalizedEmail,
                 phone_number: phone_number || null,
                 relationship_id: relationship_id || null,
                 notes: notes || null,
-                notified: notified || false,
+                notified: false,
+                email_verified: false,
+                email_verified_at: null,
                 status: 'active',
             })
             .select('*, relationship:relationships(key)')
@@ -92,7 +99,18 @@ export const POST = withTiming('POST /api/beneficiaries', async (request: Reques
             return NextResponse.json({ error: error.message }, { status: 500 });
         }
 
-        return NextResponse.json(data, { status: 201 });
+        const { verificationSent } = await maybeSendBeneficiaryVerificationEmail({
+            supabase,
+            userId: user.id,
+            beneficiaryId: data.id,
+            beneficiaryName: data.full_name,
+            email: normalizedEmail,
+            emailChanged: true,
+            isNew: true,
+            locale,
+        });
+
+        return NextResponse.json({ ...data, verificationSent }, { status: 201 });
     } catch {
         return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
     }

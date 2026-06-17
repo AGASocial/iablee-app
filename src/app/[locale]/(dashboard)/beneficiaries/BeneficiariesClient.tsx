@@ -1,11 +1,10 @@
 "use client";
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { useState, useEffect, useMemo } from "react";
 
-import { Pencil, Trash2, Plus, Users } from "lucide-react";
+import { Pencil, Trash2, Plus, Users, Mail, CheckCircle2, AlertCircle } from "lucide-react";
 import DeleteConfirmationModal from '@/components/DeleteConfirmationModal';
 import { toast } from 'sonner';
 import AddBeneficiaryModal from '@/components/AddBeneficiaryModal';
@@ -32,6 +31,7 @@ import { useBeneficiaries, useBilling, useInvalidateData } from '@/hooks/useData
 
 export default function BeneficiariesClient() {
     const t = useTranslations();
+    const locale = useLocale();
     const router = useRouter();
     const searchParams = useSearchParams();
     const { locked, loading: securityLoading } = useSecurity();
@@ -64,6 +64,7 @@ export default function BeneficiariesClient() {
     // Filtering State
     const [searchQuery, setSearchQuery] = useState('');
     const [activeFilters, setActiveFilters] = useState<Record<string, string>>({});
+    const [resendingId, setResendingId] = useState<string | null>(null);
 
     // Derived filtered beneficiaries
     const filteredBeneficiaries = beneficiaries.filter(b => {
@@ -162,20 +163,29 @@ export default function BeneficiariesClient() {
         setShowAddModal(true);
     }
 
-    const handleToggleNotification = async (id: string, newStatus: boolean) => {
+    const handleResendVerification = async (id: string) => {
+        setResendingId(id);
         try {
-            const res = await fetch(`/api/beneficiaries/${id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ notified: newStatus }),
+            const res = await fetch(`/api/beneficiaries/${id}/resend-verification`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-locale': locale,
+                },
+                body: JSON.stringify({ locale }),
             });
 
-            if (!res.ok) throw new Error('Failed to update');
-            await invalidateBeneficiaries();
-            toast.success(t('notificationUpdated'));
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.error || 'Failed to resend');
+            }
+
+            toast.success(t('verificationEmailSent'));
         } catch (error) {
-            console.error('Error toggling notification:', error);
-            toast.error(t('errorUpdatingNotification'));
+            console.error('Error resending verification:', error);
+            toast.error(t('verificationEmailFailed'));
+        } finally {
+            setResendingId(null);
         }
     };
 
@@ -281,7 +291,20 @@ export default function BeneficiariesClient() {
                                                 {t('relationships.' + b.relationship.key)}
                                             </span>
                                         )}
-                                        {/* <StatusBadge status={b.status} /> */}
+                                        {b.email && (
+                                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium border ${
+                                                b.email_verified
+                                                    ? 'bg-green-500/10 text-green-600 border-green-500/20'
+                                                    : 'bg-amber-500/10 text-amber-600 border-amber-500/20'
+                                            }`}>
+                                                {b.email_verified ? (
+                                                    <CheckCircle2 className="h-3 w-3" />
+                                                ) : (
+                                                    <AlertCircle className="h-3 w-3" />
+                                                )}
+                                                {b.email_verified ? t('emailVerified') : t('emailNotVerified')}
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
 
@@ -292,14 +315,26 @@ export default function BeneficiariesClient() {
                                             <span className="font-mono">{b.phone_number}</span>
                                         </div>
                                     )}
-                                    <div className="flex justify-between items-center text-xs text-muted-foreground p-1">
-                                        <span>{t('notifications')}</span>
-                                        <Switch
-                                            disabled
-                                            checked={b.notified || false}
-                                            onCheckedChange={(checked) => handleToggleNotification(b.id, checked)}
-                                        />
-                                    </div>
+                                    {b.email && !b.email_verified && (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="w-full text-xs"
+                                            disabled={resendingId === b.id}
+                                            onClick={() => handleResendVerification(b.id)}
+                                        >
+                                            <Mail className="mr-2 h-3.5 w-3.5" />
+                                            {resendingId === b.id ? t('resendingVerification') : t('resendVerification')}
+                                        </Button>
+                                    )}
+                                    {b.email && b.email_verified && (
+                                        <div className="flex justify-between items-center text-xs text-muted-foreground p-1">
+                                            <span>{t('notifications')}</span>
+                                            <span className={b.notified ? 'text-green-600' : ''}>
+                                                {b.notified ? t('notified') : t('notNotified')}
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         );

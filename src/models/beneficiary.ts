@@ -10,4 +10,5 @@ export interface Beneficiary {
   status: string | null;
   last_notified_at: string | null;
   email_verified: boolean | null;
+  email_verified_at: string | null;
 }

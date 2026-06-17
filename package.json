@@ -13,6 +13,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
+    "test:load:baseline:localhost": "bash plan/load-tests/run-baseline.sh localhost",
+    "test:load:baseline:production": "bash plan/load-tests/run-baseline.sh production",
     "test:all": "npm run test && npm run test:e2e"
   },
   "dependencies": {

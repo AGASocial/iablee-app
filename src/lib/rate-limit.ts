@@ -69,6 +69,7 @@ export const RATE_LIMITS = {
   auth: { limit: 10, windowSec: 60 } as RateLimitConfig,
   securityPin: { limit: 5, windowSec: 60 } as RateLimitConfig,
   upload: { limit: 20, windowSec: 60 } as RateLimitConfig,
+  beneficiaryEmail: { limit: 5, windowSec: 300 } as RateLimitConfig,
 } as const;
 
 /** Reset store between tests */
