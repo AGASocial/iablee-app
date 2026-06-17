@@ -1,0 +1,10 @@
+{
+  "runId": "2026-06-16",
+  "target": "localhost",
+  "recordedAt": "2026-06-17T00:53:12Z",
+  "baseUrl": "http://localhost:3000",
+  "gitSha": "eb46689",
+  "gitBranch": "feature/performance",
+  "k6Version": "k6 v2.0.0 (commit/devel, go1.26.3, darwin/arm64)",
+  "scripts": ["dashboard", "assets-list", "auth-check-session", "verify-pin-smoke"]
+}

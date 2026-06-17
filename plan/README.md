@@ -14,7 +14,12 @@ plan/
 ├── frontend/USER-STORIES.md  ← 8 stories (US-F-001 … US-F-008)
 ├── backend/USER-STORIES.md   ← 11 stories (US-B-001 … US-B-011)
 ├── qa/USER-STORIES.md        ← 4 stories (US-Q-001 … US-Q-004)
-└── load-tests/               ← (created by US-Q-001)
+└── load-tests/               ← k6 scripts + baselines/
+    ├── *.js                  ← smoke scripts
+    ├── run-baseline.sh       ← run all + save to baselines/results/
+    └── baselines/results/
+        ├── localhost/        ← dated runs against local dev
+        └── production/       ← dated runs against prod
 ```
 
 ## Phase 0 kickoff (Critical path)
