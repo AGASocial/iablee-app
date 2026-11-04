@@ -15,9 +15,8 @@ import {
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
-import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { useTranslations, useLocale } from "next-intl"
+import { Link, useRouter } from "@/i18n/navigation"
 
 const formSchema = z
   .object({

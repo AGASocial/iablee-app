@@ -90,7 +90,14 @@ export default function MyBeneficiaryRelationshipsPage() {
   function getRelationshipLabel(relationshipId: number | null) {
     if (!relationshipId) return t("relationships.other")
     const key = RELATIONSHIPS_MAP[relationshipId]
-    return key ? t(key as any) : t("relationships.other")
+    if (!key) return t("relationships.other")
+    
+    // Split the key to access nested translation
+    const parts = key.split('.')
+    if (parts.length === 2 && parts[0] === 'relationships') {
+      return t(`relationships.${parts[1]}` as 'relationships.father')
+    }
+    return t("relationships.other")
   }
 
   if (loading) {

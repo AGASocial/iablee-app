@@ -15,8 +15,8 @@ import {
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
-import Link from "next/link"
 import { useTranslations, useLocale } from "next-intl"
+import { Link } from "@/i18n/navigation"
 
 const formSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
