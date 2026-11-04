@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { createRouteClient } from '@/lib/supabase-server';
 import { checkRateLimit, getClientIp, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 
@@ -22,6 +23,9 @@ export async function POST(request: NextRequest) {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 401 });
     }
+
+    const cookieStore = await cookies();
+    cookieStore.delete('security_session');
 
     return NextResponse.json({ success: true });
   } catch (error) {

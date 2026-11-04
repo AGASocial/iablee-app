@@ -15,7 +15,7 @@ async function buildContext(
   supabase: SupabaseClient<Database>,
   user: User
 ): Promise<AuthenticatedContext> {
-  const hasSecuritySession = await checkSecuritySession();
+  const hasSecuritySession = await checkSecuritySession(user.id);
 
   const { data: userData } = await supabase
     .from('users')

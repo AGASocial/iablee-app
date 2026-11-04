@@ -34,6 +34,7 @@ describe('PIN-gated auth context', () => {
     mockCheckSession.mockResolvedValue(false);
 
     const result = await getSecurityContext();
+    expect(mockCheckSession).toHaveBeenCalledWith('user-1');
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.ctx.hasPin).toBe(true);

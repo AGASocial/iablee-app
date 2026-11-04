@@ -50,5 +50,6 @@ export async function GET(request: NextRequest) {
 
   const successResponse = NextResponse.redirect(new URL(nextPath, request.url));
   successResponse.cookies.delete('auth_callback_next');
+  successResponse.cookies.delete('security_session');
   return successResponse;
 }

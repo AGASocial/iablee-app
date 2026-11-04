@@ -7,6 +7,7 @@ import { es, enUS } from "date-fns/locale"
 import { ShieldCheck, Calendar, User, Heart } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { useSecurity } from "@/context/SecurityContext"
 
 interface BeneficiaryRelationship {
   holder_full_name: string
@@ -19,18 +20,39 @@ interface BeneficiaryRelationship {
 export default function MyBeneficiaryRelationshipsPage() {
   const t = useTranslations()
   const locale = useLocale()
+  const { locked, loading: securityLoading, checkStatus } = useSecurity()
+  const unlocked = !securityLoading && !locked
   const [relationships, setRelationships] = useState<BeneficiaryRelationship[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!unlocked) {
+      setRelationships((current) => (current.length === 0 ? current : []))
+      setError((current) => (current === null ? current : null))
+      setLoading((current) => (current ? current : true))
+      return
+    }
+
     let cancelled = false
 
     async function fetchRelationships() {
+      let pinGate = false
       try {
         setLoading(true)
         setError(null)
         const response = await fetch("/api/beneficiaries/my-relationships")
+
+        if (response.status === 403) {
+          pinGate = true
+          if (!cancelled) {
+            setRelationships((current) => (current.length === 0 ? current : []))
+            setError(null)
+            setLoading(true)
+          }
+          void checkStatus()
+          return
+        }
 
         if (!response.ok) {
           throw new Error("Failed to fetch relationships")
@@ -45,17 +67,17 @@ export default function MyBeneficiaryRelationshipsPage() {
           setError(t("error"))
         }
       } finally {
-        if (!cancelled) {
+        if (!cancelled && !pinGate) {
           setLoading(false)
         }
       }
     }
 
-    fetchRelationships()
+    void fetchRelationships()
     return () => {
       cancelled = true
     }
-  }, [t])
+  }, [unlocked, t, checkStatus])
 
   function formatDate(dateString: string) {
     try {
@@ -68,10 +90,11 @@ export default function MyBeneficiaryRelationshipsPage() {
 
   function getRelationshipLabel(relationshipKey: string | null) {
     if (!relationshipKey) return t("relationships.other")
-    return t(`relationships.${relationshipKey}` as "relationships.other")
+    const key = `relationships.${relationshipKey}` as "relationships.other"
+    return t.has(key) ? t(key) : t("relationships.other")
   }
 
-  if (loading) {
+  if (!unlocked || loading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <div className="flex flex-col items-center gap-2">

@@ -56,6 +56,66 @@ describe('GET /api/beneficiaries/my-relationships', () => {
     expect(mockRpc).not.toHaveBeenCalled();
   });
 
+  it('returns 403 when the user has no PIN', async () => {
+    mockGetAuthenticatedContext.mockResolvedValue({
+      ok: true,
+      ctx: {
+        user: { id: 'user-1', email: 'user@example.com' },
+        supabase: {},
+        hasSecuritySession: false,
+        hasPin: false,
+        pinRequired: false,
+      },
+    });
+
+    const response = await GET(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.error).toBe('Security PIN required');
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 when the security session is missing', async () => {
+    mockGetAuthenticatedContext.mockResolvedValue({
+      ok: true,
+      ctx: {
+        user: { id: 'user-1', email: 'user@example.com' },
+        supabase: {},
+        hasSecuritySession: false,
+        hasPin: true,
+        pinRequired: false,
+      },
+    });
+
+    const response = await GET(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.error).toBe('Security PIN required');
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 when a session exists but no PIN is set', async () => {
+    mockGetAuthenticatedContext.mockResolvedValue({
+      ok: true,
+      ctx: {
+        user: { id: 'user-1', email: 'user@example.com' },
+        supabase: {},
+        hasSecuritySession: true,
+        hasPin: false,
+        pinRequired: false,
+      },
+    });
+
+    const response = await GET(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.error).toBe('Security PIN required');
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
   it('returns 400 when session user has no email', async () => {
     mockGetAuthenticatedContext.mockResolvedValue({
       ok: true,
@@ -122,7 +182,12 @@ describe('GET /api/beneficiaries/my-relationships', () => {
     });
     mockRpc.mockResolvedValue({
       data: null,
-      error: { message: 'internal details', code: 'XX000' },
+      error: {
+        message: 'internal details',
+        code: 'XX000',
+        details: 'secret row',
+        hint: 'drop table',
+      },
     });
 
     const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
@@ -132,8 +197,13 @@ describe('GET /api/beneficiaries/my-relationships', () => {
 
     expect(response.status).toBe(500);
     expect(body.error).toBe('Failed to fetch beneficiary relationships');
-    expect(consoleSpy).toHaveBeenCalledWith('Error fetching beneficiary relationships');
-    expect(consoleSpy.mock.calls[0]).toHaveLength(1);
+    expect(body.error).not.toContain('internal details');
+    expect(consoleSpy).toHaveBeenCalledWith('Error fetching beneficiary relationships', {
+      message: 'internal details',
+      code: 'XX000',
+    });
+    expect(JSON.stringify(consoleSpy.mock.calls)).not.toContain('secret row');
+    expect(JSON.stringify(consoleSpy.mock.calls)).not.toContain('drop table');
 
     consoleSpy.mockRestore();
   });

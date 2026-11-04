@@ -51,12 +51,15 @@ export async function createAuthenticatedRouteClient() {
 }
 
 /**
- * Checks if the user has a valid security session (PIN verified)
+ * Checks if this authenticated user has a valid security session (PIN verified).
+ * Rejects tokens minted for a different user.
  */
-export async function checkSecuritySession() {
+export async function checkSecuritySession(userId: string) {
+    if (!userId) return false;
+
     const cookieStore = await cookies();
     const securitySession = cookieStore.get("security_session");
     if (!securitySession?.value) return false;
 
-    return await verifySecuritySessionToken(securitySession.value);
+    return await verifySecuritySessionToken(securitySession.value, userId);
 }

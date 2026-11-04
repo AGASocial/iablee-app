@@ -11,10 +11,12 @@ export async function createSecuritySessionToken(userId: string): Promise<string
         .sign(key);
 }
 
-export async function verifySecuritySessionToken(token: string): Promise<boolean> {
+export async function verifySecuritySessionToken(token: string, userId: string): Promise<boolean> {
+    if (!userId) return false;
+
     try {
-        await jwtVerify(token, key);
-        return true;
+        const { payload } = await jwtVerify(token, key);
+        return typeof payload.userId === 'string' && payload.userId === userId;
     } catch {
         return false;
     }
