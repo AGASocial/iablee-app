@@ -270,7 +270,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
       </main>
       <Toaster richColors closeButton position="top-right" />
       <SecurityPinModal
-        isOpen={isAuthPage ? false : (pathname?.includes('/digital-assets') || pathname?.includes('/beneficiaries')) && (securityState.locked || !securityState.hasPin)}
+        isOpen={isAuthPage ? false : (pathname?.includes('/digital-assets') || pathname?.includes('/beneficiaries') || pathname?.includes('/my-beneficiary-relationships')) && (securityState.locked || !securityState.hasPin)}
         mode={!securityState.hasPin ? "setup" : "verify"}
         forceOpen={true}
         onSuccess={() => securityState.checkStatus()}

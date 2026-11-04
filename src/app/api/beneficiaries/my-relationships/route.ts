@@ -1,75 +1,46 @@
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { NextResponse } from 'next/server'
+import { NextResponse } from 'next/server';
+import { getAuthenticatedContext } from '@/lib/auth-context';
+import { supabaseAdmin } from '@/lib/supabase-admin';
+import { withTiming } from '@/lib/observability';
 
-export const dynamic = 'force-dynamic'
-
-interface BeneficiaryRelationship {
-  holder_id: string
-  holder_full_name: string
-  holder_email: string
-  relationship_id: number | null
-  beneficiary_id: string
-  email_verified: boolean
-  email_verified_at: string | null
-  created_at: string
-  updated_at: string
+export interface BeneficiaryRelationship {
+  holder_full_name: string;
+  relationship_key: string | null;
+  beneficiary_id: string;
+  email_verified_at: string | null;
+  created_at: string;
 }
 
-export async function GET() {
-  try {
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll()
-          },
-          setAll(cookiesToSet) {
-            try {
-              cookiesToSet.forEach(({ name, value, options }) =>
-                cookieStore.set(name, value, options)
-              )
-            } catch {
-              // Handle cookie setting errors
-            }
-          },
-        },
-      }
-    )
-
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    // Call the security definer function
-    const { data, error } = await supabase
-      .rpc('get_my_beneficiary_relationships')
-
-    if (error) {
-      console.error('Error fetching beneficiary relationships:', error)
-      return NextResponse.json(
-        { error: 'Failed to fetch beneficiary relationships' },
-        { status: 500 }
-      )
-    }
-
-    return NextResponse.json({ 
-      relationships: (data || []) as BeneficiaryRelationship[]
-    })
-  } catch (error) {
-    console.error('Unexpected error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+/**
+ * GET /api/beneficiaries/my-relationships
+ *
+ * Lists account holders who have verified the current user as a beneficiary.
+ * Requires auth + PIN. Calls a service-role-only RPC with the session email.
+ */
+export const GET = withTiming('GET /api/beneficiaries/my-relationships', async () => {
+  const auth = await getAuthenticatedContext();
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
-}
+
+  const sessionEmail = auth.ctx.user.email;
+  if (!sessionEmail) {
+    return NextResponse.json({ error: 'User email not available' }, { status: 400 });
+  }
+
+  const { data, error } = await supabaseAdmin.rpc('get_my_beneficiary_relationships', {
+    p_email: sessionEmail,
+  });
+
+  if (error) {
+    console.error('Error fetching beneficiary relationships');
+    return NextResponse.json(
+      { error: 'Failed to fetch beneficiary relationships' },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({
+    relationships: (data || []) as BeneficiaryRelationship[],
+  });
+});

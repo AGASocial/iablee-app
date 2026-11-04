@@ -1,50 +1,19 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useTranslations } from "next-intl"
+import { useTranslations, useLocale } from "next-intl"
 import { format } from "date-fns"
 import { es, enUS } from "date-fns/locale"
-import { useLocale } from "next-intl"
-import { ShieldCheck, ShieldAlert, Calendar, User, Heart } from "lucide-react"
+import { ShieldCheck, Calendar, User, Heart } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 
 interface BeneficiaryRelationship {
-  holder_id: string
   holder_full_name: string
-  holder_email: string
-  relationship_id: number | null
+  relationship_key: string | null
   beneficiary_id: string
-  email_verified: boolean
   email_verified_at: string | null
   created_at: string
-  updated_at: string
-}
-
-const RELATIONSHIPS_MAP: Record<number, string> = {
-  1: "relationships.father",
-  2: "relationships.mother",
-  3: "relationships.son",
-  4: "relationships.daughter",
-  5: "relationships.grandfather",
-  6: "relationships.grandmother",
-  7: "relationships.brother",
-  8: "relationships.sister",
-  9: "relationships.spouse",
-  10: "relationships.father-in-law",
-  11: "relationships.mother-in-law",
-  12: "relationships.stepbrother",
-  13: "relationships.stepsister",
-  14: "relationships.stepfather",
-  15: "relationships.stepmother",
-  16: "relationships.aunt",
-  17: "relationships.uncle",
-  18: "relationships.niece",
-  19: "relationships.nephew",
-  20: "relationships.cousin",
-  21: "relationships.grandchild",
-  22: "relationships.friend",
-  23: "relationships.other",
 }
 
 export default function MyBeneficiaryRelationshipsPage() {
@@ -55,28 +24,38 @@ export default function MyBeneficiaryRelationshipsPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetchRelationships()
-  }, [])
+    let cancelled = false
 
-  async function fetchRelationships() {
-    try {
-      setLoading(true)
-      setError(null)
-      const response = await fetch("/api/beneficiaries/my-relationships")
-      
-      if (!response.ok) {
-        throw new Error("Failed to fetch relationships")
+    async function fetchRelationships() {
+      try {
+        setLoading(true)
+        setError(null)
+        const response = await fetch("/api/beneficiaries/my-relationships")
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch relationships")
+        }
+
+        const data = await response.json()
+        if (!cancelled) {
+          setRelationships(data.relationships || [])
+        }
+      } catch {
+        if (!cancelled) {
+          setError(t("error"))
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
       }
-
-      const data = await response.json()
-      setRelationships(data.relationships || [])
-    } catch (err) {
-      console.error("Error fetching relationships:", err)
-      setError(err instanceof Error ? err.message : "An error occurred")
-    } finally {
-      setLoading(false)
     }
-  }
+
+    fetchRelationships()
+    return () => {
+      cancelled = true
+    }
+  }, [t])
 
   function formatDate(dateString: string) {
     try {
@@ -87,17 +66,9 @@ export default function MyBeneficiaryRelationshipsPage() {
     }
   }
 
-  function getRelationshipLabel(relationshipId: number | null) {
-    if (!relationshipId) return t("relationships.other")
-    const key = RELATIONSHIPS_MAP[relationshipId]
-    if (!key) return t("relationships.other")
-    
-    // Split the key to access nested translation
-    const parts = key.split('.')
-    if (parts.length === 2 && parts[0] === 'relationships') {
-      return t(`relationships.${parts[1]}` as 'relationships.father')
-    }
-    return t("relationships.other")
+  function getRelationshipLabel(relationshipKey: string | null) {
+    if (!relationshipKey) return t("relationships.other")
+    return t(`relationships.${relationshipKey}` as "relationships.other")
   }
 
   if (loading) {
@@ -153,11 +124,7 @@ export default function MyBeneficiaryRelationshipsPage() {
                     <User className="h-5 w-5 text-primary" />
                     <CardTitle className="text-lg">{relationship.holder_full_name}</CardTitle>
                   </div>
-                  {relationship.email_verified ? (
-                    <ShieldCheck className="h-5 w-5 text-green-600 dark:text-green-400" />
-                  ) : (
-                    <ShieldAlert className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
-                  )}
+                  <ShieldCheck className="h-5 w-5 text-green-600 dark:text-green-400" />
                 </div>
               </CardHeader>
               <CardContent className="space-y-3 pt-4">
@@ -165,7 +132,7 @@ export default function MyBeneficiaryRelationshipsPage() {
                   <Heart className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm">
                     <Badge variant="secondary" className="font-medium">
-                      {getRelationshipLabel(relationship.relationship_id)}
+                      {getRelationshipLabel(relationship.relationship_key)}
                     </Badge>
                   </span>
                 </div>
@@ -184,21 +151,10 @@ export default function MyBeneficiaryRelationshipsPage() {
 
                 <div className="pt-2 border-t">
                   <div className="flex items-center gap-2">
-                    {relationship.email_verified ? (
-                      <>
-                        <ShieldCheck className="h-4 w-4 text-green-600 dark:text-green-400" />
-                        <span className="text-xs text-green-600 dark:text-green-400 font-medium">
-                          {t("emailVerified")}
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <ShieldAlert className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-                        <span className="text-xs text-yellow-600 dark:text-yellow-400 font-medium">
-                          {t("emailNotVerified")}
-                        </span>
-                      </>
-                    )}
+                    <ShieldCheck className="h-4 w-4 text-green-600 dark:text-green-400" />
+                    <span className="text-xs text-green-600 dark:text-green-400 font-medium">
+                      {t("emailVerified")}
+                    </span>
                   </div>
                   {relationship.email_verified_at && (
                     <p className="text-xs text-muted-foreground mt-1">

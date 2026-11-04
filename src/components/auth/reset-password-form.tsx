@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
-import { useTranslations, useLocale } from "next-intl"
+import { useTranslations } from "next-intl"
 import { Link, useRouter } from "@/i18n/navigation"
 
 const formSchema = z
@@ -40,7 +40,6 @@ export function ResetPasswordForm() {
   const [hasSession, setHasSession] = React.useState(false)
   const [submitError, setSubmitError] = React.useState<string | null>(null)
   const t = useTranslations()
-  const locale = useLocale()
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -102,7 +101,7 @@ export function ResetPasswordForm() {
       })
 
       toast.success(t("passwordResetSuccess"))
-      router.push(`/${locale}/auth/login`)
+      router.push("/auth/login")
     } catch (error) {
       console.error("Reset password error:", error)
       const message = error instanceof Error ? error.message : t("resetPasswordError")
