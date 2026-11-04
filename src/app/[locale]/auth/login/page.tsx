@@ -2,9 +2,22 @@
 import { AuthForm } from "@/components/auth/auth-form"
 import { AuthHero } from "@/components/auth/auth-hero"
 import { useTranslations } from 'next-intl';
+import { useSearchParams } from 'next/navigation';
+import { useEffect } from 'react';
+import { toast } from 'sonner';
 
 export default function LoginPage() {
   const t = useTranslations();
+  const searchParams = useSearchParams();
+  
+  useEffect(() => {
+    if (searchParams.get('registered') === 'true') {
+      toast.success(t('registrationConfirmationTitle'), {
+        description: t('registrationConfirmationMessage'),
+        duration: 8000,
+      });
+    }
+  }, [searchParams, t]);
 
   return (
     <div className="container relative min-h-screen flex-col items-center justify-center grid lg:max-w-none lg:grid-cols-2 lg:px-0">
