@@ -127,6 +127,56 @@ describe('POST /api/security/verify-pin lockout', () => {
     expect(update).not.toHaveBeenCalled();
   });
 
+  it('compares the fifth PIN and locks only when it is wrong', async () => {
+    const select = jest.fn().mockResolvedValue({ data: [{ id: 'user-1' }], error: null });
+    const gte = jest.fn().mockReturnValue({ select });
+    const eq = jest.fn().mockReturnValue({ gte });
+    const update = jest.fn().mockReturnValue({ eq });
+    mockFrom.mockReturnValue({ update });
+    mockRpc.mockResolvedValue({
+      data: [claim({ failed_attempts: 5, may_compare: true, pin_hash: 'hash' })],
+      error: null,
+    });
+    mockCompare.mockResolvedValue(false);
+
+    const request = new Request('http://localhost/api/security/verify-pin', {
+      method: 'POST',
+      body: JSON.stringify({ pin: '000000' }),
+    });
+
+    const response = await POST(request as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(423);
+    expect(body.remainingAttempts).toBe(0);
+    expect(body.lockedUntil).toEqual(expect.any(String));
+    expect(mockCompare).toHaveBeenCalledWith('000000', 'hash');
+    expect(update).toHaveBeenCalledWith({ pin_locked_until: expect.any(String) });
+    expect(gte).toHaveBeenCalledWith('pin_failed_attempts', 5);
+  });
+
+  it('accepts a correct fifth PIN without locking', async () => {
+    const eq = jest.fn().mockResolvedValue({ error: null });
+    const update = jest.fn().mockReturnValue({ eq });
+    mockFrom.mockReturnValue({ update });
+    mockRpc.mockResolvedValue({
+      data: [claim({ failed_attempts: 5, may_compare: true })],
+      error: null,
+    });
+    mockCompare.mockResolvedValue(true);
+
+    const request = new Request('http://localhost/api/security/verify-pin', {
+      method: 'POST',
+      body: JSON.stringify({ pin: '123456' }),
+    });
+
+    const response = await POST(request as never);
+
+    expect(response.status).toBe(200);
+    expect(mockCompare).toHaveBeenCalledWith('123456', 'hash');
+    expect(update).toHaveBeenCalledWith({ pin_failed_attempts: 0, pin_locked_until: null });
+  });
+
   it('does not invent a local attempt count when the lock fails', async () => {
     mockRpc.mockResolvedValue({ data: null, error: { message: 'db down' } });
     mockCompare.mockResolvedValue(false);

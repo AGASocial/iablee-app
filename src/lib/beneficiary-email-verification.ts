@@ -3,6 +3,7 @@ import { Resend } from 'resend';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { getAppUrl } from '@/lib/app-url';
 import {
+  escapeHtml,
   getBeneficiaryVerificationCopy,
   getBeneficiaryVerificationTemplateId,
   resolveEmailLocale,
@@ -78,8 +79,8 @@ export async function sendBeneficiaryVerificationEmail(params: {
   const ownerName = params.ownerName ?? copy.ownerFallback;
 
   const templateVariables = {
-    BENEFICIARY_NAME: params.beneficiaryName,
-    OWNER_NAME: ownerName,
+    BENEFICIARY_NAME: escapeHtml(params.beneficiaryName),
+    OWNER_NAME: escapeHtml(ownerName),
     VERIFICATION_URL: verificationUrl,
     EXPIRY_HOURS: String(TOKEN_TTL_HOURS),
   };

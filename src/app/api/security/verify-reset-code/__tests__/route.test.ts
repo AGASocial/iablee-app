@@ -51,12 +51,17 @@ describe('POST /api/security/verify-reset-code', () => {
   function thenable(resolved: { error: null | { message: string } } = { error: null }) {
     const builder: {
       eq: jest.Mock;
+      gte: jest.Mock;
+      select: jest.Mock;
       then: Promise<{ error: null | { message: string } }>['then'];
     } = {
       eq: jest.fn(),
+      gte: jest.fn(),
+      select: jest.fn(async () => ({ data: [{ id: 'user-1' }], error: null })),
       then: (onFulfilled, onRejected) => Promise.resolve(resolved).then(onFulfilled, onRejected),
     };
     builder.eq.mockReturnValue(builder);
+    builder.gte.mockReturnValue(builder);
     return builder;
   }
 
@@ -180,6 +185,42 @@ describe('POST /api/security/verify-reset-code', () => {
     expect(otpUpdate).toHaveBeenCalledWith(expect.objectContaining({ verified: true }));
     expect(otpSelect).not.toHaveBeenCalled();
     expect(createSecuritySessionToken).not.toHaveBeenCalled();
+  });
+
+  it('still checks the fifth code and locks only when it does not match', async () => {
+    mockRows({});
+    (supabaseAdmin.rpc as jest.Mock).mockResolvedValue({
+      data: [resetClaim({ failed_attempts: 5, may_compare: true })],
+      error: null,
+    });
+
+    const response = await POST(request('111111') as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(423);
+    expect(body.remainingAttempts).toBe(0);
+    expect(body.error).toMatch(/locked/i);
+    expect(otpSelect).toHaveBeenCalled();
+    expect(userUpdate).toHaveBeenCalledWith({
+      pin_reset_locked_until: expect.any(String),
+    });
+    expect(createSecuritySessionToken).not.toHaveBeenCalled();
+  });
+
+  it('keeps one attempt visible after the fourth failed code', async () => {
+    mockRows({});
+    (supabaseAdmin.rpc as jest.Mock).mockResolvedValue({
+      data: [resetClaim({ failed_attempts: 4, may_compare: true })],
+      error: null,
+    });
+
+    const response = await POST(request('111111') as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.remainingAttempts).toBe(1);
+    expect(otpSelect).toHaveBeenCalled();
+    expect(userUpdate).not.toHaveBeenCalled();
   });
 
   it('issues a single-use pin_reset grant for a matching hashed code', async () => {

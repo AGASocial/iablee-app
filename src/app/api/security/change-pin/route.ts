@@ -3,7 +3,7 @@ import { createAuthenticatedRouteClient } from "@/lib/supabase-server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import bcrypt from "bcryptjs";
 import { takeSecurityPinIpLimit, takeSecurityPinUserLimit } from "@/lib/rate-limit";
-import { beginPinAttempt, pinAttemptBlocksCompare } from "@/lib/pin-failures";
+import { beginPinAttempt, finishFailedPinCompare, pinAttemptBlocksCompare } from "@/lib/pin-failures";
 import { assignInitialSecurityPin, replaceSecurityPin } from "@/lib/security-pin-write";
 
 const RESET_REQUIRED = "A verified reset code is required to replace an existing PIN";
@@ -104,11 +104,29 @@ export async function POST(req: NextRequest) {
 
         const isValid = await bcrypt.compare(currentPin, claim.pinHash);
         if (!isValid) {
+            const outcome = await finishFailedPinCompare(user.id, claim.attempts, 'pin');
+            if (outcome.action === 'error') {
+                return NextResponse.json(
+                    { error: "Failed to verify current PIN" },
+                    { status: 500 }
+                );
+            }
+            if (outcome.action === 'locked') {
+                return NextResponse.json(
+                    {
+                        success: false,
+                        error: "PIN locked due to too many failed attempts",
+                        lockedUntil: outcome.lockedUntil,
+                        remainingAttempts: 0,
+                    },
+                    { status: 423 }
+                );
+            }
             return NextResponse.json(
                 {
                     success: false,
                     error: "Incorrect current PIN",
-                    remainingAttempts: claim.remainingAttempts,
+                    remainingAttempts: outcome.remainingAttempts,
                 },
                 { status: 401 }
             );

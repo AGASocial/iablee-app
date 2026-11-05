@@ -1,5 +1,6 @@
 import {
   checkRateLimit,
+  getClientIp,
   resetRateLimitStore,
   RATE_LIMITS,
 } from '../rate-limit';
@@ -45,5 +46,32 @@ describe('rate-limit utility', () => {
   it('exposes preconfigured upload limits', () => {
     expect(RATE_LIMITS.upload.limit).toBe(20);
     expect(RATE_LIMITS.upload.windowSec).toBe(60);
+  });
+
+  function requestWith(headers: Record<string, string>): Request {
+    return {
+      headers: {
+        get(name: string) {
+          return headers[name.toLowerCase()] ?? null;
+        },
+      },
+    } as Request;
+  }
+
+  it('prefers the trusted x-real-ip over a spoofed forwarded list', () => {
+    const request = requestWith({
+      'x-real-ip': '203.0.113.10',
+      'x-forwarded-for': '198.51.100.1, 203.0.113.10',
+    });
+
+    expect(getClientIp(request)).toBe('203.0.113.10');
+  });
+
+  it('uses the rightmost X-Forwarded-For hop when x-real-ip is absent', () => {
+    const request = requestWith({
+      'x-forwarded-for': '198.51.100.1, 203.0.113.10',
+    });
+
+    expect(getClientIp(request)).toBe('203.0.113.10');
   });
 });

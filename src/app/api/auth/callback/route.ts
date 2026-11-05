@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { EmailOtpType } from '@supabase/supabase-js';
+import { getAuthRedirectOrigin } from '@/lib/app-url';
+import { consumeOpenPinResetGrants } from '@/lib/pin-reset-grants';
 import { createRouteClient } from '@/lib/supabase-server';
 import {
   SECURITY_SESSION_COOKIE_NAME,
@@ -54,41 +56,66 @@ function localeFromNextPath(nextPath: string): string {
   return match?.[1] ?? 'es';
 }
 
+function readSessionUserId(data: unknown): string | null {
+  if (!data || typeof data !== 'object') return null;
+  const record = data as {
+    user?: { id?: string } | null;
+    session?: { user?: { id?: string } } | null;
+  };
+  const id = record.user?.id ?? record.session?.user?.id;
+  return typeof id === 'string' && id.length > 0 ? id : null;
+}
+
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get('code');
   const tokenHash = requestUrl.searchParams.get('token_hash');
   const otpType = requestUrl.searchParams.get('type') as EmailOtpType | null;
-  const nextPath = sanitizeNextPath(requestUrl.searchParams.get('next'), requestUrl.origin);
+  // Same fixed host as OAuth, signup, and recovery. Request Origin / Host are ignored.
+  const origin = getAuthRedirectOrigin();
+  const nextPath = sanitizeNextPath(requestUrl.searchParams.get('next'), origin);
   const locale = localeFromNextPath(nextPath);
   const supabase = await createRouteClient();
 
+  const fail = (path: string) => {
+    const errorResponse = NextResponse.redirect(new URL(path, origin));
+    errorResponse.cookies.delete('auth_callback_next');
+    return errorResponse;
+  };
+
   let error: Error | null = null;
+  let sessionUserId: string | null = null;
   if (code) {
     const result = await supabase.auth.exchangeCodeForSession(code);
     error = result.error;
+    sessionUserId = readSessionUserId(result.data);
   } else if (tokenHash && otpType) {
     const result = await supabase.auth.verifyOtp({
       token_hash: tokenHash,
       type: otpType,
     });
     error = result.error;
+    sessionUserId = readSessionUserId(result.data);
   } else {
-    return NextResponse.redirect(
-      new URL(`/${locale}/auth/login?error=missing_code`, request.url)
-    );
+    return fail(`/${locale}/auth/login?error=missing_code`);
   }
 
   if (error) {
     console.error('Auth callback exchange error:', error);
-    const errorResponse = NextResponse.redirect(
-      new URL(`/${locale}/auth/forgot-password?error=auth_callback_failed`, request.url)
-    );
-    errorResponse.cookies.delete('auth_callback_next');
-    return errorResponse;
+    return fail(`/${locale}/auth/forgot-password?error=auth_callback_failed`);
   }
 
-  const successResponse = NextResponse.redirect(new URL(nextPath, request.url));
+  if (!sessionUserId) {
+    console.error('Auth callback exchange returned no user');
+    return fail(`/${locale}/auth/login?error=auth_callback_failed`);
+  }
+
+  const consumed = await consumeOpenPinResetGrants(sessionUserId);
+  if (!consumed) {
+    return fail(`/${locale}/auth/login?error=auth_callback_failed`);
+  }
+
+  const successResponse = NextResponse.redirect(new URL(nextPath, origin));
   successResponse.cookies.delete('auth_callback_next');
   successResponse.cookies.set(
     SECURITY_SESSION_COOKIE_NAME,

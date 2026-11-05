@@ -5,7 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { createSecuritySessionToken } from "@/lib/security";
 import { hashPinResetCode } from "@/lib/pin-reset-otp";
 import { checkRateLimit, getClientIp, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
-import { beginPinResetAttempt, pinAttemptBlocksCompare } from "@/lib/pin-failures";
+import { beginPinResetAttempt, finishFailedPinCompare, pinAttemptBlocksCompare } from "@/lib/pin-failures";
 import {
     SECURITY_SESSION_COOKIE_NAME,
     SECURITY_SESSION_MAX_AGE_SECONDS,
@@ -88,7 +88,24 @@ export async function POST(req: NextRequest) {
         }
 
         if (!otp) {
-            return NextResponse.json({ error: "Invalid or expired code" }, { status: 400 });
+            const outcome = await finishFailedPinCompare(user.id, claim.attempts, 'reset');
+            if (outcome.action === 'error') {
+                return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+            }
+            if (outcome.action === 'locked') {
+                return NextResponse.json(
+                    {
+                        error: "PIN reset locked due to too many failed attempts",
+                        lockedUntil: outcome.lockedUntil,
+                        remainingAttempts: 0,
+                    },
+                    { status: 423 }
+                );
+            }
+            return NextResponse.json(
+                { error: "Invalid or expired code", remainingAttempts: outcome.remainingAttempts },
+                { status: 400 }
+            );
         }
 
         const grantId = randomUUID();

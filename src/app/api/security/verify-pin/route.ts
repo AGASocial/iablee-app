@@ -10,7 +10,7 @@ import {
     securitySessionCookieOptions,
 } from "@/lib/security-cookie";
 import { takeSecurityPinIpLimit, takeSecurityPinUserLimit } from "@/lib/rate-limit";
-import { beginPinAttempt, pinAttemptBlocksCompare } from "@/lib/pin-failures";
+import { beginPinAttempt, finishFailedPinCompare, pinAttemptBlocksCompare } from "@/lib/pin-failures";
 
 export async function POST(req: NextRequest) {
     try {
@@ -62,11 +62,26 @@ export async function POST(req: NextRequest) {
         const isValid = await bcrypt.compare(pin, claim.pinHash);
 
         if (!isValid) {
+            const outcome = await finishFailedPinCompare(user.id, claim.attempts, 'pin');
+            if (outcome.action === 'error') {
+                return NextResponse.json({ error: "Failed to verify PIN" }, { status: 500 });
+            }
+            if (outcome.action === 'locked') {
+                return NextResponse.json(
+                    {
+                        success: false,
+                        error: "PIN locked due to too many failed attempts",
+                        lockedUntil: outcome.lockedUntil,
+                        remainingAttempts: 0,
+                    },
+                    { status: 423 }
+                );
+            }
             return NextResponse.json(
                 {
                     success: false,
                     error: "Invalid PIN",
-                    remainingAttempts: claim.remainingAttempts,
+                    remainingAttempts: outcome.remainingAttempts,
                 },
                 { status: 401 }
             );

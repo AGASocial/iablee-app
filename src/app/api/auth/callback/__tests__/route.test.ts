@@ -4,23 +4,52 @@
 import { NextRequest } from 'next/server';
 import { GET, sanitizeNextPath } from '../route';
 import { createRouteClient } from '@/lib/supabase-server';
+import { consumeOpenPinResetGrants } from '@/lib/pin-reset-grants';
 
 jest.mock('@/lib/supabase-server', () => ({
   createRouteClient: jest.fn(),
 }));
 
+jest.mock('@/lib/pin-reset-grants', () => ({
+  consumeOpenPinResetGrants: jest.fn().mockResolvedValue(true),
+}));
+
+const ORIGINAL_SITE_URL = process.env.NEXT_PUBLIC_SITE_URL;
+
 describe('GET /api/auth/callback', () => {
   const mockCreateRouteClient = createRouteClient as jest.Mock;
 
-  it('clears security_session after a successful code exchange', async () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.NEXT_PUBLIC_SITE_URL = 'http://localhost:3000';
+    (consumeOpenPinResetGrants as jest.Mock).mockResolvedValue(true);
+  });
+
+  afterAll(() => {
+    if (ORIGINAL_SITE_URL === undefined) delete process.env.NEXT_PUBLIC_SITE_URL;
+    else process.env.NEXT_PUBLIC_SITE_URL = ORIGINAL_SITE_URL;
+  });
+
+  function clientWithExchange(result: { data?: unknown; error: unknown }) {
     mockCreateRouteClient.mockResolvedValue({
       auth: {
-        exchangeCodeForSession: jest.fn().mockResolvedValue({ error: null }),
+        exchangeCodeForSession: jest.fn().mockResolvedValue(result),
+        verifyOtp: jest.fn().mockResolvedValue(result),
       },
     });
+  }
+
+  it('clears security_session after a successful code exchange', async () => {
+    clientWithExchange({ data: { user: { id: 'user-1' } }, error: null });
 
     const response = await GET(
-      new NextRequest('http://localhost/api/auth/callback?code=abc&next=/en/dashboard')
+      new NextRequest('http://evil.example/api/auth/callback?code=abc&next=/en/dashboard', {
+        headers: {
+          origin: 'https://evil.example',
+          'x-forwarded-host': 'evil.example',
+          'x-forwarded-proto': 'https',
+        },
+      })
     );
 
     expect(response.status).toBe(307);
@@ -30,7 +59,8 @@ describe('GET /api/auth/callback', () => {
     expect(setCookie.toLowerCase()).toContain('httponly');
     expect(setCookie.toLowerCase()).toContain('path=/');
     expect(setCookie.toLowerCase()).toContain('samesite=lax');
-    expect(response.headers.get('location')).toBe('http://localhost/en/dashboard');
+    expect(response.headers.get('location')).toBe('http://localhost:3000/en/dashboard');
+    expect(consumeOpenPinResetGrants).toHaveBeenCalledWith('user-1');
   });
 
   it('keeps post-login redirects on this origin', () => {
@@ -47,16 +77,61 @@ describe('GET /api/auth/callback', () => {
   });
 
   it('does not redirect a backslash next path off-origin', async () => {
-    mockCreateRouteClient.mockResolvedValue({
-      auth: {
-        exchangeCodeForSession: jest.fn().mockResolvedValue({ error: null }),
-      },
-    });
+    clientWithExchange({ data: { user: { id: 'user-1' } }, error: null });
 
     const response = await GET(
       new NextRequest('http://localhost/api/auth/callback?code=abc&next=' + encodeURIComponent('/\\evil.com'))
     );
 
-    expect(response.headers.get('location')).toBe('http://localhost/en');
+    expect(response.headers.get('location')).toBe('http://localhost:3000/en');
+  });
+
+  it('consumes reset grants after a magic-link exchange before redirecting', async () => {
+    const verifyOtp = jest.fn().mockResolvedValue({
+      data: { session: { user: { id: 'user-otp' } } },
+      error: null,
+    });
+    mockCreateRouteClient.mockResolvedValue({
+      auth: { verifyOtp, exchangeCodeForSession: jest.fn() },
+    });
+
+    const response = await GET(
+      new NextRequest('http://evil.example/api/auth/callback?token_hash=abc&type=magiclink&next=/es/dashboard')
+    );
+
+    expect(verifyOtp).toHaveBeenCalled();
+    expect(consumeOpenPinResetGrants).toHaveBeenCalledWith('user-otp');
+    expect(response.headers.get('location')).toBe('http://localhost:3000/es/dashboard');
+  });
+
+  it('does not complete the redirect when grant consumption fails', async () => {
+    clientWithExchange({ data: { user: { id: 'user-1' } }, error: null });
+    (consumeOpenPinResetGrants as jest.Mock).mockResolvedValue(false);
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/auth/callback?code=abc&next=/en/dashboard')
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe(
+      'http://localhost:3000/en/auth/login?error=auth_callback_failed'
+    );
+    const setCookie = response.headers.get('set-cookie') ?? '';
+    expect(setCookie).not.toContain('security_session=');
+  });
+
+  it('does not consume grants when the exchange fails', async () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    clientWithExchange({ data: null, error: new Error('bad code') });
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/auth/callback?code=abc&next=/en/dashboard')
+    );
+
+    expect(consumeOpenPinResetGrants).not.toHaveBeenCalled();
+    expect(response.headers.get('location')).toBe(
+      'http://localhost:3000/en/auth/forgot-password?error=auth_callback_failed'
+    );
+    consoleError.mockRestore();
   });
 });

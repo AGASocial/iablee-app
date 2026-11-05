@@ -1,5 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { isPinLocked, PIN_LOCKOUT_MAX_ATTEMPTS } from '@/lib/pin-lockout';
+import { isPinLocked, nextLockoutExpiry, PIN_LOCKOUT_MAX_ATTEMPTS } from '@/lib/pin-lockout';
 
 export interface RecordedPinFailure {
   attempts: number;
@@ -96,9 +96,53 @@ function lockedUntilOf(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
 }
 
-/** True when the reserved attempt is already locked or this reservation reached the cap. */
+/** True when this reservation must not be compared (already locked, or the cap was already used). */
 export function pinAttemptBlocksCompare(claim: { alreadyLocked: boolean; mayCompare: boolean; lockedUntil: string | null }): boolean {
   return claim.alreadyLocked || (!claim.mayCompare && claim.lockedUntil != null);
+}
+
+export type FailedPinCompareResult =
+  | { action: 'continue'; remainingAttempts: number }
+  | { action: 'locked'; lockedUntil: string; remainingAttempts: 0 }
+  | { action: 'error' };
+
+/**
+ * The attempt that reaches the cap is compared first. Lock only after that compare fails.
+ * A cleared counter (parallel success) matches zero rows and does not lock.
+ */
+export async function finishFailedPinCompare(
+  userId: string,
+  attempts: number,
+  scope: 'pin' | 'reset'
+): Promise<FailedPinCompareResult> {
+  const remainingAttempts = Math.max(0, PIN_LOCKOUT_MAX_ATTEMPTS - attempts);
+  if (attempts < PIN_LOCKOUT_MAX_ATTEMPTS) {
+    return { action: 'continue', remainingAttempts };
+  }
+
+  const lockedUntil = nextLockoutExpiry();
+  const attemptsColumn = scope === 'pin' ? 'pin_failed_attempts' : 'pin_reset_failed_attempts';
+  const patch = scope === 'pin'
+    ? { pin_locked_until: lockedUntil }
+    : { pin_reset_locked_until: lockedUntil };
+
+  const { data, error } = await supabaseAdmin
+    .from('users')
+    .update(patch)
+    .eq('id', userId)
+    .gte(attemptsColumn, PIN_LOCKOUT_MAX_ATTEMPTS)
+    .select('id');
+
+  if (error) {
+    console.error('Error locking exhausted PIN attempts:', error);
+    return { action: 'error' };
+  }
+
+  if (!data || data.length === 0) {
+    return { action: 'continue', remainingAttempts: 0 };
+  }
+
+  return { action: 'locked', lockedUntil, remainingAttempts: 0 };
 }
 
 /**

@@ -14,6 +14,7 @@ jest.mock('@/lib/supabase-admin', () => ({
 jest.mock('@/lib/beneficiary-email-copy', () => ({
   resolveEmailLocale: () => 'en',
   getBeneficiaryVerificationTemplateId: () => null,
+  escapeHtml: (value: string) => value,
   getBeneficiaryVerificationCopy: () => ({
     ownerFallback: 'Owner',
     subject: () => 'subject',

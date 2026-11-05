@@ -119,13 +119,14 @@ export default function SecurityPinModal({ isOpen, mode, onSuccess, onCancel, fo
             });
 
             if (!res.ok) {
-                throw new Error("Failed to send reset code");
+                setError(t("failedToSendResetEmail"));
+                return;
             }
 
             setStep("reset-verify");
             setPin(""); // clear for OTP entry
         } catch (err) {
-            setError("Failed to send reset email. Please try again.");
+            setError(t("failedToSendResetEmail"));
             console.error(err);
         } finally {
             setLoading(false);
@@ -143,14 +144,17 @@ export default function SecurityPinModal({ isOpen, mode, onSuccess, onCancel, fo
             });
 
             if (!res.ok) {
-                throw new Error("Invalid code");
+                setError(t("invalidResetCode"));
+                setPin("");
+                return;
             }
 
             // Code verified, session token set. Now let user set new PIN.
             setStep("create");
             setPin("");
         } catch (err) {
-            setError("Invalid code. Please try again.");
+            setError(t("invalidResetCode"));
+            console.error(err);
             setPin("");
             console.error(err);
         } finally {
@@ -168,17 +172,17 @@ export default function SecurityPinModal({ isOpen, mode, onSuccess, onCancel, fo
         if (step === "enter") return t("enterSecurityPin") !== "enterSecurityPin" ? t("enterSecurityPin") : "Enter Security PIN";
         if (step === "create") return t("createSecurityPin") !== "createSecurityPin" ? t("createSecurityPin") : "Create Security PIN";
         if (step === "confirm") return t("confirmSecurityPin") !== "confirmSecurityPin" ? t("confirmSecurityPin") : "Confirm Security PIN";
-        if (step === "reset-request") return "Reset Security PIN";
-        if (step === "reset-verify") return "Enter Reset Code";
-        return "Security PIN";
+        if (step === "reset-request") return t("resetSecurityPin");
+        if (step === "reset-verify") return t("enterResetCode");
+        return t("securityPin");
     };
 
     const getDescription = () => {
         if (step === "enter") return t("enterPinDescription") !== "enterPinDescription" ? t("enterPinDescription") : "Please enter your 6-digit PIN to access this section.";
         if (step === "create") return t("createPinDescription") !== "createPinDescription" ? t("createPinDescription") : "Set a 6-digit PIN to secure your assets and beneficiaries.";
         if (step === "confirm") return t("confirmPinDescription") !== "confirmPinDescription" ? t("confirmPinDescription") : "Re-enter your PIN to confirm.";
-        if (step === "reset-request") return "We will send a 6-digit verification code to your email address.";
-        if (step === "reset-verify") return "Enter the verification code sent to your email.";
+        if (step === "reset-request") return t("resetPinDescription");
+        if (step === "reset-verify") return t("enterResetCodeDescription");
         return "";
     };
 
@@ -200,10 +204,10 @@ export default function SecurityPinModal({ isOpen, mode, onSuccess, onCancel, fo
                         <div className="w-full flex flex-col gap-4">
                             <Button onClick={sendResetCode} disabled={loading} className="w-full">
                                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Send Verification Code
+                                {t("sendVerificationCode")}
                             </Button>
                             <Button variant="ghost" onClick={() => setStep("enter")} disabled={loading} className="w-full">
-                                Back to PIN Entry
+                                {t("backToPinEntry")}
                             </Button>
                         </div>
                     ) : (

@@ -44,13 +44,24 @@ export function checkRateLimit(
   return { allowed: true, remaining: config.limit - entry.count, resetAt: entry.resetAt };
 }
 
-/** Extract client IP from request headers (Vercel/proxy-aware) */
+/**
+ * IP used for in-memory rate limits.
+ * Prefer Vercel's trusted `x-real-ip`. When only `X-Forwarded-For` is present,
+ * use the last (rightmost) hop — the platform appends that peer address.
+ * The first value is client-supplied and must not select the bucket.
+ */
 export function getClientIp(request: Request): string {
-  return (
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    request.headers.get('x-real-ip') ||
-    'unknown'
-  );
+  const realIp = request.headers.get('x-real-ip')?.trim();
+  if (realIp) return realIp;
+
+  const forwarded = request.headers.get('x-forwarded-for');
+  if (forwarded) {
+    const hops = forwarded.split(',').map((hop) => hop.trim()).filter(Boolean);
+    const platformHop = hops[hops.length - 1];
+    if (platformHop) return platformHop;
+  }
+
+  return 'unknown';
 }
 
 export function rateLimitResponse(resetAt: number): Response {
