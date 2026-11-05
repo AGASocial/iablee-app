@@ -7,7 +7,7 @@
   "recentAssets": "Recent Assets",
   "dashboard": "Dashboard",
   "dashboardChecklistTitle": "Get your dashboard ready",
-  "dashboardChecklistDescription": "Complete these 3 steps to protect your legacy from day one.",
+  "dashboardChecklistDescription": "We'll guide you through these steps to get your legacy ready.",
   "dashboardChecklistProgress": "{completed} of {total} completed",
   "dashboardChecklistProgressAria": "{progress}% progress completed",
   "dashboardChecklistStepsAriaLabel": "Dashboard setup checklist",

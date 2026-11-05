@@ -5,7 +5,7 @@
   "or": "o",
   "dashboard": "Dashboard",
   "dashboardChecklistTitle": "Deja listo tu dashboard",
-  "dashboardChecklistDescription": "Completa estos 3 pasos para proteger tu legado desde hoy.",
+  "dashboardChecklistDescription": "Te guiamos con estos pasos para dejar tu legado listo.",
   "dashboardChecklistProgress": "{completed} de {total} completados",
   "dashboardChecklistProgressAria": "{progress}% de progreso completado",
   "dashboardChecklistStepsAriaLabel": "Checklist de configuración del dashboard",

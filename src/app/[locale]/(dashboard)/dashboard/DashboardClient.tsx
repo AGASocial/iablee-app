@@ -51,9 +51,10 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
   const showOnboardingChecklist =
     !loading &&
     !loadingSecurity &&
+    !securityError &&
     (stats.totalAssets === 0 ||
       stats.totalBeneficiaries === 0 ||
-      (!securityError && securityData?.hasPin === false));
+      securityData?.hasPin === false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [form, setForm] = useState({
     full_name: '',

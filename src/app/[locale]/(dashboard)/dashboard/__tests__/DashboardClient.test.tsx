@@ -82,7 +82,7 @@ describe("DashboardClient checklist behavior with security query errors", () => 
     });
   });
 
-  it("does not show onboarding checklist as missing PIN when security session query fails", () => {
+  it("does not show onboarding checklist when security session query fails", () => {
     mockUseSecuritySession.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -94,11 +94,35 @@ describe("DashboardClient checklist behavior with security query errors", () => 
     expect(screen.queryByTestId("dashboard-checklist")).not.toBeInTheDocument();
   });
 
-  it("treats PIN as unknown (not pending) while security session fails", () => {
+  it("hides onboarding checklist even if assets are missing while security session fails", () => {
     mockUseSecuritySession.mockReturnValue({
       data: undefined,
       isLoading: false,
       isError: true,
+    });
+
+    mockUseDashboard.mockReturnValue({
+      data: {
+        ...dashboardData,
+        stats: {
+          ...dashboardData.stats,
+          totalAssets: 0,
+        },
+      },
+      isLoading: false,
+      refetch: jest.fn().mockResolvedValue(undefined),
+    });
+
+    render(<DashboardClient />);
+
+    expect(screen.queryByTestId("dashboard-checklist")).not.toBeInTheDocument();
+  });
+
+  it("shows onboarding checklist when security session is valid and setup is incomplete", () => {
+    mockUseSecuritySession.mockReturnValue({
+      data: { hasPin: true },
+      isLoading: false,
+      isError: false,
     });
 
     mockUseDashboard.mockReturnValue({
