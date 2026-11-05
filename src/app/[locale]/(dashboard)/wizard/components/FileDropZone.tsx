@@ -27,7 +27,7 @@ export function FileDropZone({
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = (event: React.DragEvent<HTMLButtonElement>) => {
     event.preventDefault();
     setDragging(false);
     if (disabled) return;
@@ -47,24 +47,18 @@ export function FileDropZone({
 
   return (
     <div className="space-y-3">
-      <div
-        role="button"
-        tabIndex={disabled ? -1 : 0}
+      <button
+        type="button"
         aria-label={translate("wizard-file-dropzone-label")}
+        disabled={disabled}
         onClick={openFileDialog}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            openFileDialog();
-          }
-        }}
         onDragOver={(event) => {
           event.preventDefault();
           if (!disabled) setDragging(true);
         }}
         onDragLeave={() => setDragging(false)}
         onDrop={handleDrop}
-        className={`rounded-xl border border-dashed p-4 text-center transition ${
+        className={`w-full rounded-xl border border-dashed p-4 text-center transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${
           dragging ? "border-primary bg-brand-tint" : "border-border bg-card"
         }`}
       >
@@ -73,10 +67,10 @@ export function FileDropZone({
         <p className="mt-1 text-xs text-muted-foreground">
           {translate("wizard-file-dropzone-limits", { count: maxFiles, size: maxFileSizeMb })}
         </p>
-        <Button type="button" variant="outline" className="mt-3 h-10" disabled={disabled}>
+        <span className="mt-3 inline-flex h-10 items-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground">
           {translate("wizard-file-dropzone-action")}
-        </Button>
-      </div>
+        </span>
+      </button>
 
       <input
         ref={inputRef}

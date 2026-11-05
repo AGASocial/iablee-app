@@ -47,6 +47,8 @@ export function AssetDetailsStep({
   translate,
 }: AssetDetailsStepProps) {
   const requiredAdvanced = hasRequiredAdvancedFields(assetType);
+  const fileCustomFields = assetType?.customFields.filter((field) => field.type === "file") ?? [];
+  const showAttachments = Boolean(assetType?.fileAccept) || fileCustomFields.length > 0;
 
   return (
     <section className="space-y-5">
@@ -185,6 +187,9 @@ export function AssetDetailsStep({
           </div>
 
           {assetType?.customFields.map((field) => {
+            if (field.type === "file") {
+              return null;
+            }
             const fieldId = `custom-${field.key}`;
             const errorKey = `custom:${field.key}`;
             const error = errors[errorKey];
@@ -220,7 +225,7 @@ export function AssetDetailsStep({
                     </SelectContent>
                   </Select>
                 ) : null}
-                {(field.type === "text" || field.type === "file") ? (
+                {field.type === "text" ? (
                   <Input
                     id={fieldId}
                     type="text"
@@ -239,18 +244,27 @@ export function AssetDetailsStep({
             );
           })}
 
-          {assetType?.fileAccept ? (
+          {showAttachments ? (
             <div>
               <Label className="text-sm text-foreground">{translate("assetAttachments")}</Label>
               <FileDropZone
                 files={files}
                 maxFiles={maxFiles}
                 maxFileSizeMb={maxFileSizeMb}
-                accept={assetType.fileAccept}
+                accept={assetType?.fileAccept}
                 onAddFiles={onAddFiles}
                 onRemoveFile={onRemoveFile}
                 translate={translate}
               />
+              {fileCustomFields.map((field) => {
+                const fileError = errors[`custom:${field.key}`];
+                if (!fileError) return null;
+                return (
+                  <p key={field.key} className="mt-1 text-sm text-destructive">
+                    {translate(fileError)}
+                  </p>
+                );
+              })}
             </div>
           ) : null}
         </div>

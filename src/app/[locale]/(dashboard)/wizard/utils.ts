@@ -11,7 +11,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { AssetType } from "@/lib/assetTypes";
-import type { AssetFormData, BeneficiaryFormData, FieldErrors } from "./components/types";
+import type { AssetFormData, BeneficiaryFormData, FieldErrors, FileUploadItem } from "./components/types";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -65,7 +65,7 @@ export function validateAssetType(assetData: AssetFormData): FieldErrors {
   return errors;
 }
 
-export function validateAssetDetails(assetData: AssetFormData, assetType: AssetType | null): FieldErrors {
+export function validateAssetDetails(assetData: AssetFormData, assetType: AssetType | null, files: FileUploadItem[] = []): FieldErrors {
   const errors: FieldErrors = {};
 
   if (!assetData.assetName.trim()) {
@@ -93,6 +93,12 @@ export function validateAssetDetails(assetData: AssetFormData, assetType: AssetT
 
   for (const customField of assetType.customFields) {
     if (!customField.required) continue;
+    if (customField.type === "file") {
+      if (files.length === 0) {
+        errors[`custom:${customField.key}`] = "wizard-validation-required";
+      }
+      continue;
+    }
     const value = assetData.customFields[customField.key];
     if (!String(value ?? "").trim()) {
       errors[`custom:${customField.key}`] = "wizard-validation-required";

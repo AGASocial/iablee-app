@@ -18,7 +18,7 @@ import { BeneficiaryStep } from "./components/BeneficiaryStep";
 import { StepIndicator } from "./components/StepIndicator";
 import { SuccessStep } from "./components/SuccessStep";
 import { WelcomeStep } from "./components/WelcomeStep";
-import type { AssetFormData, BeneficiaryFormData, FileUploadItem, UploadStatus, WizardStep } from "./components/types";
+import type { AssetFormData, BeneficiaryFormData, FileUploadItem, UploadStatus, UploadedFileMeta, WizardStep } from "./components/types";
 import { MAX_WIZARD_FILES, formatBytesToMb, validateAssetDetails, validateAssetType, validateBeneficiary } from "./utils";
 
 type WizardView = "welcome" | "form" | "success";
@@ -87,7 +87,7 @@ export default function WizardPage() {
   );
 
   const assetTypeErrors = validateAssetType(assetData);
-  const assetDetailErrors = validateAssetDetails(assetData, currentAssetType);
+  const assetDetailErrors = validateAssetDetails(assetData, currentAssetType, files);
   const beneficiaryErrors = validateBeneficiary(beneficiaryData);
 
   const canContinueAssetType = Object.keys(assetTypeErrors).length === 0;
@@ -100,6 +100,11 @@ export default function WizardPage() {
       .then((data) => setRelationships(data))
       .catch((error) => console.error("Error fetching relationships:", error));
   }, []);
+
+  useEffect(() => {
+    if (!assetTypesError || !assetTypesErrorObj) return;
+    console.error("Failed to load asset types in wizard:", assetTypesErrorObj);
+  }, [assetTypesError, assetTypesErrorObj]);
 
   const updateFileStatus = (fileId: string, status: UploadStatus, error?: string, uploaded?: FileUploadItem["uploaded"]) => {
     setFiles((prev) =>
@@ -166,9 +171,10 @@ export default function WizardPage() {
     return true;
   };
 
-  const uploadPendingFiles = async () => {
+  const uploadPendingFiles = async (): Promise<UploadedFileMeta[]> => {
     const pendingItems = files.filter((item) => !item.uploaded);
-    if (pendingItems.length === 0) return;
+    const alreadyUploaded = files.filter((item) => item.uploaded).map((item) => item.uploaded as UploadedFileMeta);
+    if (pendingItems.length === 0) return alreadyUploaded;
 
     pendingItems.forEach((item) => updateFileStatus(item.id, "uploading"));
 
@@ -200,15 +206,23 @@ export default function WizardPage() {
     );
 
     let uploadFailed = false;
+    const newlyUploaded: UploadedFileMeta[] = [];
     uploadResults.forEach((result) => {
       const item = pendingItems.find((candidate) => candidate.file === result.file);
       if (!item) return;
       if (result.ok && result.data) {
-        updateFileStatus(item.id, "uploaded", undefined, {
+        const uploadedFile = {
           path: result.data.path,
           fileName: result.data.fileName,
           fileType: result.data.fileType,
           fileSize: result.data.fileSize,
+        };
+        newlyUploaded.push(uploadedFile);
+        updateFileStatus(item.id, "uploaded", undefined, {
+          path: uploadedFile.path,
+          fileName: uploadedFile.fileName,
+          fileType: uploadedFile.fileType,
+          fileSize: uploadedFile.fileSize,
         });
       } else {
         uploadFailed = true;
@@ -219,6 +233,8 @@ export default function WizardPage() {
     if (uploadFailed) {
       throw new Error("wizard-upload-failed-retry");
     }
+
+    return [...alreadyUploaded, ...newlyUploaded];
   };
 
   const handleSave = async () => {
@@ -233,9 +249,7 @@ export default function WizardPage() {
       const sessionReady = await checkSecuritySession();
       if (!sessionReady) return;
 
-      await uploadPendingFiles();
-
-      const uploadedFiles = files.filter((file) => file.uploaded).map((file) => file.uploaded!);
+      const uploadedFiles = await uploadPendingFiles();
       const fileUrls = uploadedFiles.map((file) => file.path);
       const fileMetadata = uploadedFiles.map((file) => ({
         path: file.path,
@@ -365,7 +379,7 @@ export default function WizardPage() {
                 selectedAssetType={assetData.assetType}
                 loading={assetTypesLoading}
                 isError={assetTypesError}
-                errorMessage={assetTypesErrorObj instanceof Error ? assetTypesErrorObj.message : null}
+                errorMessage={tr("wizard-asset-types-error")}
                 onRetry={() => void refetchAssetTypes()}
                 onSelect={(value) => {
                   setAssetData((prev) => ({ ...prev, assetType: value }));
