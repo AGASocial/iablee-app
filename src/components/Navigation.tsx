@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { usePathname } from 'next/navigation';
 import { Link } from '@/i18n/navigation';
-import { LayoutDashboard, Wallet, Users, CreditCard, Wand2 } from 'lucide-react';
+import { LayoutDashboard, Wallet, Users, CreditCard, Wand2, Heart } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function Navigation({ closeSidebar, collapsed }: { closeSidebar?: () => void; collapsed?: boolean }) {
@@ -14,6 +14,7 @@ export default function Navigation({ closeSidebar, collapsed }: { closeSidebar?:
     { href: '/dashboard', label: t('dashboard'), icon: LayoutDashboard },
     { href: '/digital-assets', label: t('digitalAssets'), icon: Wallet },
     { href: '/beneficiaries', label: t('beneficiaries'), icon: Users },
+    { href: '/my-beneficiary-relationships', label: t('myBeneficiaryRelationships'), icon: Heart },
     { href: '/billing', label: t('billing'), icon: CreditCard },
   ];
 

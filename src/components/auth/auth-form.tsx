@@ -15,10 +15,9 @@ import {
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
-import { useRouter } from "next/navigation"
-import Link from "next/link"
 import Image from "next/image"
 import { useTranslations, useLocale } from "next-intl"
+import { Link, useRouter } from "@/i18n/navigation"
 
 const formSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -67,8 +66,10 @@ export function AuthForm({ type }: AuthFormProps) {
         const result = await response.json()
         if (!response.ok) throw new Error(result.error ?? "Registration failed")
 
-        toast.success("Registration successful! Please check your email to verify your account.")
-        router.push(`/${locale}/auth/login`)
+        toast.success(t("registrationConfirmationTitle"), {
+          description: t("registrationConfirmationMessage"),
+        })
+        router.push("/auth/login?registered=true")
       } else {
         const response = await fetch('/api/auth/login', {
           method: 'POST',
@@ -82,8 +83,10 @@ export function AuthForm({ type }: AuthFormProps) {
         if (!response.ok) throw new Error(result.error ?? "Login failed")
 
         window.dispatchEvent(new Event('auth-changed'))
-        toast.success("Login successful!")
-        router.push(`/${locale}`)
+        toast.success(t("loginSuccessTitle"), {
+          description: t("loginSuccessMessage"),
+        })
+        router.push("/")
       }
     } catch (error) {
       console.error('Auth error:', error)
@@ -164,13 +167,17 @@ export function AuthForm({ type }: AuthFormProps) {
         onClick={handleGoogleSignIn}
         disabled={isLoading}
       >
-        <Image src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" width={20} height={20} className="w-5 h-5" />
+        {isLoading ? (
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-foreground border-t-transparent" />
+        ) : (
+          <Image src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" width={20} height={20} className="w-5 h-5" />
+        )}
         {t("signInWithGoogle") || "Sign in with Google"}
       </Button>
 
       <button
         type="button"
-        className="w-full max-w-[300px] mx-auto"
+        className="w-full max-w-[300px] mx-auto relative"
         onClick={handleAppleSignIn}
         disabled={isLoading}
       >
@@ -179,8 +186,13 @@ export function AuthForm({ type }: AuthFormProps) {
           alt={t("signInWithApple") || "Sign in with Apple"}
           width={300}
           height={44}
-          className="w-full h-auto"
+          className={`w-full h-auto ${isLoading ? 'opacity-50' : ''}`}
         />
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+          </div>
+        )}
       </button>
 
       <div className="relative my-4">

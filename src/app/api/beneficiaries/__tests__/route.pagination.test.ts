@@ -11,6 +11,12 @@ jest.mock('@/lib/auth-context', () => ({
 jest.mock('@/lib/observability', () => ({
   withTiming: (_name: string, handler: (...args: unknown[]) => unknown) => handler,
 }));
+jest.mock('@/lib/subscription/limits', () => ({
+  canCreateBeneficiary: jest.fn(),
+}));
+jest.mock('@/lib/beneficiary-verification-flow', () => ({
+  maybeSendBeneficiaryVerificationEmail: jest.fn(),
+}));
 
 describe('GET /api/beneficiaries pagination contract', () => {
   const mockGetAuthenticatedContext = getAuthenticatedContext as jest.Mock;

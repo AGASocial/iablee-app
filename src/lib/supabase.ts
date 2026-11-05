@@ -43,6 +43,11 @@ export type Database = {
           updated_at: string
           security_pin_hash: string | null
           security_pin_updated_at: string | null
+          pin_failed_attempts: number
+          pin_locked_until: string | null
+          pin_reset_failed_attempts: number
+          pin_reset_locked_until: string | null
+          security_pin_version: number
         }
         Insert: {
           id?: string
@@ -52,6 +57,11 @@ export type Database = {
           updated_at?: string
           security_pin_hash?: string | null
           security_pin_updated_at?: string | null
+          pin_failed_attempts?: number
+          pin_locked_until?: string | null
+          pin_reset_failed_attempts?: number
+          pin_reset_locked_until?: string | null
+          security_pin_version?: number
         }
         Update: {
           id?: string
@@ -61,6 +71,11 @@ export type Database = {
           updated_at?: string
           security_pin_hash?: string | null
           security_pin_updated_at?: string | null
+          pin_failed_attempts?: number
+          pin_locked_until?: string | null
+          pin_reset_failed_attempts?: number
+          pin_reset_locked_until?: string | null
+          security_pin_version?: number
         }
       }
       digital_assets: {

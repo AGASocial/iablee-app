@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { useAssetTypes, useAssetType } from '@/lib/assetTypes';
 import { uploadWithConcurrency } from '@/lib/upload-concurrency';
+import { wizardApiErrorMessage } from './completion-error';
 
 type WizardStep = 'welcome' | 'asset-type' | 'asset-details' | 'beneficiary' | 'final';
 
@@ -221,7 +222,15 @@ export default function WizardPage() {
       });
 
       if (!res.ok) {
-        const err = await res.json();
+        const body = await res.json().catch(() => null);
+        const err = body && typeof body === 'object'
+          ? body as { message?: string; error?: string }
+          : {};
+        const pinMessage = wizardApiErrorMessage(res.status, err.error, t);
+        if (pinMessage) {
+          toast.error(pinMessage);
+          return;
+        }
         throw new Error(err.message || err.error || 'Failed to complete wizard');
       }
 

@@ -1,8 +1,9 @@
 import { createHash, randomBytes } from 'crypto';
 import { Resend } from 'resend';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { getAppUrl } from '@/lib/app-url';
+import { getAuthRedirectOrigin } from '@/lib/app-url';
 import {
+  escapeHtml,
   getBeneficiaryVerificationCopy,
   getBeneficiaryVerificationTemplateId,
   resolveEmailLocale,
@@ -21,8 +22,12 @@ function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
+function normalizeEmail(email: string | null | undefined): string {
+  return (email ?? '').trim().toLowerCase();
+}
+
 function buildVerificationUrl(token: string, locale: EmailLocale): string {
-  const appUrl = getAppUrl();
+  const appUrl = getAuthRedirectOrigin();
   const params = new URLSearchParams({
     token,
     locale,
@@ -62,6 +67,7 @@ export async function sendBeneficiaryVerificationEmail(params: {
       beneficiary_id: params.beneficiaryId,
       token_hash: tokenHash,
       expires_at: expiresAt,
+      email: normalizeEmail(params.email),
     });
 
   if (insertError) {
@@ -73,8 +79,8 @@ export async function sendBeneficiaryVerificationEmail(params: {
   const ownerName = params.ownerName ?? copy.ownerFallback;
 
   const templateVariables = {
-    BENEFICIARY_NAME: params.beneficiaryName,
-    OWNER_NAME: ownerName,
+    BENEFICIARY_NAME: escapeHtml(params.beneficiaryName),
+    OWNER_NAME: escapeHtml(ownerName),
     VERIFICATION_URL: verificationUrl,
     EXPIRY_HOURS: String(TOKEN_TTL_HOURS),
   };
@@ -103,7 +109,7 @@ export async function sendBeneficiaryVerificationEmail(params: {
 
   if (emailError) {
     console.error('Error sending beneficiary verification email:', emailError);
-    return { sent: false, error: emailError.message };
+    return { sent: false, error: 'Failed to send verification email' };
   }
 
   return { sent: true };
@@ -117,57 +123,31 @@ export async function verifyBeneficiaryEmailToken(
   token: string
 ): Promise<VerifyBeneficiaryEmailResult> {
   const tokenHash = hashToken(token);
-  const now = new Date().toISOString();
+  const { data, error } = await supabaseAdmin.rpc('verify_beneficiary_email', {
+    p_token_hash: tokenHash,
+  });
 
-  const { data: record, error } = await supabaseAdmin
-    .from('beneficiary_email_verifications')
-    .select('id, beneficiary_id, expires_at, used_at, beneficiary:beneficiaries(full_name, email)')
-    .eq('token_hash', tokenHash)
-    .maybeSingle();
-
-  if (error || !record) {
+  if (error) {
+    console.error('Error verifying beneficiary email:', error);
     return { ok: false, reason: 'invalid' };
   }
 
-  if (record.used_at) {
-    return { ok: false, reason: 'used' };
-  }
+  const row = (Array.isArray(data) ? data[0] : data) as
+    | { status?: string; beneficiary_name?: string | null }
+    | null
+    | undefined;
 
-  if (record.expires_at < now) {
-    return { ok: false, reason: 'expired' };
-  }
-
-  const beneficiary = Array.isArray(record.beneficiary)
-    ? record.beneficiary[0]
-    : record.beneficiary;
-
-  const { error: markUsedError } = await supabaseAdmin
-    .from('beneficiary_email_verifications')
-    .update({ used_at: now })
-    .eq('id', record.id);
-
-  if (markUsedError) {
-    console.error('Error marking verification token as used:', markUsedError);
+  if (!row || row.status === 'invalid' || !row.status) {
     return { ok: false, reason: 'invalid' };
   }
-
-  const { error: updateError } = await supabaseAdmin
-    .from('beneficiaries')
-    .update({
-      email_verified: true,
-      email_verified_at: now,
-    })
-    .eq('id', record.beneficiary_id);
-
-  if (updateError) {
-    console.error('Error updating beneficiary email_verified:', updateError);
-    return { ok: false, reason: 'invalid' };
+  if (row.status === 'expired' || row.status === 'used') {
+    return { ok: false, reason: row.status };
+  }
+  if (row.status === 'success') {
+    return { ok: true, beneficiaryName: row.beneficiary_name || 'Beneficiary' };
   }
 
-  return {
-    ok: true,
-    beneficiaryName: beneficiary?.full_name ?? 'Beneficiary',
-  };
+  return { ok: false, reason: 'invalid' };
 }
 
 export function getVerificationResultPath(

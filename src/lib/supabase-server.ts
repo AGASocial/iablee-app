@@ -1,7 +1,12 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import type { Database } from '@/lib/supabase';
-import { verifySecuritySessionToken } from '@/lib/security';
+import { supabaseAdmin } from '@/lib/supabase-admin';
+import {
+  readSecuritySession,
+  type SecuritySessionPurpose,
+} from '@/lib/security';
+import { SECURITY_SESSION_COOKIE_NAME } from '@/lib/security-cookie';
 
 /**
  * Creates an authenticated Supabase server client for use in API routes.
@@ -50,13 +55,68 @@ export async function createAuthenticatedRouteClient() {
     return { supabase, user } as const;
 }
 
-/**
- * Checks if the user has a valid security session (PIN verified)
- */
-export async function checkSecuritySession() {
+async function loadSecurityPinVersion(userId: string): Promise<number | null> {
+    const { data, error } = await supabaseAdmin
+        .from('users')
+        .select('security_pin_version')
+        .eq('id', userId)
+        .maybeSingle();
+
+    if (error || !data) return null;
+    const version = data.security_pin_version;
+    if (typeof version !== 'number' || !Number.isInteger(version) || version < 0) {
+        return null;
+    }
+    return version;
+}
+
+async function securityCookieMatchesPinVersion(
+    userId: string,
+    purpose: SecuritySessionPurpose
+): Promise<boolean> {
     const cookieStore = await cookies();
-    const securitySession = cookieStore.get("security_session");
+    const securitySession = cookieStore.get(SECURITY_SESSION_COOKIE_NAME);
     if (!securitySession?.value) return false;
 
-    return await verifySecuritySessionToken(securitySession.value);
+    const session = await readSecuritySession(securitySession.value, userId, purpose);
+    if (!session || session.pinVersion === null) return false;
+
+    const current = await loadSecurityPinVersion(userId);
+    return current === session.pinVersion;
+}
+
+/**
+ * Checks if this authenticated user has a valid security session (PIN verified).
+ * Rejects tokens minted for a different user or an older PIN version.
+ */
+export async function checkSecuritySession(userId: string) {
+    if (!userId) return false;
+    return securityCookieMatchesPinVersion(userId, 'pin_verified');
+}
+
+/**
+ * True only for a security_session minted by the PIN-reset OTP, not by verify-pin.
+ */
+export async function hasPinResetSession(userId: string) {
+    if (!userId) return false;
+    return securityCookieMatchesPinVersion(userId, 'pin_reset');
+}
+
+/**
+ * Grant id from a pin_reset cookie. Missing, reused, or verify-pin cookies return null.
+ * A cookie issued before the current PIN version is rejected.
+ */
+export async function readPinResetGrant(userId: string): Promise<string | null> {
+    if (!userId) return null;
+
+    const cookieStore = await cookies();
+    const securitySession = cookieStore.get(SECURITY_SESSION_COOKIE_NAME);
+    if (!securitySession?.value) return null;
+
+    const session = await readSecuritySession(securitySession.value, userId, 'pin_reset');
+    if (!session?.jti || session.pinVersion === null) return null;
+
+    const current = await loadSecurityPinVersion(userId);
+    if (current !== session.pinVersion) return null;
+    return session.jti;
 }

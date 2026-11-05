@@ -24,32 +24,32 @@ describe('assetTypes', () => {
   });
 
   describe('getAssetType', () => {
-    it('should return asset type for valid key', () => {
-      const assetType = getAssetType('cartas');
+    it('should return asset type for valid key', async () => {
+      const assetType = await getAssetType('cartas');
       expect(assetType).toBeDefined();
       expect(assetType?.key).toBe('cartas');
     });
 
-    it('should return undefined for invalid key', () => {
-      const assetType = getAssetType('invalid-key');
+    it('should return undefined for invalid key', async () => {
+      const assetType = await getAssetType('invalid-key');
       expect(assetType).toBeUndefined();
     });
 
-    it('should handle empty string', () => {
-      const assetType = getAssetType('');
+    it('should handle empty string', async () => {
+      const assetType = await getAssetType('');
       expect(assetType).toBeUndefined();
     });
   });
 
   describe('getAssetTypeKeys', () => {
-    it('should return array of keys', () => {
-      const keys = getAssetTypeKeys();
+    it('should return array of keys', async () => {
+      const keys = await getAssetTypeKeys();
       expect(Array.isArray(keys)).toBe(true);
       expect(keys.length).toBeGreaterThan(0);
     });
 
-    it('should return all asset type keys', () => {
-      const keys = getAssetTypeKeys();
+    it('should return all asset type keys', async () => {
+      const keys = await getAssetTypeKeys();
       expect(keys.length).toBe(ASSET_TYPES.length);
       keys.forEach(key => {
         expect(typeof key).toBe('string');
@@ -58,14 +58,14 @@ describe('assetTypes', () => {
   });
 
   describe('getAssetTypeLabels', () => {
-    it('should return array of labels', () => {
-      const labels = getAssetTypeLabels();
+    it('should return array of labels', async () => {
+      const labels = await getAssetTypeLabels();
       expect(Array.isArray(labels)).toBe(true);
       expect(labels.length).toBeGreaterThan(0);
     });
 
-    it('should return all asset type labels', () => {
-      const labels = getAssetTypeLabels();
+    it('should return all asset type labels', async () => {
+      const labels = await getAssetTypeLabels();
       expect(labels.length).toBe(ASSET_TYPES.length);
       labels.forEach(label => {
         expect(typeof label).toBe('string');

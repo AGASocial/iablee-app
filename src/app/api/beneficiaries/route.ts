@@ -75,7 +75,7 @@ export const POST = withTiming('POST /api/beneficiaries', async (request: Reques
             return NextResponse.json({ error: 'full_name is required' }, { status: 400 });
         }
 
-        const normalizedEmail = email?.trim() || null;
+        const normalizedEmail = email?.trim().toLowerCase() || null;
 
         const { data, error } = await supabase
             .from('beneficiaries')
