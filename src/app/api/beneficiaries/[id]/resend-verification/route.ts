@@ -80,7 +80,7 @@ export async function POST(
 
   if (!result.sent) {
     return NextResponse.json(
-      { error: result.error ?? 'Failed to send verification email' },
+      { error: 'Failed to send verification email' },
       { status: 500 }
     );
   }

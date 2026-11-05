@@ -31,10 +31,10 @@ export async function PUT(
         const body = await request.json();
         const { full_name, email, phone_number, relationship_id, notes, locale } = body;
 
-        const normalizedEmail = email !== undefined ? (email?.trim() || null) : undefined;
+        const normalizedEmail = email !== undefined ? (email?.trim().toLowerCase() || null) : undefined;
         const emailChanged =
             normalizedEmail !== undefined &&
-            (normalizedEmail ?? '').toLowerCase() !== (existing.email?.trim().toLowerCase() ?? '');
+            (normalizedEmail ?? '') !== (existing.email?.trim().toLowerCase() ?? '');
 
         const updateData: Record<string, unknown> = {};
         if (full_name !== undefined) updateData.full_name = full_name;

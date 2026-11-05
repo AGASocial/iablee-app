@@ -1,14 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAuthenticatedRouteClient } from "@/lib/supabase-server";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 import bcrypt from "bcryptjs";
+import { takeSecurityPinIpLimit, takeSecurityPinUserLimit } from "@/lib/rate-limit";
+import { beginPinAttempt, finishFailedPinCompare, pinAttemptBlocksCompare } from "@/lib/pin-failures";
+import { assignInitialSecurityPin, replaceSecurityPin } from "@/lib/security-pin-write";
+
+const RESET_REQUIRED = "A verified reset code is required to replace an existing PIN";
 
 export async function POST(req: NextRequest) {
     try {
-        const { supabase, user } = await createAuthenticatedRouteClient();
+        const ipLimit = takeSecurityPinIpLimit(req);
+        if (ipLimit) return ipLimit;
+
+        const { user } = await createAuthenticatedRouteClient();
 
         if (!user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
+
+        const userLimit = takeSecurityPinUserLimit(user.id);
+        if (userLimit) return userLimit;
 
         const body = await req.json();
         const { currentPin, newPin } = body;
@@ -20,59 +32,119 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // 1. Verify Current PIN
-        const { data: userData, error: fetchError } = await supabase
-            .from("users")
-            .select("security_pin_hash")
-            .eq("id", user.id)
-            .single();
+        if (!currentPin) {
+            const { data: hasPin, error: hasPinError } = await supabaseAdmin.rpc(
+                "user_has_security_pin",
+                { p_user_id: user.id }
+            );
+            if (hasPinError || typeof hasPin !== "boolean") {
+                console.error("Error reading PIN status:", hasPinError);
+                return NextResponse.json(
+                    { error: "Failed to update security PIN" },
+                    { status: 500 }
+                );
+            }
+            if (hasPin) {
+                return NextResponse.json(
+                    { error: "Current PIN is required" },
+                    { status: 400 }
+                );
+            }
 
-        if (fetchError || !userData) {
-            console.error("Error fetching user data:", fetchError);
+            const salt = await bcrypt.genSalt(10);
+            const hash = await bcrypt.hash(newPin, salt);
+            const written = await assignInitialSecurityPin(user.id, hash);
+            if (written === "error") {
+                return NextResponse.json(
+                    { error: "Failed to update security PIN" },
+                    { status: 500 }
+                );
+            }
+            if (written === "conflict") {
+                return NextResponse.json({ error: RESET_REQUIRED }, { status: 409 });
+            }
+            return NextResponse.json({ success: true });
+        }
+
+        const claim = await beginPinAttempt(user.id);
+        if (!claim) {
             return NextResponse.json(
                 { error: "Failed to verify current PIN" },
                 { status: 500 }
             );
         }
 
-        // If user has a PIN set, they must provide the correct current PIN
-        if (userData.security_pin_hash) {
-            if (!currentPin) {
-                return NextResponse.json(
-                    { error: "Current PIN is required" },
-                    { status: 400 }
-                );
-            }
-            const isValid = await bcrypt.compare(currentPin, userData.security_pin_hash);
-            if (!isValid) {
-                return NextResponse.json({ error: "Incorrect current PIN" }, { status: 401 });
-            }
+        if (pinAttemptBlocksCompare(claim)) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: "PIN locked due to too many failed attempts",
+                    lockedUntil: claim.lockedUntil,
+                },
+                { status: 423 }
+            );
         }
 
-        // 2. Set New PIN
         const salt = await bcrypt.genSalt(10);
         const hash = await bcrypt.hash(newPin, salt);
 
-        const { error: updateError } = await supabase
-            .from("users")
-            .update({
-                security_pin_hash: hash,
-                security_pin_updated_at: new Date().toISOString(),
-            })
-            .eq("id", user.id);
+        if (!claim.mayCompare || !claim.pinHash) {
+            const written = await assignInitialSecurityPin(user.id, hash);
+            if (written === "error") {
+                return NextResponse.json(
+                    { error: "Failed to update security PIN" },
+                    { status: 500 }
+                );
+            }
+            if (written === "conflict") {
+                return NextResponse.json({ error: RESET_REQUIRED }, { status: 409 });
+            }
+            return NextResponse.json({ success: true });
+        }
 
-        if (updateError) {
-            console.error("Error updating PIN:", updateError);
+        const isValid = await bcrypt.compare(currentPin, claim.pinHash);
+        if (!isValid) {
+            const outcome = await finishFailedPinCompare(user.id, claim.attempts, 'pin');
+            if (outcome.action === 'error') {
+                return NextResponse.json(
+                    { error: "Failed to verify current PIN" },
+                    { status: 500 }
+                );
+            }
+            if (outcome.action === 'locked') {
+                return NextResponse.json(
+                    {
+                        success: false,
+                        error: "PIN locked due to too many failed attempts",
+                        lockedUntil: outcome.lockedUntil,
+                        remainingAttempts: 0,
+                    },
+                    { status: 423 }
+                );
+            }
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: "Incorrect current PIN",
+                    remainingAttempts: outcome.remainingAttempts,
+                },
+                { status: 401 }
+            );
+        }
+
+        const replaced = await replaceSecurityPin(user.id, claim.pinHash, hash);
+        if (replaced === "error") {
             return NextResponse.json(
                 { error: "Failed to update security PIN" },
                 { status: 500 }
             );
         }
+        if (replaced === "conflict") {
+            return NextResponse.json({ error: RESET_REQUIRED }, { status: 409 });
+        }
 
         return NextResponse.json({ success: true });
-
     } catch (err: unknown) {
-        // ... error handling
         const error = err as Error;
         console.error("Error changing PIN:", error);
         return NextResponse.json(

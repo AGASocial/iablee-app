@@ -34,8 +34,12 @@ jest.mock('@/i18n/navigation', () => ({
 }))
 
 // Mock next-intl
+const testTranslator = (key) => key
+// The relationships page test uses the key "not-a-real" to assert the fallback.
+testTranslator.has = (key) => typeof key === 'string' && !key.includes('not-a-real')
+
 jest.mock('next-intl', () => ({
-  useTranslations: () => (key) => key,
+  useTranslations: () => testTranslator,
   useLocale: () => 'en',
   useMessages: () => ({}),
 }))

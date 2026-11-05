@@ -1,10 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAuthenticatedRouteClient } from "@/lib/supabase-server";
+import { cookies } from "next/headers";
+import { createAuthenticatedRouteClient, readPinResetGrant } from "@/lib/supabase-server";
+import { supabaseAdmin } from "@/lib/supabase-admin";
+import { createSecuritySessionToken } from "@/lib/security";
+import {
+    SECURITY_SESSION_COOKIE_NAME,
+    SECURITY_SESSION_MAX_AGE_SECONDS,
+    securitySessionCookieOptions,
+} from "@/lib/security-cookie";
 import bcrypt from "bcryptjs";
+import { assignInitialSecurityPin } from "@/lib/security-pin-write";
+
+const RESET_REQUIRED = "A verified reset code is required to replace an existing PIN";
 
 export async function POST(req: NextRequest) {
     try {
-        const { supabase, user } = await createAuthenticatedRouteClient();
+        const { user } = await createAuthenticatedRouteClient();
 
         if (!user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -20,23 +31,77 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const salt = await bcrypt.genSalt(10);
-        const hash = await bcrypt.hash(pin, salt);
+        const { data: hasPin, error: hasPinError } = await supabaseAdmin.rpc(
+            "user_has_security_pin",
+            { p_user_id: user.id }
+        );
 
-        const { error: updateError } = await supabase
-            .from("users")
-            .update({
-                security_pin_hash: hash,
-                security_pin_updated_at: new Date().toISOString(),
-            })
-            .eq("id", user.id);
-
-        if (updateError) {
-            console.error("Error updating PIN:", updateError);
+        if (hasPinError || typeof hasPin !== "boolean") {
+            console.error("Error reading PIN status:", hasPinError);
             return NextResponse.json(
                 { error: "Failed to set security PIN" },
                 { status: 500 }
             );
+        }
+
+        const salt = await bcrypt.genSalt(10);
+        const hash = await bcrypt.hash(pin, salt);
+
+        if (hasPin) {
+            const grantId = await readPinResetGrant(user.id);
+            if (!grantId) {
+                return NextResponse.json(
+                    { error: RESET_REQUIRED },
+                    { status: 403 }
+                );
+            }
+
+            const { data: applied, error: applyError } = await supabaseAdmin.rpc(
+                "apply_pin_reset",
+                {
+                    p_user_id: user.id,
+                    p_grant_id: grantId,
+                    p_pin_hash: hash,
+                }
+            );
+
+            if (applyError) {
+                console.error("Error applying PIN reset:", applyError);
+                return NextResponse.json(
+                    { error: "Failed to set security PIN" },
+                    { status: 500 }
+                );
+            }
+
+            if (typeof applied !== "number" || applied < 1) {
+                return NextResponse.json(
+                    { error: RESET_REQUIRED },
+                    { status: 403 }
+                );
+            }
+
+            const token = await createSecuritySessionToken(user.id, "pin_verified", {
+                pinVersion: applied,
+            });
+            const cookieStore = await cookies();
+            cookieStore.set(
+                SECURITY_SESSION_COOKIE_NAME,
+                token,
+                securitySessionCookieOptions(SECURITY_SESSION_MAX_AGE_SECONDS)
+            );
+
+            return NextResponse.json({ success: true });
+        }
+
+        const written = await assignInitialSecurityPin(user.id, hash);
+        if (written === "error") {
+            return NextResponse.json(
+                { error: "Failed to set security PIN" },
+                { status: 500 }
+            );
+        }
+        if (written === "conflict") {
+            return NextResponse.json({ error: RESET_REQUIRED }, { status: 409 });
         }
 
         return NextResponse.json({ success: true });

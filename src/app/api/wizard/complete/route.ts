@@ -1,15 +1,15 @@
 import { NextResponse } from 'next/server';
-import { createAuthenticatedRouteClient } from '@/lib/supabase-server';
+import { getAuthenticatedContext } from '@/lib/auth-context';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { canCreateAsset, canCreateBeneficiary } from '@/lib/subscription/limits';
 import { maybeSendBeneficiaryVerificationEmail } from '@/lib/beneficiary-verification-flow';
 
 export async function POST(request: Request) {
-    const { supabase, user } = await createAuthenticatedRouteClient();
-
-    if (!user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const auth = await getAuthenticatedContext();
+    if (!auth.ok) {
+        return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
+    const { supabase, user } = auth.ctx;
 
     try {
         const body = await request.json();
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
             }
         }
 
-        const normalizedEmail = beneficiary.email?.trim() || null;
+        const normalizedEmail = beneficiary.email?.trim().toLowerCase() || null;
 
         // Create the beneficiary
         const { data: beneficiaryData, error: beneficiaryError } = await supabase

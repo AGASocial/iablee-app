@@ -1,7 +1,26 @@
 "use client";
+import { Suspense, useEffect } from "react";
 import { AuthForm } from "@/components/auth/auth-form"
 import { AuthHero } from "@/components/auth/auth-hero"
 import { useTranslations } from 'next-intl';
+import { useSearchParams } from 'next/navigation';
+import { toast } from 'sonner';
+
+function LoginRegisteredToast() {
+  const t = useTranslations();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    if (searchParams.get('registered') === 'true') {
+      toast.success(t('registrationConfirmationTitle'), {
+        description: t('registrationConfirmationMessage'),
+        duration: 8000,
+      });
+    }
+  }, [searchParams, t]);
+
+  return null;
+}
 
 export default function LoginPage() {
   const t = useTranslations();
@@ -17,10 +36,13 @@ export default function LoginPage() {
         <div className="mx-auto flex w-full max-w-[420px] flex-col justify-center space-y-6">
           {/* Mobile: Card with backdrop blur for better readability */}
           <div className="rounded-2xl border border-white/45 bg-white/70 p-6 shadow-2xl shadow-black/15 backdrop-blur-xl sm:p-8 dark:border-white/15 dark:bg-card/80 dark:shadow-black/45 lg:border-white/25 lg:bg-white/60 lg:p-8 lg:dark:bg-card/75">
+            <Suspense fallback={null}>
+              <LoginRegisteredToast />
+            </Suspense>
             <AuthForm type="login" />
           </div>
         </div>
       </div>
     </div>
   )
-} 
+}

@@ -1,19 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAuthRedirectOrigin, resolveAuthLocale } from '@/lib/app-url';
 import { createRouteClient } from '@/lib/supabase-server';
-
-function getAppOrigin(request: NextRequest): string {
-  const origin = request.headers.get('origin');
-  if (origin) return origin;
-
-  const host = request.headers.get('x-forwarded-host') ?? request.headers.get('host');
-  const proto = request.headers.get('x-forwarded-proto') ?? 'https';
-
-  if (!host) {
-    throw new Error('Cannot resolve host for auth redirect');
-  }
-
-  return `${proto}://${host}`;
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,8 +15,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid email address' }, { status: 400 });
     }
 
-    const safeLocale = typeof locale === 'string' && locale ? locale : 'en';
-    const origin = getAppOrigin(request);
+    const safeLocale = resolveAuthLocale(locale);
+    const origin = getAuthRedirectOrigin();
     const redirectTo = `${origin}/api/auth/callback?next=${encodeURIComponent(`/${safeLocale}/auth/reset-password`)}`;
 
     const supabase = await createRouteClient();

@@ -1,4 +1,5 @@
 import { createAuthenticatedRouteClient, checkSecuritySession } from '@/lib/supabase-server';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import type { User } from '@supabase/supabase-js';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/supabase';
@@ -11,19 +12,31 @@ export interface AuthenticatedContext {
   pinRequired: boolean;
 }
 
+async function userHasSecurityPin(userId: string): Promise<boolean | null> {
+  const { data, error } = await supabaseAdmin.rpc('user_has_security_pin', {
+    p_user_id: userId,
+  });
+
+  if (error || typeof data !== 'boolean') {
+    console.error('Error reading PIN status:', error);
+    return null;
+  }
+
+  return data;
+}
+
 async function buildContext(
   supabase: SupabaseClient<Database>,
   user: User
-): Promise<AuthenticatedContext> {
-  const hasSecuritySession = await checkSecuritySession();
+): Promise<AuthenticatedContext | { unavailable: true }> {
+  const hasSecuritySession = await checkSecuritySession(user.id);
+  const hasPin = await userHasSecurityPin(user.id);
 
-  const { data: userData } = await supabase
-    .from('users')
-    .select('security_pin_hash')
-    .eq('id', user.id)
-    .single();
+  // A missing row or a failed read is not "this user has no PIN".
+  if (hasPin === null) {
+    return { unavailable: true };
+  }
 
-  const hasPin = !!userData?.security_pin_hash;
   const pinRequired = hasPin && !hasSecuritySession;
 
   return {
@@ -38,10 +51,11 @@ async function buildContext(
 /**
  * Read auth + security state without blocking on PIN.
  * Used by check-session and security UI.
+ * PIN presence is a boolean from the service client. The hash is never selected.
  */
 export async function getSecurityContext(): Promise<
   | { ok: true; ctx: AuthenticatedContext }
-  | { ok: false; status: 401; error: string }
+  | { ok: false; status: 401 | 503; error: string }
 > {
   const { supabase, user } = await createAuthenticatedRouteClient();
 
@@ -50,6 +64,10 @@ export async function getSecurityContext(): Promise<
   }
 
   const ctx = await buildContext(supabase, user);
+  if ('unavailable' in ctx) {
+    return { ok: false, status: 503, error: 'Security status unavailable' };
+  }
+
   return { ok: true, ctx };
 }
 
@@ -59,7 +77,7 @@ export async function getSecurityContext(): Promise<
  */
 export async function getAuthenticatedContext(): Promise<
   | { ok: true; ctx: AuthenticatedContext }
-  | { ok: false; status: 401 | 403; error: string }
+  | { ok: false; status: 401 | 403 | 503; error: string }
 > {
   const result = await getSecurityContext();
   if (!result.ok) return result;
