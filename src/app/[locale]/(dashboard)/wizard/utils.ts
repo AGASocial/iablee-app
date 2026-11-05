@@ -30,7 +30,8 @@ const ASSET_ICON_MAP: Record<string, LucideIcon> = {
 };
 
 const ADVANCED_FIELDS = new Set(["website", "valid_until", "email", "password"]);
-const SENSITIVE_CUSTOM_FIELD_PATTERNS = [/password/i, /secret/i, /token/i, /pin/i, /clave/i, /contrasen/i, /passcode/i];
+const DRAFT_ALLOWED_CUSTOM_FIELD_TYPES = new Set(["text", "textarea", "date", "url", "number", "select"]);
+const SENSITIVE_CUSTOM_FIELD_KEY_PATTERNS = /(password|secret|token|pin|key|apikey|private|seed|mnemonic|cvv|card)/i;
 const WIZARD_DRAFT_VERSION = 1;
 
 export interface WizardDraftPayload {
@@ -148,15 +149,78 @@ export function formatBytesToMb(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1);
 }
 
-function isSensitiveCustomField(fieldKey: string, assetType: AssetType | null): boolean {
-  const fieldConfig = assetType?.customFields.find((field) => field.key === fieldKey);
-  const candidate = `${fieldKey} ${fieldConfig?.label ?? ""}`;
-  return SENSITIVE_CUSTOM_FIELD_PATTERNS.some((pattern) => pattern.test(candidate));
+function isAllowedDraftCustomFieldType(type: string | undefined): boolean {
+  if (!type) return false;
+  return DRAFT_ALLOWED_CUSTOM_FIELD_TYPES.has(type.toLowerCase());
 }
 
 export function sanitizeDraftCustomFields(customFields: Record<string, string>, assetType: AssetType | null): Record<string, string> {
-  const entries = Object.entries(customFields).filter(([key]) => !isSensitiveCustomField(key, assetType));
+  const definitions = new Map(assetType?.customFields.map((field) => [field.key, field]) ?? []);
+  const entries = Object.entries(customFields).filter(([key]) => {
+    const definition = definitions.get(key);
+    if (!definition) return false;
+    if (definition.type === "password") return false;
+    if (!isAllowedDraftCustomFieldType(definition.type)) return false;
+    if (SENSITIVE_CUSTOM_FIELD_KEY_PATTERNS.test(key)) return false;
+    return true;
+  });
   return Object.fromEntries(entries);
+}
+
+type WizardCompleteRequestBody = {
+  asset: {
+    assetType: string;
+    assetName: string;
+    description: string;
+    website: string;
+    validUntil: string;
+    email: string;
+    password: string;
+    customFields: Record<string, string>;
+  };
+  beneficiary: BeneficiaryFormData;
+  fileUrls: string[];
+  fileMetadata: Array<{
+    path: string;
+    fileName: string;
+    fileType: string;
+    fileSize: number;
+  }>;
+  locale: string;
+  idempotencyKey: string;
+};
+
+const RETRYABLE_IDEMPOTENCY_ERROR = "IDEMPOTENCY_IN_PROGRESS";
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function sendWizardCompleteRequest(payload: WizardCompleteRequestBody): Promise<Response> {
+  return fetch("/api/wizard/complete", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": payload.idempotencyKey,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function submitWizardCompleteWithRetry(payload: WizardCompleteRequestBody): Promise<Response> {
+  const firstAttempt = await sendWizardCompleteRequest(payload);
+  if (firstAttempt.status !== 409) return firstAttempt;
+
+  const firstBody = await firstAttempt.clone().json().catch(() => null) as
+    | { error?: string; retryable?: boolean }
+    | null;
+  const shouldRetry = firstBody?.error === RETRYABLE_IDEMPOTENCY_ERROR && firstBody.retryable === true;
+  if (!shouldRetry) return firstAttempt;
+
+  await sleep(1000);
+  return sendWizardCompleteRequest(payload);
 }
 
 export function getWizardDraftStorageKey(userId: string): string {

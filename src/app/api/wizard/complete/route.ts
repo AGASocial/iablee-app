@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { getAuthenticatedContext } from '@/lib/auth-context';
-type AuthedSupabase = Extract<Awaited<ReturnType<typeof getAuthenticatedContext>>, { ok: true }>['ctx']['supabase'];
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { canCreateAsset, canCreateBeneficiary } from '@/lib/subscription/limits';
 import { maybeSendBeneficiaryVerificationEmail } from '@/lib/beneficiary-verification-flow';
@@ -49,15 +48,38 @@ type TransactionRpcResult = {
   };
 };
 
+type RpcError = {
+  code?: string;
+  message?: string;
+  details?: string;
+  hint?: string;
+};
+
 function normalizeBeneficiaryEmail(email: string | undefined): string | null {
   return email?.trim().toLowerCase() || null;
 }
 
-function supportsTransactionalRpc(error: { code?: string; message?: string } | null): boolean {
-  if (!error) return true;
-  if (error.code === 'PGRST202' || error.code === '42883') return false;
-  if (error.message?.includes('complete_wizard_transaction')) return false;
-  return true;
+function isMissingTransactionalRpc(error: RpcError | null): boolean {
+  if (!error) return false;
+  if (error.code === 'PGRST202' || error.code === '42883') return true;
+  if (error.message?.includes('complete_wizard_transaction')) return true;
+  return false;
+}
+
+function isIdempotencyInProgress(error: RpcError | null): boolean {
+  if (!error) return false;
+  if (error.code === '55P03') return true;
+
+  const fullMessage = `${error.message ?? ''} ${error.details ?? ''} ${error.hint ?? ''}`.toLowerCase();
+  if (error.code === '23505' && (fullMessage.includes('wizard_completion_idempotency') || fullMessage.includes('idempotency'))) {
+    return true;
+  }
+
+  if (fullMessage.includes('idempotency key is currently being processed') || (fullMessage.includes('idempotency key') && fullMessage.includes('in progress'))) {
+    return true;
+  }
+
+  return false;
 }
 
 async function persistVerificationResult(
@@ -69,99 +91,6 @@ async function persistVerificationResult(
     .from('wizard_completion_idempotency')
     .update({ response: payload })
     .match({ user_id: userId, idempotency_key: idempotencyKey });
-}
-
-async function completeWizardWithFallback({
-  userId,
-  asset,
-  beneficiary,
-  fileUrls,
-  fileMetadata,
-  supabase,
-}: {
-  userId: string;
-  asset: WizardAssetInput;
-  beneficiary: WizardBeneficiaryInput;
-  fileUrls: string[];
-  fileMetadata: FileMetadataInput[];
-  supabase: AuthedSupabase;
-}) {
-  const { data: assetData, error: assetError } = await supabaseAdmin
-    .from('digital_assets')
-    .insert({
-      user_id: userId,
-      asset_type: asset.assetType,
-      asset_name: asset.assetName,
-      description: asset.description || null,
-      website: asset.website || null,
-      valid_until: asset.validUntil || null,
-      email: asset.email || null,
-      password: asset.password || null,
-      files: fileUrls.length > 0 ? fileUrls : null,
-      custom_fields: asset.customFields && Object.keys(asset.customFields).length > 0 ? JSON.stringify(asset.customFields) : null,
-      status: 'unassigned',
-    })
-    .select()
-    .single();
-
-  if (assetError) {
-    return { error: assetError.message };
-  }
-
-  if (fileMetadata.length > 0) {
-    const attachmentRows = fileMetadata.map((fm) => ({
-      asset_id: String(assetData.id),
-      file_path: fm.path,
-      file_name: fm.fileName,
-      file_type: fm.fileType,
-      file_size: fm.fileSize,
-    }));
-
-    const { error: attachError } = await supabase.from('asset_attachments').insert(attachmentRows) as { error: { message: string } | null };
-    if (attachError) {
-      console.error('Error creating asset attachments:', attachError);
-    }
-  }
-
-  const normalizedEmail = normalizeBeneficiaryEmail(beneficiary.email);
-
-  const beneficiaryInsertResult = await (supabase
-    .from('beneficiaries')
-    .insert({
-      user_id: userId,
-      full_name: beneficiary.fullName,
-      email: normalizedEmail,
-      relationship_id: beneficiary.relationshipId || null,
-      phone_number: beneficiary.phoneNumber || null,
-      notes: beneficiary.notes || null,
-      notified: false,
-      email_verified: false,
-      email_verified_at: null,
-      status: 'active',
-    })
-    .select()
-    .single() as unknown as Promise<{ data: Record<string, unknown> | null; error: { message: string } | null }>);
-  const { data: beneficiaryData, error: beneficiaryError } = beneficiaryInsertResult;
-
-  if (beneficiaryError || !beneficiaryData) {
-    await supabaseAdmin.from('digital_assets').delete().eq('id', String(assetData.id));
-    return { error: beneficiaryError?.message || 'Failed to create beneficiary' };
-  }
-
-  const { error: linkError } = await supabaseAdmin
-    .from('digital_assets')
-    .update({ beneficiary_id: String(beneficiaryData.id), status: 'assigned' })
-    .eq('id', String(assetData.id));
-
-  if (linkError) {
-    return { error: linkError.message };
-  }
-
-  return {
-    asset: assetData as Record<string, unknown>,
-    beneficiary: beneficiaryData,
-    normalizedEmail,
-  };
 }
 
 export async function POST(request: Request) {
@@ -218,77 +147,49 @@ export async function POST(request: Request) {
       p_file_metadata: fileMetadata,
     });
 
-    if (txAttempt.error && supportsTransactionalRpc(txAttempt.error)) {
+    if (txAttempt.error) {
+      if (isMissingTransactionalRpc(txAttempt.error)) {
+        console.error('Wizard completion RPC unavailable during deploy:', txAttempt.error);
+        return NextResponse.json({ error: 'SERVICE_UPDATING' }, { status: 503 });
+      }
+      if (isIdempotencyInProgress(txAttempt.error)) {
+        return NextResponse.json({ error: 'IDEMPOTENCY_IN_PROGRESS', retryable: true }, { status: 409 });
+      }
+
       console.error('Transactional wizard RPC failed:', txAttempt.error);
       return NextResponse.json({ error: txAttempt.error.message }, { status: 500 });
     }
 
-    if (!txAttempt.error) {
-      const rpcData = txAttempt.data as TransactionRpcResult;
-      const normalizedEmail = normalizeBeneficiaryEmail(beneficiary.email);
-      let verificationSent = Boolean(rpcData.result.verificationSent);
+    const rpcData = txAttempt.data as TransactionRpcResult;
+    const normalizedEmail = normalizeBeneficiaryEmail(beneficiary.email);
+    let verificationSent = Boolean(rpcData.result.verificationSent);
 
-      if (!rpcData.idempotent && rpcData.result.beneficiary?.id) {
-        const verification = await maybeSendBeneficiaryVerificationEmail({
-          supabase,
-          userId: user.id,
-          beneficiaryId: String(rpcData.result.beneficiary.id),
-          beneficiaryName: String(rpcData.result.beneficiary.full_name ?? beneficiary.fullName),
-          email: normalizedEmail,
-          emailChanged: true,
-          isNew: true,
-          locale,
-        });
-        verificationSent = verification.verificationSent;
-        await persistVerificationResult(user.id, idempotencyKey, {
-          ...rpcData.result,
-          verificationSent,
-        });
-      }
-
-      return NextResponse.json(
-        {
-          asset: rpcData.result.asset,
-          beneficiary: rpcData.result.beneficiary,
-          verificationSent,
-          idempotent: rpcData.idempotent,
-        },
-        { status: rpcData.idempotent ? 200 : 201 },
-      );
+    if (!rpcData.idempotent && rpcData.result.beneficiary?.id) {
+      const verification = await maybeSendBeneficiaryVerificationEmail({
+        supabase,
+        userId: user.id,
+        beneficiaryId: String(rpcData.result.beneficiary.id),
+        beneficiaryName: String(rpcData.result.beneficiary.full_name ?? beneficiary.fullName),
+        email: normalizedEmail,
+        emailChanged: true,
+        isNew: true,
+        locale,
+      });
+      verificationSent = verification.verificationSent;
+      await persistVerificationResult(user.id, idempotencyKey, {
+        ...rpcData.result,
+        verificationSent,
+      });
     }
-
-    const fallback = await completeWizardWithFallback({
-      userId: user.id,
-      asset,
-      beneficiary,
-      fileUrls,
-      fileMetadata,
-      supabase: supabase as never,
-    });
-
-    if ('error' in fallback) {
-      return NextResponse.json({ error: fallback.error }, { status: 500 });
-    }
-
-    const verification = await maybeSendBeneficiaryVerificationEmail({
-      supabase,
-      userId: user.id,
-      beneficiaryId: String(fallback.beneficiary.id),
-      beneficiaryName: String(fallback.beneficiary.full_name ?? beneficiary.fullName),
-      email: fallback.normalizedEmail,
-      emailChanged: true,
-      isNew: true,
-      locale,
-    });
 
     return NextResponse.json(
       {
-        asset: fallback.asset,
-        beneficiary: fallback.beneficiary,
-        verificationSent: verification.verificationSent,
-        idempotent: false,
+        asset: rpcData.result.asset,
+        beneficiary: rpcData.result.beneficiary,
+        verificationSent,
+        idempotent: rpcData.idempotent,
       },
-      { status: 201 },
+      { status: rpcData.idempotent ? 200 : 201 },
     );
   } catch {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });

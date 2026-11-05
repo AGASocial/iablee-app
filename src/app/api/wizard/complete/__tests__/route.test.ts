@@ -136,14 +136,7 @@ describe('POST /api/wizard/complete', () => {
     expect(maybeSendBeneficiaryVerificationEmail).not.toHaveBeenCalled();
   });
 
-  it('falls back and compensates by deleting the asset when beneficiary creation fails', async () => {
-    const assetDeleteEq = jest.fn().mockResolvedValue({ error: null });
-    const assetInsert = jest.fn().mockReturnValue({
-      select: () => ({
-        single: async () => ({ data: { id: 'asset-2' }, error: null }),
-      }),
-    });
-
+  it('returns 503 SERVICE_UPDATING when the transactional RPC is not deployed yet', async () => {
     (getAuthenticatedContext as jest.Mock).mockResolvedValue({
       ok: true,
       ctx: {
@@ -151,23 +144,7 @@ describe('POST /api/wizard/complete', () => {
         hasPin: true,
         hasSecuritySession: true,
         pinRequired: false,
-        supabase: {
-          from: (table: string) => {
-            if (table === 'beneficiaries') {
-              return {
-                insert: () => ({
-                  select: () => ({
-                    single: async () => ({ data: null, error: { message: 'beneficiary failed' } }),
-                  }),
-                }),
-              };
-            }
-            if (table === 'asset_attachments') {
-              return { insert: jest.fn().mockResolvedValue({ error: null }) };
-            }
-            return { insert: jest.fn().mockResolvedValue({ error: null }) };
-          },
-        },
+        supabase: { from: jest.fn() },
       },
     });
     (canCreateAsset as jest.Mock).mockResolvedValue({ allowed: true });
@@ -176,31 +153,67 @@ describe('POST /api/wizard/complete', () => {
       data: null,
       error: { code: 'PGRST202', message: 'Function not found' },
     });
-    (supabaseAdmin.from as jest.Mock).mockImplementation((table: string) => {
-      if (table === 'digital_assets') {
-        return {
-          insert: assetInsert,
-          delete: () => ({ eq: assetDeleteEq }),
-          update: () => ({ eq: jest.fn().mockResolvedValue({ error: null }) }),
-        };
-      }
-      if (table === 'wizard_completion_idempotency') {
-        return {
-          update: () => ({ match: jest.fn().mockResolvedValue({ error: null }) }),
-        };
-      }
-      return {
-        insert: jest.fn(),
-        update: () => ({ eq: jest.fn().mockResolvedValue({ error: null }) }),
-      };
+
+    const response = await POST(request());
+    const body = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(body).toEqual({ error: 'SERVICE_UPDATING' });
+    expect(maybeSendBeneficiaryVerificationEmail).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 IDEMPOTENCY_IN_PROGRESS when key is locked by another request', async () => {
+    (getAuthenticatedContext as jest.Mock).mockResolvedValue({
+      ok: true,
+      ctx: {
+        user: { id: 'user-1' },
+        hasPin: true,
+        hasSecuritySession: true,
+        pinRequired: false,
+        supabase: { from: jest.fn() },
+      },
+    });
+    (canCreateAsset as jest.Mock).mockResolvedValue({ allowed: true });
+    (canCreateBeneficiary as jest.Mock).mockResolvedValue({ allowed: true });
+    (supabaseAdmin.rpc as jest.Mock).mockResolvedValue({
+      data: null,
+      error: { code: '55P03', message: 'idempotency key is currently being processed' },
     });
 
     const response = await POST(request());
     const body = await response.json();
 
-    expect(response.status).toBe(500);
-    expect(body.error).toContain('beneficiary failed');
-    expect(assetDeleteEq).toHaveBeenCalledWith('id', 'asset-2');
+    expect(response.status).toBe(409);
+    expect(body).toEqual({ error: 'IDEMPOTENCY_IN_PROGRESS', retryable: true });
+  });
+
+  it('returns 409 IDEMPOTENCY_IN_PROGRESS on idempotency unique violation', async () => {
+    (getAuthenticatedContext as jest.Mock).mockResolvedValue({
+      ok: true,
+      ctx: {
+        user: { id: 'user-1' },
+        hasPin: true,
+        hasSecuritySession: true,
+        pinRequired: false,
+        supabase: { from: jest.fn() },
+      },
+    });
+    (canCreateAsset as jest.Mock).mockResolvedValue({ allowed: true });
+    (canCreateBeneficiary as jest.Mock).mockResolvedValue({ allowed: true });
+    (supabaseAdmin.rpc as jest.Mock).mockResolvedValue({
+      data: null,
+      error: {
+        code: '23505',
+        message: 'duplicate key value violates unique constraint',
+        details: 'Key (user_id, idempotency_key) already exists in wizard_completion_idempotency',
+      },
+    });
+
+    const response = await POST(request());
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body).toEqual({ error: 'IDEMPOTENCY_IN_PROGRESS', retryable: true });
   });
 
   it('rejects the write when a security PIN is required', async () => {

@@ -25,6 +25,7 @@ import {
   formatBytesToMb,
   getWizardDraftStorageKey,
   parseWizardDraft,
+  submitWizardCompleteWithRetry,
   validateAssetDetails,
   validateAssetType,
   validateBeneficiary,
@@ -390,35 +391,28 @@ export default function WizardPage() {
         fileSize: file.fileSize,
       }));
 
-      const res = await fetch("/api/wizard/complete", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Idempotency-Key": idempotencyKey,
+      const res = await submitWizardCompleteWithRetry({
+        asset: {
+          assetType: assetData.assetType,
+          assetName: assetData.assetName,
+          description: assetData.description,
+          website: assetData.website,
+          validUntil: assetData.validUntil,
+          email: assetData.email,
+          password: assetData.password,
+          customFields: assetData.customFields,
         },
-        body: JSON.stringify({
-          asset: {
-            assetType: assetData.assetType,
-            assetName: assetData.assetName,
-            description: assetData.description,
-            website: assetData.website,
-            validUntil: assetData.validUntil,
-            email: assetData.email,
-            password: assetData.password,
-            customFields: assetData.customFields,
-          },
-          beneficiary: {
-            fullName: beneficiaryData.fullName,
-            email: beneficiaryData.email,
-            relationshipId: beneficiaryData.relationshipId,
-            phoneNumber: beneficiaryData.phoneNumber,
-            notes: beneficiaryData.notes,
-          },
-          fileUrls,
-          fileMetadata,
-          locale,
-          idempotencyKey,
-        }),
+        beneficiary: {
+          fullName: beneficiaryData.fullName,
+          email: beneficiaryData.email,
+          relationshipId: beneficiaryData.relationshipId,
+          phoneNumber: beneficiaryData.phoneNumber,
+          notes: beneficiaryData.notes,
+        },
+        fileUrls,
+        fileMetadata,
+        locale,
+        idempotencyKey,
       });
 
       if (!res.ok) {

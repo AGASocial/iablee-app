@@ -16,7 +16,7 @@ export interface AssetType {
   customFields: {
     key: string;
     label: string;
-    type: 'text' | 'textarea' | 'file' | 'select';
+    type: 'text' | 'textarea' | 'file' | 'select' | 'date' | 'url' | 'number' | 'password';
     required?: boolean;
     options?: string[];
   }[];

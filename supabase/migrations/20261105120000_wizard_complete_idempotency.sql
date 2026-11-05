@@ -191,6 +191,8 @@ BEGIN
 END;
 $$;
 
+ALTER FUNCTION public.complete_wizard_transaction(uuid, text, jsonb, jsonb, jsonb, jsonb) OWNER TO postgres;
+
 REVOKE ALL ON TABLE public.wizard_completion_idempotency FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.complete_wizard_transaction(uuid, text, jsonb, jsonb, jsonb, jsonb) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.complete_wizard_transaction(uuid, text, jsonb, jsonb, jsonb, jsonb) TO service_role;
