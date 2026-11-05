@@ -9,6 +9,9 @@ export async function POST(request: Request) {
     if (!auth.ok) {
         return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
+    if (!auth.ctx.hasPin || !auth.ctx.hasSecuritySession) {
+        return NextResponse.json({ error: 'Security PIN required' }, { status: 403 });
+    }
     const { supabase, user } = auth.ctx;
 
     try {

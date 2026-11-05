@@ -70,6 +70,9 @@ export async function POST(request: NextRequest) {
     if (!auth.ok) {
         return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
+    if (!auth.ctx.hasPin || !auth.ctx.hasSecuritySession) {
+        return NextResponse.json({ error: 'Security PIN required' }, { status: 403 });
+    }
     const { user, supabase } = auth.ctx;
 
     const userRateLimit = checkRateLimit(`upload:user:${user.id}`, RATE_LIMITS.upload);
