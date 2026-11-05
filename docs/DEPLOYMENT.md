@@ -227,3 +227,5 @@ For OAuth (Google/Apple) and email links to work:
 - [ ] Deploy Next.js app and test login, wizard, assets, and storage.
 
 <!-- vercel-autodeploy-verify: 2026-11-05T13:00 America/Chicago -->
+
+<!-- vercel-autodeploy-verify-2: after git reconnect -->
