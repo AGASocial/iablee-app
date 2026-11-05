@@ -236,6 +236,16 @@ export default function WizardPage() {
     return true;
   };
 
+  const openPinModalForSecurity = () => {
+    const needsSetup = !security.hasPin;
+    const friendlyPinMessage = needsSetup ? tr("wizard-pin-setup-message") : tr("wizard-pin-protect-message");
+    setPinMode(needsSetup ? "setup" : "verify");
+    setPinReason(friendlyPinMessage);
+    setRetryAfterPin(true);
+    setPinOpen(true);
+    toast.error(friendlyPinMessage);
+  };
+
   const uploadPendingFiles = async (): Promise<UploadedFileMeta[]> => {
     const pendingItems = files.filter((item) => !item.uploaded);
     const alreadyUploaded = files.filter((item) => item.uploaded).map((item) => item.uploaded as UploadedFileMeta);
@@ -258,6 +268,9 @@ export default function WizardPage() {
             errBody && typeof errBody === "object" && "error" in errBody
               ? String(errBody.error)
               : tr("errorUploadingFiles");
+          if (uploadRes.status === 403 && errMessage === "Security PIN required") {
+            throw new Error("wizard-pin-required");
+          }
           throw new Error(errMessage);
         }
         return (await uploadRes.json()) as {
@@ -271,6 +284,7 @@ export default function WizardPage() {
     );
 
     let uploadFailed = false;
+    let pinRequiredDuringUpload = false;
     const newlyUploaded: UploadedFileMeta[] = [];
     uploadResults.forEach((result) => {
       const item = pendingItems.find((candidate) => candidate.file === result.file);
@@ -290,10 +304,17 @@ export default function WizardPage() {
           fileSize: uploadedFile.fileSize,
         });
       } else {
+        if (result.error === "wizard-pin-required") {
+          pinRequiredDuringUpload = true;
+        }
         uploadFailed = true;
         updateFileStatus(item.id, "error", result.error || tr("errorUploadingFiles"));
       }
     });
+
+    if (pinRequiredDuringUpload) {
+      throw new Error("wizard-pin-required");
+    }
 
     if (uploadFailed) {
       throw new Error("wizard-upload-failed-retry");
@@ -358,13 +379,7 @@ export default function WizardPage() {
         const err = body && typeof body === "object" ? (body as { message?: string; error?: string }) : {};
         const pinMessage = wizardApiErrorMessage(res.status, err.error, t);
         if (pinMessage) {
-          const needsSetup = !security.hasPin;
-          const friendlyPinMessage = needsSetup ? tr("wizard-pin-setup-message") : tr("wizard-pin-protect-message");
-          setPinMode(needsSetup ? "setup" : "verify");
-          setPinReason(friendlyPinMessage);
-          setRetryAfterPin(true);
-          setPinOpen(true);
-          toast.error(friendlyPinMessage);
+          openPinModalForSecurity();
           return;
         }
         throw new Error(err.message || err.error || "errorSavingAsset");
@@ -374,6 +389,10 @@ export default function WizardPage() {
       setWizardView("success");
     } catch (error) {
       console.error("Error creating asset and beneficiary:", error);
+      if (error instanceof Error && error.message === "wizard-pin-required") {
+        openPinModalForSecurity();
+        return;
+      }
       const message = error instanceof Error ? error.message : "errorSavingAsset";
       setSaveError(message);
       toast.error(tr(message as string));
