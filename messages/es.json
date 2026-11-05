@@ -30,6 +30,8 @@
   "beneficiaryRelationshipsInfoDescription": "Esta lista muestra solo las relaciones donde se ha verificado tu correo electrónico. No puedes ver los activos digitales hasta que el titular de la cuenta active el proceso de liberación.",
   "error": "Error",
   "retry": "Reintentar",
+  "emailNotConfirmed": "Confirma tu correo",
+  "emailNotConfirmedDescription": "Confirma tu dirección de correo para ver quién te agregó como beneficiario.",
   "attachments": "Adjuntos",
   "beneficiaryUpdatedSuccess": "Beneficiario actualizado exitosamente",
   "beneficiaryDeleted": "Beficiario eliminado exitosamente",

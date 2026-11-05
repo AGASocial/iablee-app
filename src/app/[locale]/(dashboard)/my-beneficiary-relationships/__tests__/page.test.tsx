@@ -1,3 +1,5 @@
+import en from '../../../../../../messages/en.json';
+import es from '../../../../../../messages/es.json';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import MyBeneficiaryRelationshipsPage from '../page';
 import { useSecurity } from '@/context/SecurityContext';
@@ -19,6 +21,14 @@ function securityState(overrides: { locked: boolean; loading?: boolean }) {
 }
 
 describe('MyBeneficiaryRelationshipsPage', () => {
+  it('has a dedicated unconfirmed-email message in English and Spanish', () => {
+    expect(en.emailNotConfirmed.length).toBeGreaterThan(0);
+    expect(es.emailNotConfirmed.length).toBeGreaterThan(0);
+    expect(en.emailNotConfirmedDescription).not.toBe(en.error);
+    expect(es.emailNotConfirmedDescription).not.toBe(es.error);
+    expect(en.emailNotConfirmedDescription).not.toBe(es.emailNotConfirmedDescription);
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
     mockFetch.mockReset();
@@ -96,7 +106,7 @@ describe('MyBeneficiaryRelationshipsPage', () => {
     expect(screen.queryByText('relationships.not-a-real')).not.toBeInTheDocument();
   });
 
-  it('shows a translated error and retry when a 403 does not unlock the gate', async () => {
+  it('shows a translated error without retry when a 403 does not unlock the gate', async () => {
     const state = securityState({ locked: false });
     mockUseSecurity.mockReturnValue(state);
     mockFetch.mockResolvedValue({
@@ -107,10 +117,39 @@ describe('MyBeneficiaryRelationshipsPage', () => {
 
     render(<MyBeneficiaryRelationshipsPage />);
 
-    expect(await screen.findByRole('button', { name: 'retry' })).toBeInTheDocument();
-    expect(screen.getAllByText('error').length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('error')).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: 'retry' })).not.toBeInTheDocument();
     expect(screen.queryByText('loading')).not.toBeInTheDocument();
     expect(state.checkStatus).toHaveBeenCalled();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the unconfirmed-email message and does not offer retry', async () => {
+    mockUseSecurity.mockReturnValue(securityState({ locked: false }));
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({ error: 'Email confirmation required' }),
+    });
+
+    render(<MyBeneficiaryRelationshipsPage />);
+
+    expect(await screen.findByText('emailNotConfirmed')).toBeInTheDocument();
+    expect(screen.getByText('emailNotConfirmedDescription')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'retry' })).not.toBeInTheDocument();
+  });
+
+  it('reserves retry for server failures', async () => {
+    mockUseSecurity.mockReturnValue(securityState({ locked: false }));
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({ error: 'Failed to fetch beneficiary relationships' }),
+    });
+
+    render(<MyBeneficiaryRelationshipsPage />);
+
+    expect(await screen.findByRole('button', { name: 'retry' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'retry' }));
 

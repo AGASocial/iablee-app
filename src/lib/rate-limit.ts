@@ -64,6 +64,29 @@ export function rateLimitResponse(resetAt: number): Response {
   );
 }
 
+/**
+ * verify-pin and change-pin share these keys so a stolen account session
+ * cannot switch endpoints for a fresh in-memory window. The database
+ * lockout counters are the authoritative control across instances.
+ */
+export function takeSecurityPinIpLimit(request: Request): Response | null {
+  const result = checkRateLimit(
+    `security:verify-pin:${getClientIp(request)}`,
+    RATE_LIMITS.securityPin
+  );
+  if (!result.allowed) return rateLimitResponse(result.resetAt);
+  return null;
+}
+
+export function takeSecurityPinUserLimit(userId: string): Response | null {
+  const result = checkRateLimit(
+    `security:verify-pin:user:${userId}`,
+    RATE_LIMITS.securityPin
+  );
+  if (!result.allowed) return rateLimitResponse(result.resetAt);
+  return null;
+}
+
 /** Pre-configured limits for auth/security routes */
 export const RATE_LIMITS = {
   auth: { limit: 10, windowSec: 60 } as RateLimitConfig,

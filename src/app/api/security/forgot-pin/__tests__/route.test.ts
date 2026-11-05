@@ -23,9 +23,11 @@ jest.mock('@/lib/supabase-admin', () => ({
 }));
 jest.mock('resend', () => ({
   Resend: jest.fn().mockImplementation(() => ({
-    emails: { send: jest.fn().mockResolvedValue({ error: null }) },
+    emails: { send: (...args: unknown[]) => mockSendEmail(...args) },
   })),
 }));
+
+const mockSendEmail = jest.fn();
 
 const SECRET = 'test-secret-that-is-long-enough-32';
 
@@ -40,9 +42,10 @@ describe('POST /api/security/forgot-pin', () => {
       user: { id: 'user-1', email: 'owner@example.com' },
     });
     insert.mockResolvedValue({ error: null });
+    mockSendEmail.mockResolvedValue({ error: null });
   });
 
-  function mockUser(lockedUntil: string | null) {
+  function mockUser(lockedUntil: string | null, invalidateError: { message: string } | null = null) {
     (supabaseAdmin.from as jest.Mock).mockImplementation((table: string) => {
       if (table === 'users') {
         return {
@@ -59,7 +62,7 @@ describe('POST /api/security/forgot-pin', () => {
       return {
         update: () => ({
           eq: () => ({
-            eq: async () => ({ error: null }),
+            eq: async () => ({ error: invalidateError }),
           }),
         }),
         insert,
@@ -97,5 +100,42 @@ describe('POST /api/security/forgot-pin', () => {
 
     expect(response.status).toBe(423);
     expect(insert).not.toHaveBeenCalled();
+  });
+
+  it('does not insert a new code when previous codes cannot be invalidated', async () => {
+    mockUser(null, { message: 'permission denied' });
+
+    const response = await POST(new Request('http://localhost/api/security/forgot-pin', {
+      method: 'POST',
+    }) as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body.error).toBe('Failed to generate OTP');
+    expect(insert).not.toHaveBeenCalled();
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
+  it('returns a fixed message when the email provider fails', async () => {
+    mockUser(null);
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockSendEmail.mockResolvedValue({
+      error: { message: 'Invalid API key re_secret_value', name: 'validation_error' },
+    });
+
+    const response = await POST(new Request('http://localhost/api/security/forgot-pin', {
+      method: 'POST',
+    }) as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body).toEqual({ error: 'Failed to send email' });
+    expect(JSON.stringify(body)).not.toContain('re_secret_value');
+    expect(JSON.stringify(body)).not.toContain('validation_error');
+    expect(spy).toHaveBeenCalledWith(
+      'Error sending email:',
+      expect.objectContaining({ message: 'Invalid API key re_secret_value' })
+    );
+    spy.mockRestore();
   });
 });

@@ -55,11 +55,16 @@ export async function POST(request: NextRequest) {
         const codeHash = hashPinResetCode(code);
         const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
-        await supabaseAdmin
+        const { error: invalidateError } = await supabaseAdmin
             .from('security_otps')
             .update({ verified: true, expires_at: new Date().toISOString() })
             .eq('user_id', user.id)
             .eq('verified', false);
+
+        if (invalidateError) {
+            console.error("Error invalidating previous PIN reset codes:", invalidateError);
+            return NextResponse.json({ error: "Failed to generate OTP" }, { status: 500 });
+        }
 
         const { error: dbError } = await supabaseAdmin
             .from('security_otps')
@@ -84,7 +89,7 @@ export async function POST(request: NextRequest) {
 
         if (emailError) {
             console.error("Error sending email:", emailError);
-            return NextResponse.json({ error: `Failed to send email: ${emailError.message}`, details: emailError }, { status: 500 });
+            return NextResponse.json({ error: "Failed to send email" }, { status: 500 });
         }
 
         return NextResponse.json({ success: true, message: "OTP sent" });

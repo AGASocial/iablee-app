@@ -2,8 +2,8 @@
  * @jest-environment node
  */
 import { cookies } from 'next/headers';
-import { verifySecuritySessionToken } from '@/lib/security';
-import { checkSecuritySession, hasPinResetSession } from '@/lib/supabase-server';
+import { readPinResetGrantId, verifySecuritySessionToken } from '@/lib/security';
+import { checkSecuritySession, hasPinResetSession, readPinResetGrant } from '@/lib/supabase-server';
 
 jest.mock('next/headers', () => ({
   cookies: jest.fn(),
@@ -11,11 +11,13 @@ jest.mock('next/headers', () => ({
 
 jest.mock('@/lib/security', () => ({
   verifySecuritySessionToken: jest.fn(),
+  readPinResetGrantId: jest.fn(),
 }));
 
 describe('checkSecuritySession', () => {
   const mockCookies = cookies as jest.Mock;
   const mockVerify = verifySecuritySessionToken as jest.Mock;
+  const mockGrant = readPinResetGrantId as jest.Mock;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -49,6 +51,16 @@ describe('checkSecuritySession', () => {
 
     await expect(hasPinResetSession('user-a')).resolves.toBe(true);
     expect(mockVerify).toHaveBeenCalledWith('session-token', 'user-a', 'pin_reset');
+  });
+
+  it('reads the single-use grant id from the pin_reset cookie', async () => {
+    mockCookies.mockResolvedValue({
+      get: () => ({ value: 'session-token' }),
+    });
+    mockGrant.mockResolvedValue('11111111-1111-4111-8111-111111111111');
+
+    await expect(readPinResetGrant('user-a')).resolves.toBe('11111111-1111-4111-8111-111111111111');
+    expect(mockGrant).toHaveBeenCalledWith('session-token', 'user-a');
   });
 
   it('rejects when the cookie is missing or the user id is empty', async () => {

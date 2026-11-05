@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import type { Database } from '@/lib/supabase';
-import { verifySecuritySessionToken } from '@/lib/security';
+import { readPinResetGrantId, verifySecuritySessionToken } from '@/lib/security';
 import { SECURITY_SESSION_COOKIE_NAME } from '@/lib/security-cookie';
 
 /**
@@ -76,4 +76,17 @@ export async function hasPinResetSession(userId: string) {
     if (!securitySession?.value) return false;
 
     return await verifySecuritySessionToken(securitySession.value, userId, 'pin_reset');
+}
+
+/**
+ * Grant id from a pin_reset cookie. Missing, reused, or verify-pin cookies return null.
+ */
+export async function readPinResetGrant(userId: string): Promise<string | null> {
+    if (!userId) return null;
+
+    const cookieStore = await cookies();
+    const securitySession = cookieStore.get(SECURITY_SESSION_COOKIE_NAME);
+    if (!securitySession?.value) return null;
+
+    return await readPinResetGrantId(securitySession.value, userId);
 }

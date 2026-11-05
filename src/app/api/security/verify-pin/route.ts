@@ -9,20 +9,14 @@ import {
     SECURITY_SESSION_MAX_AGE_SECONDS,
     securitySessionCookieOptions,
 } from "@/lib/security-cookie";
-import { checkRateLimit, getClientIp, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
-import {
-    isPinLocked,
-    nextLockoutExpiry,
-    PIN_LOCKOUT_MAX_ATTEMPTS,
-} from "@/lib/pin-lockout";
+import { takeSecurityPinIpLimit, takeSecurityPinUserLimit } from "@/lib/rate-limit";
+import { isPinLocked } from "@/lib/pin-lockout";
+import { recordPinFailedAttempt } from "@/lib/pin-failures";
 
 export async function POST(req: NextRequest) {
     try {
-        const ip = getClientIp(req);
-        const rateLimit = checkRateLimit(`security:verify-pin:${ip}`, RATE_LIMITS.securityPin);
-        if (!rateLimit.allowed) {
-            return rateLimitResponse(rateLimit.resetAt);
-        }
+        const ipLimit = takeSecurityPinIpLimit(req);
+        if (ipLimit) return ipLimit;
 
         const { user } = await createAuthenticatedRouteClient();
 
@@ -30,13 +24,8 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const userRateLimit = checkRateLimit(
-            `security:verify-pin:user:${user.id}`,
-            RATE_LIMITS.securityPin
-        );
-        if (!userRateLimit.allowed) {
-            return rateLimitResponse(userRateLimit.resetAt);
-        }
+        const userLimit = takeSecurityPinUserLimit(user.id);
+        if (userLimit) return userLimit;
 
         const body = await req.json();
         const { pin } = body;
@@ -47,7 +36,7 @@ export async function POST(req: NextRequest) {
 
         const { data: userData, error: fetchError } = await supabaseAdmin
             .from("users")
-            .select("security_pin_hash, pin_failed_attempts, pin_locked_until")
+            .select("security_pin_hash, pin_locked_until")
             .eq("id", user.id)
             .single();
 
@@ -80,27 +69,20 @@ export async function POST(req: NextRequest) {
         const isValid = await bcrypt.compare(pin, userData.security_pin_hash);
 
         if (!isValid) {
-            const attempts = (userData.pin_failed_attempts ?? 0) + 1;
-            const updatePayload: {
-                pin_failed_attempts: number;
-                pin_locked_until?: string;
-            } = { pin_failed_attempts: attempts };
-
-            if (attempts >= PIN_LOCKOUT_MAX_ATTEMPTS) {
-                updatePayload.pin_locked_until = nextLockoutExpiry();
+            const failure = await recordPinFailedAttempt(user.id);
+            if (!failure) {
+                return NextResponse.json(
+                    { error: "Failed to verify PIN" },
+                    { status: 500 }
+                );
             }
 
-            await supabaseAdmin
-                .from("users")
-                .update(updatePayload)
-                .eq("id", user.id);
-
-            if (attempts >= PIN_LOCKOUT_MAX_ATTEMPTS) {
+            if (failure.locked) {
                 return NextResponse.json(
                     {
                         success: false,
                         error: "PIN locked due to too many failed attempts",
-                        lockedUntil: updatePayload.pin_locked_until,
+                        lockedUntil: failure.lockedUntil,
                     },
                     { status: 423 }
                 );
@@ -110,7 +92,7 @@ export async function POST(req: NextRequest) {
                 {
                     success: false,
                     error: "Invalid PIN",
-                    remainingAttempts: PIN_LOCKOUT_MAX_ATTEMPTS - attempts,
+                    remainingAttempts: failure.remainingAttempts,
                 },
                 { status: 401 }
             );

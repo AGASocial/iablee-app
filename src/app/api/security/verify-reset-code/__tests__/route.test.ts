@@ -6,13 +6,12 @@ import { createAuthenticatedRouteClient } from '@/lib/supabase-server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { createSecuritySessionToken } from '@/lib/security';
 import { resetRateLimitStore } from '@/lib/rate-limit';
-import { PIN_LOCKOUT_MAX_ATTEMPTS } from '@/lib/pin-lockout';
 
 jest.mock('@/lib/supabase-server', () => ({
   createAuthenticatedRouteClient: jest.fn(),
 }));
 jest.mock('@/lib/supabase-admin', () => ({
-  supabaseAdmin: { from: jest.fn() },
+  supabaseAdmin: { from: jest.fn(), rpc: jest.fn() },
 }));
 jest.mock('@/lib/security', () => ({
   createSecuritySessionToken: jest.fn().mockResolvedValue('reset-token'),
@@ -29,14 +28,18 @@ describe('POST /api/security/verify-reset-code', () => {
     (createAuthenticatedRouteClient as jest.Mock).mockResolvedValue({
       user: { id: 'user-1' },
     });
+    (supabaseAdmin.rpc as jest.Mock).mockResolvedValue({
+      data: [{ failed_attempts: 1, locked_until: null, already_locked: false }],
+      error: null,
+    });
     userUpdate.mockImplementation(() => thenable());
-    otpUpdate.mockImplementation(() => thenable());
+    otpUpdate.mockImplementation(() => grantBuilder());
   });
 
-  function thenable(resolved: { error: null } = { error: null }) {
+  function thenable(resolved: { error: null | { message: string } } = { error: null }) {
     const builder: {
       eq: jest.Mock;
-      then: Promise<{ error: null }>['then'];
+      then: Promise<{ error: null | { message: string } }>['then'];
     } = {
       eq: jest.fn(),
       then: (onFulfilled, onRejected) => Promise.resolve(resolved).then(onFulfilled, onRejected),
@@ -45,8 +48,24 @@ describe('POST /api/security/verify-reset-code', () => {
     return builder;
   }
 
+  function grantBuilder() {
+    const builder: {
+      eq: jest.Mock;
+      select: jest.Mock;
+      maybeSingle: jest.Mock;
+      then: Promise<{ error: null }>['then'];
+    } = {
+      eq: jest.fn(),
+      select: jest.fn(),
+      maybeSingle: jest.fn(async () => ({ data: { id: 'otp-1' }, error: null })),
+      then: (onFulfilled, onRejected) => Promise.resolve({ error: null }).then(onFulfilled, onRejected),
+    };
+    builder.eq.mockReturnValue(builder);
+    builder.select.mockReturnValue(builder);
+    return builder;
+  }
+
   function mockRows(options: {
-    attempts?: number;
     lockedUntil?: string | null;
     otp?: { id: string } | null;
   }) {
@@ -57,7 +76,6 @@ describe('POST /api/security/verify-reset-code', () => {
             eq: () => ({
               single: async () => ({
                 data: {
-                  pin_reset_failed_attempts: options.attempts ?? 0,
                   pin_reset_locked_until: options.lockedUntil ?? null,
                 },
                 error: null,
@@ -103,30 +121,79 @@ describe('POST /api/security/verify-reset-code', () => {
     expect(response?.status).toBe(429);
   });
 
-  it('locks the user and invalidates OTPs after repeated failures', async () => {
-    mockRows({ attempts: PIN_LOCKOUT_MAX_ATTEMPTS - 1 });
+  it('locks from the database increment and invalidates OTPs', async () => {
+    mockRows({});
+    const lockedUntil = new Date(Date.now() + 60_000).toISOString();
+    (supabaseAdmin.rpc as jest.Mock).mockResolvedValue({
+      data: [{
+        failed_attempts: 5,
+        locked_until: lockedUntil,
+        already_locked: false,
+      }],
+      error: null,
+    });
 
     const response = await POST(request('111111') as never);
     const body = await response.json();
 
     expect(response.status).toBe(423);
     expect(body.error).toMatch(/locked/i);
-    expect(userUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ pin_reset_failed_attempts: PIN_LOCKOUT_MAX_ATTEMPTS })
-    );
+    expect(body.lockedUntil).toBe(lockedUntil);
+    expect(supabaseAdmin.rpc).toHaveBeenCalledWith('record_pin_reset_failed_attempt', {
+      p_user_id: 'user-1',
+    });
     expect(otpUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ verified: true })
     );
+    expect(userUpdate).not.toHaveBeenCalled();
     expect(createSecuritySessionToken).not.toHaveBeenCalled();
   });
 
-  it('issues a pin_reset session for a matching hashed code', async () => {
+  it('returns 500 when the atomic counter update fails', async () => {
+    mockRows({});
+    (supabaseAdmin.rpc as jest.Mock).mockResolvedValue({
+      data: null,
+      error: { message: 'db down' },
+    });
+
+    const response = await POST(request('111111') as never);
+
+    expect(response.status).toBe(500);
+    expect(createSecuritySessionToken).not.toHaveBeenCalled();
+  });
+
+  it('invalidates leftover codes while a reset lock is already active', async () => {
+    const lockedUntil = new Date(Date.now() + 60_000).toISOString();
+    mockRows({ lockedUntil });
+
+    const response = await POST(request('123456') as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(423);
+    expect(body.lockedUntil).toBe(lockedUntil);
+    expect(otpUpdate).toHaveBeenCalledWith(expect.objectContaining({ verified: true }));
+    expect(supabaseAdmin.rpc).not.toHaveBeenCalled();
+    expect(createSecuritySessionToken).not.toHaveBeenCalled();
+  });
+
+  it('issues a single-use pin_reset grant for a matching hashed code', async () => {
     mockRows({ otp: { id: 'otp-1' } });
 
     const response = await POST(request('123456') as never);
 
     expect(response.status).toBe(200);
-    expect(createSecuritySessionToken).toHaveBeenCalledWith('user-1', 'pin_reset');
+    const grantCall = otpUpdate.mock.calls
+      .map((call) => call[0] as { reset_grant_id?: string; verified?: boolean })
+      .find((payload) => payload.reset_grant_id);
+    expect(grantCall).toEqual(expect.objectContaining({ verified: true }));
+    expect(grantCall?.reset_grant_id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    );
+    expect(createSecuritySessionToken).toHaveBeenCalledWith(
+      'user-1',
+      'pin_reset',
+      grantCall?.reset_grant_id
+    );
     const setCookie = response.headers.get('set-cookie') ?? '';
     expect(setCookie).toContain('security_session=reset-token');
     expect(setCookie.toLowerCase()).toContain('httponly');

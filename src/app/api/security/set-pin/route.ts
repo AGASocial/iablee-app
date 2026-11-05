@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { createAuthenticatedRouteClient, hasPinResetSession } from "@/lib/supabase-server";
+import { createAuthenticatedRouteClient, readPinResetGrant } from "@/lib/supabase-server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { createSecuritySessionToken } from "@/lib/security";
 import {
@@ -28,33 +28,65 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const { data: userData, error: fetchError } = await supabaseAdmin
-            .from("users")
-            .select("security_pin_hash")
-            .eq("id", user.id)
-            .single();
+        const { data: hasPin, error: hasPinError } = await supabaseAdmin.rpc(
+            "user_has_security_pin",
+            { p_user_id: user.id }
+        );
 
-        if (fetchError || !userData) {
-            console.error("Error fetching user data:", fetchError);
+        if (hasPinError || typeof hasPin !== "boolean") {
+            console.error("Error reading PIN status:", hasPinError);
             return NextResponse.json(
                 { error: "Failed to set security PIN" },
                 { status: 500 }
             );
         }
 
-        const pinAlreadySet = Boolean(userData.security_pin_hash);
-        if (pinAlreadySet) {
-            const resetSession = await hasPinResetSession(user.id);
-            if (!resetSession) {
+        const salt = await bcrypt.genSalt(10);
+        const hash = await bcrypt.hash(pin, salt);
+
+        if (hasPin) {
+            const grantId = await readPinResetGrant(user.id);
+            if (!grantId) {
                 return NextResponse.json(
                     { error: "A verified reset code is required to replace an existing PIN" },
                     { status: 403 }
                 );
             }
-        }
 
-        const salt = await bcrypt.genSalt(10);
-        const hash = await bcrypt.hash(pin, salt);
+            const { data: applied, error: applyError } = await supabaseAdmin.rpc(
+                "apply_pin_reset",
+                {
+                    p_user_id: user.id,
+                    p_grant_id: grantId,
+                    p_pin_hash: hash,
+                }
+            );
+
+            if (applyError) {
+                console.error("Error applying PIN reset:", applyError);
+                return NextResponse.json(
+                    { error: "Failed to set security PIN" },
+                    { status: 500 }
+                );
+            }
+
+            if (applied !== true) {
+                return NextResponse.json(
+                    { error: "A verified reset code is required to replace an existing PIN" },
+                    { status: 403 }
+                );
+            }
+
+            const token = await createSecuritySessionToken(user.id, "pin_verified");
+            const cookieStore = await cookies();
+            cookieStore.set(
+                SECURITY_SESSION_COOKIE_NAME,
+                token,
+                securitySessionCookieOptions(SECURITY_SESSION_MAX_AGE_SECONDS)
+            );
+
+            return NextResponse.json({ success: true });
+        }
 
         const { error: updateError } = await supabaseAdmin
             .from("users")
@@ -69,16 +101,6 @@ export async function POST(req: NextRequest) {
             return NextResponse.json(
                 { error: "Failed to set security PIN" },
                 { status: 500 }
-            );
-        }
-
-        if (pinAlreadySet) {
-            const token = await createSecuritySessionToken(user.id, "pin_verified");
-            const cookieStore = await cookies();
-            cookieStore.set(
-                SECURITY_SESSION_COOKIE_NAME,
-                token,
-                securitySessionCookieOptions(SECURITY_SESSION_MAX_AGE_SECONDS)
             );
         }
 

@@ -21,6 +21,19 @@ function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
+function normalizeEmail(email: string | null | undefined): string {
+  return (email ?? '').trim().toLowerCase();
+}
+
+function emailsMatch(
+  tokenEmail: string | null | undefined,
+  beneficiaryEmail: string | null | undefined
+): boolean {
+  const sentTo = normalizeEmail(tokenEmail);
+  const current = normalizeEmail(beneficiaryEmail);
+  return sentTo.length > 0 && sentTo === current;
+}
+
 function buildVerificationUrl(token: string, locale: EmailLocale): string {
   const appUrl = getAppUrl();
   const params = new URLSearchParams({
@@ -62,6 +75,7 @@ export async function sendBeneficiaryVerificationEmail(params: {
       beneficiary_id: params.beneficiaryId,
       token_hash: tokenHash,
       expires_at: expiresAt,
+      email: normalizeEmail(params.email),
     });
 
   if (insertError) {
@@ -121,7 +135,7 @@ export async function verifyBeneficiaryEmailToken(
 
   const { data: record, error } = await supabaseAdmin
     .from('beneficiary_email_verifications')
-    .select('id, beneficiary_id, expires_at, used_at, beneficiary:beneficiaries(full_name, email)')
+    .select('id, beneficiary_id, expires_at, used_at, email, beneficiary:beneficiaries(full_name, email)')
     .eq('token_hash', tokenHash)
     .maybeSingle();
 
@@ -141,14 +155,31 @@ export async function verifyBeneficiaryEmailToken(
     ? record.beneficiary[0]
     : record.beneficiary;
 
-  const { error: markUsedError } = await supabaseAdmin
+  if (!emailsMatch(record.email, beneficiary?.email)) {
+    const { error: expireError } = await supabaseAdmin
+      .from('beneficiary_email_verifications')
+      .update({ used_at: now })
+      .eq('id', record.id)
+      .is('used_at', null);
+    if (expireError) {
+      console.error('Error expiring mismatched verification token:', expireError);
+    }
+    return { ok: false, reason: 'invalid' };
+  }
+
+  const { data: marked, error: markUsedError } = await supabaseAdmin
     .from('beneficiary_email_verifications')
     .update({ used_at: now })
-    .eq('id', record.id);
+    .eq('id', record.id)
+    .is('used_at', null)
+    .select('id')
+    .maybeSingle();
 
-  if (markUsedError) {
-    console.error('Error marking verification token as used:', markUsedError);
-    return { ok: false, reason: 'invalid' };
+  if (markUsedError || !marked) {
+    if (markUsedError) {
+      console.error('Error marking verification token as used:', markUsedError);
+    }
+    return { ok: false, reason: markUsedError ? 'invalid' : 'used' };
   }
 
   const { error: updateError } = await supabaseAdmin

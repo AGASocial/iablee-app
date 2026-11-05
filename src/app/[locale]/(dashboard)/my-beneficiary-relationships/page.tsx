@@ -25,7 +25,7 @@ export default function MyBeneficiaryRelationshipsPage() {
   const unlocked = !securityLoading && !locked
   const [relationships, setRelationships] = useState<BeneficiaryRelationship[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<"unconfirmed" | "unavailable" | "retryable" | null>(null)
   const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
@@ -45,9 +45,16 @@ export default function MyBeneficiaryRelationshipsPage() {
         const response = await fetch("/api/beneficiaries/my-relationships")
 
         if (response.status === 403) {
+          let message = ""
+          try {
+            const body = await response.json()
+            message = typeof body?.error === "string" ? body.error : ""
+          } catch {
+            message = ""
+          }
           if (!cancelled) {
             setRelationships((current) => (current.length === 0 ? current : []))
-            setError(t("error"))
+            setError(message === "Email confirmation required" ? "unconfirmed" : "unavailable")
             setLoading(false)
           }
           void checkStatus()
@@ -64,7 +71,7 @@ export default function MyBeneficiaryRelationshipsPage() {
         }
       } catch {
         if (!cancelled) {
-          setError(t("error"))
+          setError("retryable")
         }
       } finally {
         if (!cancelled) {
@@ -106,18 +113,23 @@ export default function MyBeneficiaryRelationshipsPage() {
   }
 
   if (error) {
+    const unconfirmed = error === "unconfirmed"
+    const title = unconfirmed ? t("emailNotConfirmed") : t("error")
+    const description = unconfirmed ? t("emailNotConfirmedDescription") : t("error")
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <Card className="max-w-md">
           <CardHeader>
-            <CardTitle className="text-destructive">{t("error")}</CardTitle>
-            <CardDescription>{error}</CardDescription>
+            <CardTitle className="text-destructive">{title}</CardTitle>
+            <CardDescription>{description}</CardDescription>
           </CardHeader>
-          <CardContent>
-            <Button type="button" onClick={() => setAttempt((current) => current + 1)}>
-              {t("retry")}
-            </Button>
-          </CardContent>
+          {error === "retryable" ? (
+            <CardContent>
+              <Button type="button" onClick={() => setAttempt((current) => current + 1)}>
+                {t("retry")}
+              </Button>
+            </CardContent>
+          ) : null}
         </Card>
       </div>
     )

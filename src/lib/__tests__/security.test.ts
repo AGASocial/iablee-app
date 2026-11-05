@@ -2,7 +2,7 @@
  * @jest-environment node
  */
 import { jwtVerify } from 'jose';
-import { verifySecuritySessionToken } from '@/lib/security';
+import { readPinResetGrantId, verifySecuritySessionToken } from '@/lib/security';
 
 jest.mock('jose', () => ({
   SignJWT: jest.fn(),
@@ -67,6 +67,39 @@ describe('verifySecuritySessionToken', () => {
     delete process.env.SUPABASE_JWT_SECRET;
     await expect(verifySecuritySessionToken('token', 'user-a')).resolves.toBe(false);
     expect(mockJwtVerify).not.toHaveBeenCalled();
+  });
+
+  it('returns a reset grant id only for a pin_reset token that carries one', async () => {
+    const jti = '11111111-1111-4111-8111-111111111111';
+    mockJwtVerify.mockResolvedValue({
+      payload: {
+        userId: 'user-a',
+        role: 'security_pin_verified',
+        purpose: 'pin_reset',
+        jti,
+      },
+    });
+
+    await expect(readPinResetGrantId('token', 'user-a')).resolves.toBe(jti);
+
+    mockJwtVerify.mockResolvedValue({
+      payload: {
+        userId: 'user-a',
+        role: 'security_pin_verified',
+        purpose: 'pin_reset',
+      },
+    });
+    await expect(readPinResetGrantId('token', 'user-a')).resolves.toBeNull();
+
+    mockJwtVerify.mockResolvedValue({
+      payload: {
+        userId: 'user-a',
+        role: 'security_pin_verified',
+        purpose: 'pin_verified',
+        jti,
+      },
+    });
+    await expect(readPinResetGrantId('token', 'user-a')).resolves.toBeNull();
   });
 
   it('rejects a token that is missing userId, an empty user id, and invalid tokens', async () => {

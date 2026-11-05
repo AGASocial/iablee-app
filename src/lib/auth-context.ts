@@ -1,4 +1,5 @@
 import { createAuthenticatedRouteClient, checkSecuritySession } from '@/lib/supabase-server';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import type { User } from '@supabase/supabase-js';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/supabase';
@@ -11,24 +12,31 @@ export interface AuthenticatedContext {
   pinRequired: boolean;
 }
 
+async function userHasSecurityPin(userId: string): Promise<boolean | null> {
+  const { data, error } = await supabaseAdmin.rpc('user_has_security_pin', {
+    p_user_id: userId,
+  });
+
+  if (error || typeof data !== 'boolean') {
+    console.error('Error reading PIN status:', error);
+    return null;
+  }
+
+  return data;
+}
+
 async function buildContext(
   supabase: SupabaseClient<Database>,
   user: User
 ): Promise<AuthenticatedContext | { unavailable: true }> {
   const hasSecuritySession = await checkSecuritySession(user.id);
-
-  const { data: userData, error } = await supabase
-    .from('users')
-    .select('security_pin_hash')
-    .eq('id', user.id)
-    .single();
+  const hasPin = await userHasSecurityPin(user.id);
 
   // A missing row or a failed read is not "this user has no PIN".
-  if (error || !userData) {
+  if (hasPin === null) {
     return { unavailable: true };
   }
 
-  const hasPin = Boolean(userData.security_pin_hash);
   const pinRequired = hasPin && !hasSecuritySession;
 
   return {
@@ -43,6 +51,7 @@ async function buildContext(
 /**
  * Read auth + security state without blocking on PIN.
  * Used by check-session and security UI.
+ * PIN presence is a boolean from the service client. The hash is never selected.
  */
 export async function getSecurityContext(): Promise<
   | { ok: true; ctx: AuthenticatedContext }

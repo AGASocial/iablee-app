@@ -28,6 +28,8 @@
   "beneficiaryRelationshipsInfoDescription": "This list shows only relationships where your email has been verified. You cannot view digital assets until the account holder activates the release process.",
   "error": "Error",
   "retry": "Retry",
+  "emailNotConfirmed": "Confirm your email",
+  "emailNotConfirmedDescription": "Confirm your email address to see who added you as a beneficiary.",
   "attachments": "Attachments",
   "removeBeneficiary": "Remove Beneficiary",
   "beneficiaryUpdatedSuccess": "Beneficiary updated successfully",

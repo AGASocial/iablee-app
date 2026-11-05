@@ -11,7 +11,7 @@ jest.mock('@/lib/supabase-server', () => ({
   createAuthenticatedRouteClient: jest.fn(),
 }));
 jest.mock('@/lib/supabase-admin', () => ({
-  supabaseAdmin: { from: jest.fn() },
+  supabaseAdmin: { from: jest.fn(), rpc: jest.fn() },
 }));
 jest.mock('bcryptjs');
 jest.mock('next/headers', () => ({
@@ -24,6 +24,7 @@ jest.mock('@/lib/security', () => ({
 describe('POST /api/security/verify-pin lockout', () => {
   const mockCreateAuthenticatedRouteClient = createAuthenticatedRouteClient as jest.Mock;
   const mockFrom = supabaseAdmin.from as jest.Mock;
+  const mockRpc = supabaseAdmin.rpc as jest.Mock;
   const mockCompare = bcrypt.compare as jest.Mock;
 
   beforeEach(() => {
@@ -59,11 +60,12 @@ describe('POST /api/security/verify-pin lockout', () => {
 
     expect(response.status).toBe(423);
     expect(body.error).toContain('locked');
+    expect(mockRpc).not.toHaveBeenCalled();
+    expect(mockCompare).not.toHaveBeenCalled();
   });
 
-  it('increments failed attempts on invalid PIN', async () => {
+  it('increments failed attempts atomically and ignores the previously read count', async () => {
     const update = jest.fn().mockReturnThis();
-    const eq = jest.fn().mockResolvedValue({ error: null });
 
     mockFrom.mockReturnValue({
       select: jest.fn().mockReturnThis(),
@@ -71,14 +73,17 @@ describe('POST /api/security/verify-pin lockout', () => {
       single: jest.fn().mockResolvedValue({
         data: {
           security_pin_hash: 'hash',
-          pin_failed_attempts: 2,
+          pin_failed_attempts: 0,
           pin_locked_until: null,
         },
         error: null,
       }),
       update,
     });
-    update.mockReturnValue({ eq });
+    mockRpc.mockResolvedValue({
+      data: [{ failed_attempts: 4, locked_until: null, already_locked: false }],
+      error: null,
+    });
     mockCompare.mockResolvedValue(false);
 
     const request = new Request('http://localhost/api/security/verify-pin', {
@@ -90,8 +95,37 @@ describe('POST /api/security/verify-pin lockout', () => {
     const body = await response.json();
 
     expect(response.status).toBe(401);
-    expect(body.remainingAttempts).toBe(2);
-    expect(update).toHaveBeenCalledWith({ pin_failed_attempts: 3 });
+    expect(body.remainingAttempts).toBe(1);
+    expect(mockRpc).toHaveBeenCalledWith('record_pin_failed_attempt', { p_user_id: 'user-1' });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('does not invent a local attempt count when the atomic update fails', async () => {
+    const update = jest.fn();
+    mockFrom.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      single: jest.fn().mockResolvedValue({
+        data: {
+          security_pin_hash: 'hash',
+          pin_locked_until: null,
+        },
+        error: null,
+      }),
+      update,
+    });
+    mockRpc.mockResolvedValue({ data: null, error: { message: 'db down' } });
+    mockCompare.mockResolvedValue(false);
+
+    const request = new Request('http://localhost/api/security/verify-pin', {
+      method: 'POST',
+      body: JSON.stringify({ pin: '0000' }),
+    });
+
+    const response = await POST(request as never);
+
+    expect(response.status).toBe(500);
+    expect(update).not.toHaveBeenCalled();
   });
 
   it('returns 429 when rate limited', async () => {
