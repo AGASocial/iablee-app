@@ -1,202 +1,252 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import { useTranslations, useLocale } from 'next-intl';
-import { Button } from "@/components/ui/button";
+import { useEffect, useMemo, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
+import { useRouter } from "@/i18n/navigation";
+import { toast } from "sonner";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
+import SecurityPinModal from "@/components/security/SecurityPinModal";
+import { useSecurity } from "@/context/SecurityContext";
+import { useAuth } from "@/lib/auth";
+import { useAssetTypes } from "@/lib/assetTypes";
+import { useBilling } from "@/hooks/useDataQueries";
+import { uploadWithConcurrency } from "@/lib/upload-concurrency";
+import { wizardApiErrorMessage } from "./completion-error";
+import { AssetDetailsStep } from "./components/AssetDetailsStep";
+import { AssetTypeStep } from "./components/AssetTypeStep";
+import { BeneficiaryStep } from "./components/BeneficiaryStep";
+import { StepIndicator } from "./components/StepIndicator";
+import { SuccessStep } from "./components/SuccessStep";
+import { WelcomeStep } from "./components/WelcomeStep";
+import type { AssetFormData, BeneficiaryFormData, FileUploadItem, UploadStatus, WizardStep } from "./components/types";
+import { MAX_WIZARD_FILES, formatBytesToMb, validateAssetDetails, validateAssetType, validateBeneficiary } from "./utils";
 
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useAuth } from '@/lib/auth';
+type WizardView = "welcome" | "form" | "success";
 
-import { useRouter } from 'next/navigation';
-import { toast } from 'sonner';
-import { ProtectedRoute } from '@/components/ProtectedRoute';
-import { useAssetTypes, useAssetType } from '@/lib/assetTypes';
-import { uploadWithConcurrency } from '@/lib/upload-concurrency';
-import { wizardApiErrorMessage } from './completion-error';
-
-type WizardStep = 'welcome' | 'asset-type' | 'asset-details' | 'beneficiary' | 'final';
+type SecuritySessionResponse = {
+  authenticated: boolean;
+  hasPin: boolean;
+  locked: boolean;
+};
 
 export default function WizardPage() {
   const t = useTranslations();
   const locale = useLocale();
-  const { user } = useAuth();
   const router = useRouter();
-  const [currentStep, setCurrentStep] = useState<WizardStep>('welcome');
-  const [loading, setLoading] = useState(false);
-  const [relationships, setRelationships] = useState<Array<{ id: number, key: string }>>([]);
+  const { user } = useAuth();
+  const security = useSecurity();
+  const tr = (key: string, values?: Record<string, string | number>) => {
+    try {
+      return values ? t(key as never, values as never) : t(key as never);
+    } catch {
+      return key;
+    }
+  };
 
-  const [assetData, setAssetData] = useState({
-    assetType: '',
-    assetName: '',
-    description: '',
-    website: '',
-    validUntil: '',
-    email: '',
-    password: '',
-    files: [] as File[],
-    customFields: {} as Record<string, string | number | boolean | string[]>,
+  const { data: assetTypes = [], isLoading: assetTypesLoading, isError: assetTypesError, error: assetTypesErrorObj, refetch: refetchAssetTypes } = useAssetTypes();
+  const { data: billingData } = useBilling();
+  const maxFileSizeMb = billingData?.limits.maxFileSizeMb ?? 10;
+
+  const [wizardView, setWizardView] = useState<WizardView>("welcome");
+  const [step, setStep] = useState<WizardStep>("asset-type");
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [relationships, setRelationships] = useState<Array<{ id: number; key: string }>>([]);
+  const [files, setFiles] = useState<FileUploadItem[]>([]);
+  const [pinOpen, setPinOpen] = useState(false);
+  const [pinReason, setPinReason] = useState<string | null>(null);
+  const [retryAfterPin, setRetryAfterPin] = useState(false);
+  const [showErrors, setShowErrors] = useState({
+    assetType: false,
+    assetDetails: false,
+    beneficiary: false,
   });
 
-  const { data: assetTypes = [], isLoading: assetTypesLoading } = useAssetTypes();
-  const { data: currentAssetType = null } = useAssetType(assetData.assetType || null);
-  const [, setUploadStatuses] = useState<Record<string, 'pending' | 'uploading' | 'done' | 'failed'>>({});
-
-  // Beneficiary form data
-  const [beneficiaryData, setBeneficiaryData] = useState({
-    fullName: '',
-    email: '',
-    relationshipId: null as number | null,
-    phoneNumber: '',
-    notes: ''
+  const [assetData, setAssetData] = useState<AssetFormData>({
+    assetType: "",
+    assetName: "",
+    description: "",
+    website: "",
+    validUntil: "",
+    email: "",
+    password: "",
+    customFields: {},
+  });
+  const [beneficiaryData, setBeneficiaryData] = useState<BeneficiaryFormData>({
+    fullName: "",
+    email: "",
+    relationshipId: null,
+    phoneNumber: "",
+    notes: "",
   });
 
-  // Fetch relationships from database
+  const currentAssetType = useMemo(
+    () => assetTypes.find((assetType) => assetType.key === assetData.assetType) ?? null,
+    [assetTypes, assetData.assetType],
+  );
+
+  const assetTypeErrors = validateAssetType(assetData);
+  const assetDetailErrors = validateAssetDetails(assetData, currentAssetType);
+  const beneficiaryErrors = validateBeneficiary(beneficiaryData);
+
+  const canContinueAssetType = Object.keys(assetTypeErrors).length === 0;
+  const canContinueAssetDetails = Object.keys(assetDetailErrors).length === 0;
+  const canSave = Object.keys(beneficiaryErrors).length === 0 && !saving;
+
   useEffect(() => {
-    fetch('/api/relationships?minGenerationLevel=3')
+    fetch("/api/relationships?minGenerationLevel=3")
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => setRelationships(data))
-      .catch((error) => console.error('Error fetching relationships:', error));
+      .catch((error) => console.error("Error fetching relationships:", error));
   }, []);
 
-  const handleNext = () => {
-    switch (currentStep) {
-      case 'welcome':
-        setCurrentStep('asset-type');
-        break;
-      case 'asset-type':
-        setCurrentStep('asset-details');
-        break;
-      case 'asset-details':
-        setCurrentStep('beneficiary');
-        break;
-      case 'beneficiary':
-        setCurrentStep('final');
-        break;
-      case 'final':
-        handleFinish();
-        break;
+  const updateFileStatus = (fileId: string, status: UploadStatus, error?: string, uploaded?: FileUploadItem["uploaded"]) => {
+    setFiles((prev) =>
+      prev.map((item) => {
+        if (item.id !== fileId) return item;
+        return { ...item, status, error, uploaded };
+      }),
+    );
+  };
+
+  const handleAddFiles = (fileList: FileList | null) => {
+    if (!fileList) return;
+    const incoming = Array.from(fileList);
+    const availableSlots = Math.max(MAX_WIZARD_FILES - files.length, 0);
+    const selected = incoming.slice(0, availableSlots);
+
+    if (incoming.length > availableSlots) {
+      toast.error(tr("wizard-file-max-count-error", { count: MAX_WIZARD_FILES }));
     }
-  };
 
-  const handleBack = () => {
-    switch (currentStep) {
-      case 'asset-type':
-        setCurrentStep('welcome');
-        break;
-      case 'asset-details':
-        setCurrentStep('asset-type');
-        break;
-      case 'beneficiary':
-        setCurrentStep('asset-details');
-        break;
-      case 'final':
-        setCurrentStep('beneficiary');
-        break;
+    const overSize = selected.filter((file) => file.size > maxFileSizeMb * 1024 * 1024);
+    if (overSize.length > 0) {
+      toast.error(
+        tr("wizard-file-max-size-error", {
+          size: maxFileSizeMb,
+          file: `${overSize[0].name} (${formatBytesToMb(overSize[0].size)} MB)`,
+        }),
+      );
     }
+
+    const validFiles = selected.filter((file) => file.size <= maxFileSizeMb * 1024 * 1024);
+    if (validFiles.length === 0) return;
+
+    const existingIds = new Set(files.map((file) => file.id));
+    const newItems: FileUploadItem[] = validFiles
+      .map((file) => ({
+        id: `${file.name}-${file.size}-${file.lastModified}`,
+        file,
+        status: "pending" as const,
+      }))
+      .filter((item) => !existingIds.has(item.id));
+
+    setFiles((prev) => [...prev, ...newItems]);
   };
 
-  // Helper function to check if a field should be shown
-  const shouldShowField = (fieldName: string): boolean => {
-    if (!currentAssetType) return true;
-
-    const isRequired = currentAssetType.requiredFields?.includes(fieldName);
-    const isOptional = currentAssetType.optionalFields?.includes(fieldName);
-
-    return isRequired || isOptional || false;
+  const handleRemoveFile = (id: string) => {
+    setFiles((prev) => prev.filter((item) => item.id !== id));
   };
 
-  // Helper function to check if a field is required
-  const isFieldRequired = (fieldName: string): boolean => {
-    if (!currentAssetType) return false;
-    return currentAssetType.requiredFields?.includes(fieldName) || false;
-  };
-
-  const handleCustomFieldChange = (fieldKey: string, value: string | number | boolean | string[]) => {
-    setAssetData(prev => ({
-      ...prev,
-      customFields: {
-        ...prev.customFields,
-        [fieldKey]: value
-      }
-    }));
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const files = Array.from(e.target.files).slice(0, 5);
-      setAssetData(prev => ({ ...prev, files }));
+  const checkSecuritySession = async () => {
+    const res = await fetch("/api/security/check-session");
+    if (!res.ok) {
+      throw new Error("failedToCheckSecuritySession");
     }
+    const data = (await res.json()) as SecuritySessionResponse;
+    if (data.locked || !data.hasPin) {
+      const pinMessage = tr("wizard-pin-protect-message");
+      setPinReason(pinMessage);
+      setRetryAfterPin(true);
+      setPinOpen(true);
+      toast.error(pinMessage);
+      return false;
+    }
+    return true;
   };
 
-  const handleFinish = async () => {
-    setLoading(true);
-    try {
-      // Upload files if any
-      const fileUrls: string[] = [];
-      const fileMetadata: { path: string; fileName: string; fileType: string; fileSize: number }[] = [];
-      if (assetData.files.length > 0) {
-        const initialStatuses = Object.fromEntries(
-          assetData.files.map((f) => [f.name, 'uploading' as const])
-        );
-        setUploadStatuses(initialStatuses);
+  const uploadPendingFiles = async () => {
+    const pendingItems = files.filter((item) => !item.uploaded);
+    if (pendingItems.length === 0) return;
 
-        const uploadResults = await uploadWithConcurrency(
-          assetData.files,
-          async (file) => {
-            const formData = new FormData();
-            formData.append('file', file);
-            const uploadRes = await fetch('/api/storage/upload', {
-              method: 'POST',
-              body: formData,
-            });
-            if (!uploadRes.ok) {
-              const err = await uploadRes.json();
-              throw new Error(err.error || 'Upload failed');
-            }
-            return uploadRes.json() as Promise<{
-              path: string;
-              fileName: string;
-              fileType: string;
-              fileSize: number;
-            }>;
-          },
-          3
-        );
+    pendingItems.forEach((item) => updateFileStatus(item.id, "uploading"));
 
-        const failed = uploadResults.filter((r) => !r.ok);
-        uploadResults.forEach((r) => {
-          setUploadStatuses((prev) => ({
-            ...prev,
-            [r.file.name]: r.ok ? 'done' : 'failed',
-          }));
+    const uploadResults = await uploadWithConcurrency(
+      pendingItems.map((item) => item.file),
+      async (file) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        const uploadRes = await fetch("/api/storage/upload", {
+          method: "POST",
+          body: formData,
         });
-
-        if (failed.length > 0) {
-          throw new Error(
-            `Upload failed for: ${failed.map((f) => f.file.name).join(', ')}`
-          );
+        if (!uploadRes.ok) {
+          const errBody = await uploadRes.json().catch(() => null);
+          const errMessage =
+            errBody && typeof errBody === "object" && "error" in errBody
+              ? String(errBody.error)
+              : tr("errorUploadingFiles");
+          throw new Error(errMessage);
         }
+        return (await uploadRes.json()) as {
+          path: string;
+          fileName: string;
+          fileType: string;
+          fileSize: number;
+        };
+      },
+      3,
+    );
 
-        for (const result of uploadResults) {
-          if (result.ok && result.data) {
-            fileUrls.push(result.data.path);
-            fileMetadata.push({
-              path: result.data.path,
-              fileName: result.data.fileName,
-              fileType: result.data.fileType,
-              fileSize: result.data.fileSize,
-            });
-          }
-        }
+    let uploadFailed = false;
+    uploadResults.forEach((result) => {
+      const item = pendingItems.find((candidate) => candidate.file === result.file);
+      if (!item) return;
+      if (result.ok && result.data) {
+        updateFileStatus(item.id, "uploaded", undefined, {
+          path: result.data.path,
+          fileName: result.data.fileName,
+          fileType: result.data.fileType,
+          fileSize: result.data.fileSize,
+        });
+      } else {
+        uploadFailed = true;
+        updateFileStatus(item.id, "error", result.error || tr("errorUploadingFiles"));
       }
+    });
 
-      // Create asset + beneficiary + link via composite API
-      const res = await fetch('/api/wizard/complete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+    if (uploadFailed) {
+      throw new Error("wizard-upload-failed-retry");
+    }
+  };
+
+  const handleSave = async () => {
+    if (saving) return;
+    setShowErrors((prev) => ({ ...prev, beneficiary: true }));
+    if (!canSave) return;
+
+    setSaving(true);
+    setSaveError(null);
+
+    try {
+      const sessionReady = await checkSecuritySession();
+      if (!sessionReady) return;
+
+      await uploadPendingFiles();
+
+      const uploadedFiles = files.filter((file) => file.uploaded).map((file) => file.uploaded!);
+      const fileUrls = uploadedFiles.map((file) => file.path);
+      const fileMetadata = uploadedFiles.map((file) => ({
+        path: file.path,
+        fileName: file.fileName,
+        fileType: file.fileType,
+        fileSize: file.fileSize,
+      }));
+
+      const res = await fetch("/api/wizard/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           asset: {
             assetType: assetData.assetType,
@@ -223,403 +273,208 @@ export default function WizardPage() {
 
       if (!res.ok) {
         const body = await res.json().catch(() => null);
-        const err = body && typeof body === 'object'
-          ? body as { message?: string; error?: string }
-          : {};
+        const err = body && typeof body === "object" ? (body as { message?: string; error?: string }) : {};
         const pinMessage = wizardApiErrorMessage(res.status, err.error, t);
         if (pinMessage) {
-          toast.error(pinMessage);
+          const friendlyPinMessage = tr("wizard-pin-protect-message");
+          setPinReason(friendlyPinMessage);
+          setRetryAfterPin(true);
+          setPinOpen(true);
+          toast.error(friendlyPinMessage);
           return;
         }
-        throw new Error(err.message || err.error || 'Failed to complete wizard');
+        throw new Error(err.message || err.error || "errorSavingAsset");
       }
 
-      toast.success(t('wizard-final-congrats'));
-      router.push('/dashboard');
+      setRetryAfterPin(false);
+      setWizardView("success");
     } catch (error) {
-      console.error('Error creating asset and beneficiary:', error);
-      const message = error instanceof Error ? error.message : null;
-      const localized = message ? (t(message) !== message ? t(message) : message) : null;
-      toast.error(localized || t('errorSavingAsset') || 'An error occurred while creating your asset and beneficiary.');
+      console.error("Error creating asset and beneficiary:", error);
+      const message = error instanceof Error ? error.message : "errorSavingAsset";
+      setSaveError(message);
+      toast.error(tr(message as string));
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
-  const renderStep = () => {
-    switch (currentStep) {
-      case 'welcome':
-        return (
-          <div className="text-center px-4 sm:px-0">
-            <h1 className="text-xl sm:text-2xl font-bold mb-4 text-foreground">
-              {t('wizard-welcome-title', { name: user?.user_metadata?.full_name || user?.email || 'User' })}
-            </h1>
-            <p className="text-sm sm:text-base text-muted-foreground mb-6">
-              {t('wizard-welcome-description')}
-            </p>
-            <Button onClick={handleNext} className="w-full sm:w-auto px-8">
-              {t('wizard-continue')}
-            </Button>
-          </div>
-        );
+  const resetWizard = () => {
+    setWizardView("form");
+    setStep("asset-type");
+    setShowAdvanced(false);
+    setSaveError(null);
+    setShowErrors({
+      assetType: false,
+      assetDetails: false,
+      beneficiary: false,
+    });
+    setFiles([]);
+    setAssetData({
+      assetType: "",
+      assetName: "",
+      description: "",
+      website: "",
+      validUntil: "",
+      email: "",
+      password: "",
+      customFields: {},
+    });
+    setBeneficiaryData({
+      fullName: "",
+      email: "",
+      relationshipId: null,
+      phoneNumber: "",
+      notes: "",
+    });
+  };
 
-      case 'asset-type':
-        return (
-          <div className="px-4 sm:px-0">
-            <h1 className="text-xl sm:text-2xl font-bold mb-4 text-foreground">{t('wizard-create-asset-title')}</h1>
-            <p className="text-sm sm:text-base text-muted-foreground mb-6">
-              {t('wizard-create-asset-description')}
-            </p>
-            <div className="space-y-4">
-              <Label className="text-sm sm:text-base text-foreground">{t('wizard-select-asset-type')}</Label>
-              <Select value={assetData.assetType} onValueChange={(value: string) => setAssetData({ ...assetData, assetType: value })}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder={t('wizard-select-asset-type')} />
-                </SelectTrigger>
-                <SelectContent>
-                  {assetTypesLoading ? (
-                    <SelectItem value="" disabled>
-                      Loading asset types...
-                    </SelectItem>
-                  ) : (
-                    assetTypes.map((type) => (
-                      <SelectItem key={type.key} value={type.key}>
-                        {t(type.label)}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2 mt-6">
-              <Button variant="outline" onClick={handleBack} className="flex-1">
-                {t('back')}
-              </Button>
-              <Button onClick={handleNext} disabled={!assetData.assetType} className="flex-1">
-                {t('wizard-next')}
-              </Button>
-            </div>
-          </div>
-        );
+  const onNextFromAssetType = () => {
+    setShowErrors((prev) => ({ ...prev, assetType: true }));
+    if (!canContinueAssetType) return;
+    setStep("asset-details");
+  };
 
-      case 'asset-details':
-        return (
-          <div className="px-4 sm:px-0">
-            <h1 className="text-xl sm:text-2xl font-bold mb-4 text-foreground">{t('wizard-complete-asset-title')}</h1>
-            <p className="text-sm sm:text-base text-muted-foreground mb-6">
-              {t('wizard-complete-asset-description')}
-            </p>
-            <div className="space-y-4">
-              {/* Asset Name - always required */}
-              <div>
-                <Label className="text-sm sm:text-base text-foreground">{t('assetName')} *</Label>
-                <Input
-                  value={assetData.assetName}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssetData({ ...assetData, assetName: e.target.value })}
-                  placeholder={t('wizard-enter-asset-name')}
-                  className="w-full"
-                  required
-                />
-              </div>
-
-              {/* Conditional fields based on asset type */}
-              {shouldShowField('email') && (
-                <div>
-                  <Label className="text-sm sm:text-base text-foreground">
-                    {t('email')}{isFieldRequired('email') ? ' *' : ''}
-                  </Label>
-                  <Input
-                    value={assetData.email}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssetData({ ...assetData, email: e.target.value })}
-                    placeholder={t('wizard-enter-email')}
-                    type="email"
-                    className="w-full"
-                    required={isFieldRequired('email')}
-                  />
-                </div>
-              )}
-
-              {shouldShowField('password') && (
-                <div>
-                  <Label className="text-sm sm:text-base text-foreground">
-                    {t('password')}{isFieldRequired('password') ? ' *' : ''}
-                  </Label>
-                  <Input
-                    value={assetData.password}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssetData({ ...assetData, password: e.target.value })}
-                    placeholder="••••••••"
-                    type="password"
-                    className="w-full"
-                    required={isFieldRequired('password')}
-                  />
-                </div>
-              )}
-
-              {shouldShowField('website') && (
-                <div>
-                  <Label className="text-sm sm:text-base text-foreground">
-                    {t('website')}{isFieldRequired('website') ? ' *' : ''}
-                  </Label>
-                  <Input
-                    value={assetData.website}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssetData({ ...assetData, website: e.target.value })}
-                    placeholder={t('wizard-enter-website')}
-                    className="w-full"
-                    required={isFieldRequired('website')}
-                  />
-                </div>
-              )}
-
-              {shouldShowField('valid_until') && (
-                <div>
-                  <Label className="text-sm sm:text-base text-foreground">
-                    {t('validUntil')}{isFieldRequired('valid_until') ? ' *' : ''}
-                  </Label>
-                  <Input
-                    type="date"
-                    value={assetData.validUntil}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssetData({ ...assetData, validUntil: e.target.value })}
-                    className="w-full"
-                    required={isFieldRequired('valid_until')}
-                  />
-                </div>
-              )}
-
-              {shouldShowField('description') && (
-                <div>
-                  <Label className="text-sm sm:text-base text-foreground">
-                    {t('description')}{isFieldRequired('description') ? ' *' : ''}
-                  </Label>
-                  <Textarea
-                    value={assetData.description}
-                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setAssetData({ ...assetData, description: e.target.value })}
-                    placeholder={t('wizard-describe-asset')}
-                    className="w-full"
-                    required={isFieldRequired('description')}
-                  />
-                </div>
-              )}
-
-              {/* Custom fields for new asset types */}
-              {currentAssetType?.customFields?.map((field) => (
-                <div key={field.key}>
-                  <Label className="text-sm sm:text-base text-foreground">
-                    {t(field.label)}{field.required ? ' *' : ''}
-                  </Label>
-                  {field.type === 'text' && (
-                    <Input
-                      type="text"
-                      value={String(assetData.customFields[field.key] || '')}
-                      onChange={(e) => handleCustomFieldChange(field.key, e.target.value)}
-                      required={field.required}
-                      className="w-full"
-                    />
-                  )}
-                  {field.type === 'textarea' && (
-                    <Textarea
-                      value={String(assetData.customFields[field.key] || '')}
-                      onChange={(e) => handleCustomFieldChange(field.key, e.target.value)}
-                      required={field.required}
-                      className="w-full"
-                      rows={3}
-                    />
-                  )}
-                  {field.type === 'select' && (
-                    <Select
-                      value={String(assetData.customFields[field.key] || '')}
-                      onValueChange={(value) => handleCustomFieldChange(field.key, value)}
-                      required={field.required}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Seleccionar..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {field.options?.map((option) => (
-                          <SelectItem key={option} value={option}>{option}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
-              ))}
-
-              {/* File upload for assets that support it */}
-              {currentAssetType?.fileAccept && (
-                <div>
-                  <Label className="text-sm sm:text-base text-foreground">
-                    {assetData.assetType === 'letter' ? t('attachAnImage') :
-                      assetData.assetType === 'photo' ? t('cameraPhotos') :
-                        assetData.assetType === 'video' ? t('cameraVideos') :
-                          assetData.assetType === 'audio' ? t('recordHereOrUpload') :
-                            assetData.assetType === 'document' ? t('uploadFiles') :
-                              t('uploadFiles')}
-                  </Label>
-                  <input
-                    type="file"
-                    multiple
-                    accept={currentAssetType?.fileAccept || '*'}
-                    onChange={handleFileChange}
-                    className="w-full rounded border px-3 py-2"
-                  />
-                </div>
-              )}
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2 mt-6">
-              <Button variant="outline" onClick={handleBack} className="flex-1">
-                {t('back')}
-              </Button>
-              <Button onClick={handleNext} disabled={!assetData.assetName} className="flex-1">
-                {t('wizard-next')}
-              </Button>
-            </div>
-          </div>
-        );
-
-      case 'beneficiary':
-        return (
-          <div className="px-4 sm:px-0">
-            <h1 className="text-xl sm:text-2xl font-bold mb-4 text-foreground">{t('wizard-beneficiary-title')}</h1>
-            <p className="text-sm sm:text-base text-muted-foreground mb-6">
-              {t('wizard-beneficiary-description')}
-            </p>
-            <div className="space-y-4">
-              <div>
-                <Label className="text-sm sm:text-base text-foreground">{t('name')} *</Label>
-                <Input
-                  value={beneficiaryData.fullName}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBeneficiaryData({ ...beneficiaryData, fullName: e.target.value })}
-                  placeholder={t('wizard-enter-beneficiary-name')}
-                  className="w-full"
-                />
-              </div>
-              <div>
-                <Label className="text-sm sm:text-base text-foreground">{t('email')}</Label>
-                <Input
-                  value={beneficiaryData.email}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBeneficiaryData({ ...beneficiaryData, email: e.target.value })}
-                  placeholder="email@example.com"
-                  className="w-full"
-                />
-              </div>
-              <div>
-                <Label className="text-sm sm:text-base text-foreground">{t('relationship')} *</Label>
-                <Select value={beneficiaryData.relationshipId?.toString() || ''} onValueChange={(value: string) => setBeneficiaryData({ ...beneficiaryData, relationshipId: value ? parseInt(value) : null })}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder={t('wizard-select-relationship')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {relationships.map((rel) => (
-                      <SelectItem key={rel.id} value={rel.id.toString()}>
-                        {t(`relationships.${rel.key}`)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-sm sm:text-base text-foreground">{t('phoneNumber')}</Label>
-                <Input
-                  value={beneficiaryData.phoneNumber}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBeneficiaryData({ ...beneficiaryData, phoneNumber: e.target.value })}
-                  placeholder="+1 (555) 123-4567"
-                  className="w-full"
-                />
-              </div>
-              <div>
-                <Label className="text-sm sm:text-base text-foreground">{t('notes')}</Label>
-                <Textarea
-                  value={beneficiaryData.notes}
-                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setBeneficiaryData({ ...beneficiaryData, notes: e.target.value })}
-                  placeholder={t('wizard-enter-beneficiary-notes')}
-                  className="w-full"
-                />
-              </div>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2 mt-6">
-              <Button variant="outline" onClick={handleBack} className="flex-1">
-                {t('back')}
-              </Button>
-              <Button onClick={handleNext} disabled={!beneficiaryData.fullName || !beneficiaryData.relationshipId} className="flex-1">
-                {t('wizard-next')}
-              </Button>
-            </div>
-          </div>
-        );
-
-      case 'final':
-        return (
-          <div className="text-center px-4 sm:px-0 text-foreground">
-            <h1 className="text-xl sm:text-2xl font-bold mb-4">{t('wizard-final-title')}</h1>
-            <p className="text-sm sm:text-base text-muted-foreground mb-6">
-              {t('wizard-final-congrats')}
-            </p>
-            <div className="bg-muted rounded-lg p-4 mb-6 text-left">
-              <h3 className="font-semibold mb-2 text-sm sm:text-base">{t('wizard-asset-summary')}:</h3>
-              <div className="space-y-1 text-sm">
-                <p><strong>{t('assetType')}:</strong> {assetTypes.find(t => t.key === assetData.assetType)?.label ? t(assetTypes.find(t => t.key === assetData.assetType)!.label) : assetData.assetType}</p>
-                <p><strong>{t('assetName')}:</strong> {assetData.assetName}</p>
-                <p><strong>{t('description')}:</strong> {assetData.description}</p>
-                <p><strong>{t('website')}:</strong> {assetData.website}</p>
-                <p><strong>{t('assignedBeneficiary')}:</strong> {beneficiaryData.fullName}</p>
-              </div>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Button variant="outline" onClick={handleBack} className="flex-1">
-                {t('back')}
-              </Button>
-              <Button onClick={handleFinish} disabled={loading} className="flex-1">
-                {loading ? t('saving') : t('wizard-finish')}
-              </Button>
-            </div>
-          </div>
-        );
-    }
+  const onNextFromAssetDetails = () => {
+    setShowErrors((prev) => ({ ...prev, assetDetails: true }));
+    if (!canContinueAssetDetails) return;
+    setStep("beneficiary");
   };
 
   return (
     <ProtectedRoute>
-      <div className="w-full max-w-7xl mx-auto px-4 sm:px-8">
-        <div className="mb-6 sm:mb-8">
-          {/* Mobile: Current step indicator only */}
-          <div className="block sm:hidden mb-6">
-            <div className="flex items-center justify-center">
-              <div className="text-center">
-                <div className="w-12 h-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-lg font-medium mx-auto mb-2">
-                  {['welcome', 'asset-type', 'asset-details', 'beneficiary', 'final'].indexOf(currentStep) + 1}
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Step {['welcome', 'asset-type', 'asset-details', 'beneficiary', 'final'].indexOf(currentStep) + 1} of 5
-                </p>
-              </div>
-            </div>
-          </div>
+      <div className="mx-auto w-full max-w-3xl rounded-2xl border border-border bg-card p-4 sm:p-6">
+        {wizardView === "welcome" ? (
+          <WelcomeStep
+            userName={user?.user_metadata?.full_name || user?.email || tr("wizard-user-fallback")}
+            onStart={() => setWizardView("form")}
+            translate={tr}
+          />
+        ) : null}
 
-          {/* Desktop: Horizontal step indicator */}
-          <div className="hidden sm:flex items-center justify-center mb-4">
-            <div className="flex items-center space-x-6">
-              {['welcome', 'asset-type', 'asset-details', 'beneficiary', 'final'].map((step, index) => (
-                <div key={step} className="flex items-center">
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center text-base font-medium ${currentStep === step
-                    ? 'bg-primary text-primary-foreground'
-                    : index < ['welcome', 'asset-type', 'asset-details', 'beneficiary', 'final'].indexOf(currentStep)
-                      ? 'bg-success text-success-foreground'
-                      : 'bg-muted text-muted-foreground'
-                    }`}>
-                    {index + 1}
-                  </div>
-                  {index < 4 && (
-                    <div className={`w-24 h-1 mx-3 ${index < ['welcome', 'asset-type', 'asset-details', 'beneficiary', 'final'].indexOf(currentStep)
-                      ? 'bg-success'
-                      : 'bg-muted'
-                      }`} />
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-        {renderStep()}
+        {wizardView === "form" ? (
+          <>
+            {pinReason ? (
+              <div className="mb-4 rounded-xl border border-warning bg-warning/15 p-3 text-sm text-foreground">
+                {pinReason}
+              </div>
+            ) : null}
+            <StepIndicator currentStep={step} translate={tr} />
+            {step === "asset-type" ? (
+              <AssetTypeStep
+                assetTypes={assetTypes}
+                selectedAssetType={assetData.assetType}
+                loading={assetTypesLoading}
+                isError={assetTypesError}
+                errorMessage={assetTypesErrorObj instanceof Error ? assetTypesErrorObj.message : null}
+                onRetry={() => void refetchAssetTypes()}
+                onSelect={(value) => {
+                  setAssetData((prev) => ({ ...prev, assetType: value }));
+                  setShowErrors((prev) => ({ ...prev, assetType: false }));
+                }}
+                onBack={() => setWizardView("welcome")}
+                onNext={onNextFromAssetType}
+                canContinue={canContinueAssetType}
+                fieldError={showErrors.assetType ? assetTypeErrors.assetType : undefined}
+                translate={tr}
+              />
+            ) : null}
+
+            {step === "asset-details" ? (
+              <AssetDetailsStep
+                data={assetData}
+                errors={showErrors.assetDetails ? assetDetailErrors : {}}
+                assetType={currentAssetType}
+                files={files.map((file) => ({
+                  ...file,
+                  error: file.error ? tr(file.error) : undefined,
+                }))}
+                maxFiles={MAX_WIZARD_FILES}
+                maxFileSizeMb={maxFileSizeMb}
+                showAdvanced={showAdvanced}
+                onToggleAdvanced={() => setShowAdvanced((prev) => !prev)}
+                onChange={(field, value) => {
+                  setAssetData((prev) => ({ ...prev, [field]: value }));
+                  if (showErrors.assetDetails) {
+                    setShowErrors((prev) => ({ ...prev, assetDetails: true }));
+                  }
+                }}
+                onCustomFieldChange={(fieldKey, value) => {
+                  setAssetData((prev) => ({
+                    ...prev,
+                    customFields: {
+                      ...prev.customFields,
+                      [fieldKey]: value,
+                    },
+                  }));
+                }}
+                onAddFiles={handleAddFiles}
+                onRemoveFile={handleRemoveFile}
+                onBack={() => setStep("asset-type")}
+                onNext={onNextFromAssetDetails}
+                canContinue={canContinueAssetDetails}
+                translate={tr}
+              />
+            ) : null}
+
+            {step === "beneficiary" ? (
+              <BeneficiaryStep
+                data={beneficiaryData}
+                errors={showErrors.beneficiary ? beneficiaryErrors : {}}
+                relationships={relationships}
+                saving={saving}
+                onChange={(field, value) => {
+                  setBeneficiaryData((prev) => ({ ...prev, [field]: value }));
+                }}
+                onBack={() => setStep("asset-details")}
+                onSave={() => void handleSave()}
+                canSave={canSave}
+                translate={tr}
+              />
+            ) : null}
+
+            {saveError ? (
+              <div className="mt-4 rounded-xl border border-destructive bg-destructive/10 p-3">
+                <p className="text-sm text-destructive">{tr(saveError)}</p>
+              </div>
+            ) : null}
+          </>
+        ) : null}
+
+        {wizardView === "success" ? (
+          <SuccessStep
+            assetTypeLabel={
+              currentAssetType ? tr(currentAssetType.label) : assetData.assetType
+            }
+            assetName={assetData.assetName}
+            beneficiaryName={beneficiaryData.fullName}
+            onGoDashboard={() => router.push("/dashboard")}
+            onAddAnother={resetWizard}
+            translate={tr}
+          />
+        ) : null}
       </div>
+
+      <SecurityPinModal
+        isOpen={pinOpen}
+        mode={security.hasPin ? "verify" : "setup"}
+        forceOpen={false}
+        onSuccess={async () => {
+          await security.checkStatus();
+          setPinOpen(false);
+          setPinReason(null);
+          toast.success(tr("wizard-pin-confirmed"));
+          if (retryAfterPin) {
+            setRetryAfterPin(false);
+            await handleSave();
+          }
+        }}
+        onCancel={() => {
+          setPinOpen(false);
+          setRetryAfterPin(false);
+          setPinReason(null);
+        }}
+      />
+
     </ProtectedRoute>
   );
 }
