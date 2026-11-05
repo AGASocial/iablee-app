@@ -1,8 +1,14 @@
-import { Inter, Outfit } from "next/font/google"; // Import fonts
+import { Inter, Outfit, Young_Serif } from "next/font/google"; // Import fonts
 import "@/app/globals.css"; // Ensure global styles are imported
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const outfit = Outfit({ subsets: ["latin"], variable: "--font-outfit" });
+const youngSerif = Young_Serif({
+  weight: "400",
+  subsets: ["latin"],
+  variable: "--font-young-serif",
+  display: "swap",
+});
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -10,7 +16,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </head>
-      <body className={`${inter.variable} ${outfit.variable} font-sans antialiased`} suppressHydrationWarning>
+      <body className={`${inter.variable} ${outfit.variable} ${youngSerif.variable} font-sans antialiased`} suppressHydrationWarning>
         {children}
       </body>
     </html>
