@@ -57,11 +57,11 @@ describe('LayoutWrapper PIN gate', () => {
     return screen.getByTestId('pin-modal');
   }
 
-  it('forces the PIN modal open on the wizard when the session is locked', () => {
+  it('keeps the PIN modal closed on wizard entry even when the session is locked', () => {
     pathname = '/wizard';
     render(<LayoutWrapper><div>child</div></LayoutWrapper>);
 
-    expect(modal()).toHaveAttribute('data-open', 'true');
+    expect(modal()).toHaveAttribute('data-open', 'false');
     expect(modal()).toHaveAttribute('data-force', 'true');
   });
 
