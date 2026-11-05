@@ -225,3 +225,5 @@ For OAuth (Google/Apple) and email links to work:
 - [ ] Optional: add `handle_new_user` trigger for `public.users` sync.
 - [ ] Optional: configure Stripe/PayU and webhooks; update `provider_price_map`.
 - [ ] Deploy Next.js app and test login, wizard, assets, and storage.
+
+<!-- vercel-autodeploy-verify: 2026-11-05T13:00 America/Chicago -->
