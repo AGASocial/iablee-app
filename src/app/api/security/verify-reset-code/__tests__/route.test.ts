@@ -36,7 +36,7 @@ describe('POST /api/security/verify-reset-code', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     resetRateLimitStore();
-    process.env.SUPABASE_JWT_SECRET = 'test-secret-that-is-long-enough-32';
+    process.env.APP_TOKEN_SECRET = 'test-secret-that-is-long-enough-32';
     (createAuthenticatedRouteClient as jest.Mock).mockResolvedValue({
       user: { id: 'user-1' },
     });

@@ -40,7 +40,7 @@ describe('POST /api/security/forgot-pin', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     resetRateLimitStore();
-    process.env.SUPABASE_JWT_SECRET = SECRET;
+    process.env.APP_TOKEN_SECRET = SECRET;
     (createAuthenticatedRouteClient as jest.Mock).mockResolvedValue({
       user: { id: 'user-1', email: 'owner@example.com' },
     });

@@ -14,19 +14,28 @@ jest.mock('crypto', () => {
 });
 
 const SECRET = 'test-secret-that-is-long-enough-32';
+const MISSING_OR_SHORT =
+  'APP_TOKEN_SECRET (or legacy SUPABASE_JWT_SECRET) is missing or too short';
 
 describe('PIN reset codes', () => {
-  const originalSecret = process.env.SUPABASE_JWT_SECRET;
+  const originalAppSecret = process.env.APP_TOKEN_SECRET;
+  const originalLegacySecret = process.env.SUPABASE_JWT_SECRET;
 
   beforeEach(() => {
-    process.env.SUPABASE_JWT_SECRET = SECRET;
+    delete process.env.SUPABASE_JWT_SECRET;
+    process.env.APP_TOKEN_SECRET = SECRET;
   });
 
   afterEach(() => {
-    if (originalSecret === undefined) {
+    if (originalAppSecret === undefined) {
+      delete process.env.APP_TOKEN_SECRET;
+    } else {
+      process.env.APP_TOKEN_SECRET = originalAppSecret;
+    }
+    if (originalLegacySecret === undefined) {
       delete process.env.SUPABASE_JWT_SECRET;
     } else {
-      process.env.SUPABASE_JWT_SECRET = originalSecret;
+      process.env.SUPABASE_JWT_SECRET = originalLegacySecret;
     }
   });
 
@@ -42,10 +51,16 @@ describe('PIN reset codes', () => {
     expect(hash).toHaveLength(64);
   });
 
+  it('falls back to legacy SUPABASE_JWT_SECRET when APP_TOKEN_SECRET is unset', () => {
+    delete process.env.APP_TOKEN_SECRET;
+    process.env.SUPABASE_JWT_SECRET = SECRET;
+    expect(getSecuritySecret()).toBe(SECRET);
+  });
+
   it('throws at use when the secret is missing or short', () => {
-    process.env.SUPABASE_JWT_SECRET = 'short';
-    expect(() => getSecuritySecret()).toThrow('SUPABASE_JWT_SECRET is missing or too short');
-    delete process.env.SUPABASE_JWT_SECRET;
-    expect(() => getSecuritySecret()).toThrow('SUPABASE_JWT_SECRET is missing or too short');
+    process.env.APP_TOKEN_SECRET = 'short';
+    expect(() => getSecuritySecret()).toThrow(MISSING_OR_SHORT);
+    delete process.env.APP_TOKEN_SECRET;
+    expect(() => getSecuritySecret()).toThrow(MISSING_OR_SHORT);
   });
 });

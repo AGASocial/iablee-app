@@ -11,18 +11,25 @@ jest.mock('jose', () => ({
 
 describe('verifySecuritySessionToken', () => {
   const mockJwtVerify = jwtVerify as jest.Mock;
-  const originalSecret = process.env.SUPABASE_JWT_SECRET;
+  const originalAppSecret = process.env.APP_TOKEN_SECRET;
+  const originalLegacySecret = process.env.SUPABASE_JWT_SECRET;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    process.env.SUPABASE_JWT_SECRET = 'test-secret-that-is-long-enough-32';
+    delete process.env.SUPABASE_JWT_SECRET;
+    process.env.APP_TOKEN_SECRET = 'test-secret-that-is-long-enough-32';
   });
 
   afterEach(() => {
-    if (originalSecret === undefined) {
+    if (originalAppSecret === undefined) {
+      delete process.env.APP_TOKEN_SECRET;
+    } else {
+      process.env.APP_TOKEN_SECRET = originalAppSecret;
+    }
+    if (originalLegacySecret === undefined) {
       delete process.env.SUPABASE_JWT_SECRET;
     } else {
-      process.env.SUPABASE_JWT_SECRET = originalSecret;
+      process.env.SUPABASE_JWT_SECRET = originalLegacySecret;
     }
   });
 
@@ -61,9 +68,10 @@ describe('verifySecuritySessionToken', () => {
   });
 
   it('fails closed when the signing secret is missing or short', async () => {
-    process.env.SUPABASE_JWT_SECRET = 'short';
+    process.env.APP_TOKEN_SECRET = 'short';
     await expect(verifySecuritySessionToken('token', 'user-a')).resolves.toBe(false);
 
+    delete process.env.APP_TOKEN_SECRET;
     delete process.env.SUPABASE_JWT_SECRET;
     await expect(verifySecuritySessionToken('token', 'user-a')).resolves.toBe(false);
     expect(mockJwtVerify).not.toHaveBeenCalled();
