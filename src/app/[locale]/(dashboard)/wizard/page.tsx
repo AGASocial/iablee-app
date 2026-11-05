@@ -251,10 +251,10 @@ export default function WizardPage() {
       case 'welcome':
         return (
           <div className="text-center px-4 sm:px-0">
-            <h1 className="text-xl sm:text-2xl font-bold mb-4 dark:text-white">
+            <h1 className="text-xl sm:text-2xl font-bold mb-4 text-foreground">
               {t('wizard-welcome-title', { name: user?.user_metadata?.full_name || user?.email || 'User' })}
             </h1>
-            <p className="text-sm sm:text-base text-gray-600 dark:text-gray-300 mb-6">
+            <p className="text-sm sm:text-base text-muted-foreground mb-6">
               {t('wizard-welcome-description')}
             </p>
             <Button onClick={handleNext} className="w-full sm:w-auto px-8">
@@ -266,12 +266,12 @@ export default function WizardPage() {
       case 'asset-type':
         return (
           <div className="px-4 sm:px-0">
-            <h1 className="text-xl sm:text-2xl font-bold mb-4 dark:text-white">{t('wizard-create-asset-title')}</h1>
-            <p className="text-sm sm:text-base text-gray-600 dark:text-gray-300 mb-6">
+            <h1 className="text-xl sm:text-2xl font-bold mb-4 text-foreground">{t('wizard-create-asset-title')}</h1>
+            <p className="text-sm sm:text-base text-muted-foreground mb-6">
               {t('wizard-create-asset-description')}
             </p>
             <div className="space-y-4">
-              <Label className="text-sm sm:text-base dark:text-white">{t('wizard-select-asset-type')}</Label>
+              <Label className="text-sm sm:text-base text-foreground">{t('wizard-select-asset-type')}</Label>
               <Select value={assetData.assetType} onValueChange={(value: string) => setAssetData({ ...assetData, assetType: value })}>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder={t('wizard-select-asset-type')} />
@@ -305,14 +305,14 @@ export default function WizardPage() {
       case 'asset-details':
         return (
           <div className="px-4 sm:px-0">
-            <h1 className="text-xl sm:text-2xl font-bold mb-4 dark:text-white">{t('wizard-complete-asset-title')}</h1>
-            <p className="text-sm sm:text-base text-gray-600 dark:text-gray-300 mb-6">
+            <h1 className="text-xl sm:text-2xl font-bold mb-4 text-foreground">{t('wizard-complete-asset-title')}</h1>
+            <p className="text-sm sm:text-base text-muted-foreground mb-6">
               {t('wizard-complete-asset-description')}
             </p>
             <div className="space-y-4">
               {/* Asset Name - always required */}
               <div>
-                <Label className="text-sm sm:text-base dark:text-white">{t('assetName')} *</Label>
+                <Label className="text-sm sm:text-base text-foreground">{t('assetName')} *</Label>
                 <Input
                   value={assetData.assetName}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssetData({ ...assetData, assetName: e.target.value })}
@@ -325,7 +325,7 @@ export default function WizardPage() {
               {/* Conditional fields based on asset type */}
               {shouldShowField('email') && (
                 <div>
-                  <Label className="text-sm sm:text-base dark:text-white">
+                  <Label className="text-sm sm:text-base text-foreground">
                     {t('email')}{isFieldRequired('email') ? ' *' : ''}
                   </Label>
                   <Input
@@ -341,7 +341,7 @@ export default function WizardPage() {
 
               {shouldShowField('password') && (
                 <div>
-                  <Label className="text-sm sm:text-base dark:text-white">
+                  <Label className="text-sm sm:text-base text-foreground">
                     {t('password')}{isFieldRequired('password') ? ' *' : ''}
                   </Label>
                   <Input
@@ -357,7 +357,7 @@ export default function WizardPage() {
 
               {shouldShowField('website') && (
                 <div>
-                  <Label className="text-sm sm:text-base dark:text-white">
+                  <Label className="text-sm sm:text-base text-foreground">
                     {t('website')}{isFieldRequired('website') ? ' *' : ''}
                   </Label>
                   <Input
@@ -372,7 +372,7 @@ export default function WizardPage() {
 
               {shouldShowField('valid_until') && (
                 <div>
-                  <Label className="text-sm sm:text-base dark:text-white">
+                  <Label className="text-sm sm:text-base text-foreground">
                     {t('validUntil')}{isFieldRequired('valid_until') ? ' *' : ''}
                   </Label>
                   <Input
@@ -387,7 +387,7 @@ export default function WizardPage() {
 
               {shouldShowField('description') && (
                 <div>
-                  <Label className="text-sm sm:text-base dark:text-white">
+                  <Label className="text-sm sm:text-base text-foreground">
                     {t('description')}{isFieldRequired('description') ? ' *' : ''}
                   </Label>
                   <Textarea
@@ -403,7 +403,7 @@ export default function WizardPage() {
               {/* Custom fields for new asset types */}
               {currentAssetType?.customFields?.map((field) => (
                 <div key={field.key}>
-                  <Label className="text-sm sm:text-base dark:text-white">
+                  <Label className="text-sm sm:text-base text-foreground">
                     {t(field.label)}{field.required ? ' *' : ''}
                   </Label>
                   {field.type === 'text' && (
@@ -446,7 +446,7 @@ export default function WizardPage() {
               {/* File upload for assets that support it */}
               {currentAssetType?.fileAccept && (
                 <div>
-                  <Label className="text-sm sm:text-base dark:text-white">
+                  <Label className="text-sm sm:text-base text-foreground">
                     {assetData.assetType === 'letter' ? t('attachAnImage') :
                       assetData.assetType === 'photo' ? t('cameraPhotos') :
                         assetData.assetType === 'video' ? t('cameraVideos') :
@@ -478,13 +478,13 @@ export default function WizardPage() {
       case 'beneficiary':
         return (
           <div className="px-4 sm:px-0">
-            <h1 className="text-xl sm:text-2xl font-bold mb-4 dark:text-white">{t('wizard-beneficiary-title')}</h1>
-            <p className="text-sm sm:text-base text-gray-600 dark:text-white mb-6">
+            <h1 className="text-xl sm:text-2xl font-bold mb-4 text-foreground">{t('wizard-beneficiary-title')}</h1>
+            <p className="text-sm sm:text-base text-muted-foreground mb-6">
               {t('wizard-beneficiary-description')}
             </p>
             <div className="space-y-4">
               <div>
-                <Label className="text-sm sm:text-base dark:text-white">{t('name')} *</Label>
+                <Label className="text-sm sm:text-base text-foreground">{t('name')} *</Label>
                 <Input
                   value={beneficiaryData.fullName}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBeneficiaryData({ ...beneficiaryData, fullName: e.target.value })}
@@ -493,7 +493,7 @@ export default function WizardPage() {
                 />
               </div>
               <div>
-                <Label className="text-sm sm:text-base dark:text-white">{t('email')}</Label>
+                <Label className="text-sm sm:text-base text-foreground">{t('email')}</Label>
                 <Input
                   value={beneficiaryData.email}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBeneficiaryData({ ...beneficiaryData, email: e.target.value })}
@@ -502,7 +502,7 @@ export default function WizardPage() {
                 />
               </div>
               <div>
-                <Label className="text-sm sm:text-base dark:text-white">{t('relationship')} *</Label>
+                <Label className="text-sm sm:text-base text-foreground">{t('relationship')} *</Label>
                 <Select value={beneficiaryData.relationshipId?.toString() || ''} onValueChange={(value: string) => setBeneficiaryData({ ...beneficiaryData, relationshipId: value ? parseInt(value) : null })}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder={t('wizard-select-relationship')} />
@@ -517,7 +517,7 @@ export default function WizardPage() {
                 </Select>
               </div>
               <div>
-                <Label className="text-sm sm:text-base dark:text-white">{t('phoneNumber')}</Label>
+                <Label className="text-sm sm:text-base text-foreground">{t('phoneNumber')}</Label>
                 <Input
                   value={beneficiaryData.phoneNumber}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBeneficiaryData({ ...beneficiaryData, phoneNumber: e.target.value })}
@@ -526,7 +526,7 @@ export default function WizardPage() {
                 />
               </div>
               <div>
-                <Label className="text-sm sm:text-base dark:text-white">{t('notes')}</Label>
+                <Label className="text-sm sm:text-base text-foreground">{t('notes')}</Label>
                 <Textarea
                   value={beneficiaryData.notes}
                   onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setBeneficiaryData({ ...beneficiaryData, notes: e.target.value })}
@@ -548,12 +548,12 @@ export default function WizardPage() {
 
       case 'final':
         return (
-          <div className="text-center px-4 sm:px-0 dark:text-white">
+          <div className="text-center px-4 sm:px-0 text-foreground">
             <h1 className="text-xl sm:text-2xl font-bold mb-4">{t('wizard-final-title')}</h1>
-            <p className="text-sm sm:text-base text-gray-600 dark:text-white mb-6">
+            <p className="text-sm sm:text-base text-muted-foreground mb-6">
               {t('wizard-final-congrats')}
             </p>
-            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-6 text-left">
+            <div className="bg-muted rounded-lg p-4 mb-6 text-left">
               <h3 className="font-semibold mb-2 text-sm sm:text-base">{t('wizard-asset-summary')}:</h3>
               <div className="space-y-1 text-sm">
                 <p><strong>{t('assetType')}:</strong> {assetTypes.find(t => t.key === assetData.assetType)?.label ? t(assetTypes.find(t => t.key === assetData.assetType)!.label) : assetData.assetType}</p>
@@ -584,10 +584,10 @@ export default function WizardPage() {
           <div className="block sm:hidden mb-6">
             <div className="flex items-center justify-center">
               <div className="text-center">
-                <div className="w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center text-lg font-medium mx-auto mb-2">
+                <div className="w-12 h-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-lg font-medium mx-auto mb-2">
                   {['welcome', 'asset-type', 'asset-details', 'beneficiary', 'final'].indexOf(currentStep) + 1}
                 </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
+                <p className="text-sm text-muted-foreground">
                   Step {['welcome', 'asset-type', 'asset-details', 'beneficiary', 'final'].indexOf(currentStep) + 1} of 5
                 </p>
               </div>
@@ -600,17 +600,17 @@ export default function WizardPage() {
               {['welcome', 'asset-type', 'asset-details', 'beneficiary', 'final'].map((step, index) => (
                 <div key={step} className="flex items-center">
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center text-base font-medium ${currentStep === step
-                    ? 'bg-blue-600 text-white'
+                    ? 'bg-primary text-primary-foreground'
                     : index < ['welcome', 'asset-type', 'asset-details', 'beneficiary', 'final'].indexOf(currentStep)
-                      ? 'bg-green-600 text-white'
-                      : 'bg-gray-200 text-gray-600'
+                      ? 'bg-success text-success-foreground'
+                      : 'bg-muted text-muted-foreground'
                     }`}>
                     {index + 1}
                   </div>
                   {index < 4 && (
                     <div className={`w-24 h-1 mx-3 ${index < ['welcome', 'asset-type', 'asset-details', 'beneficiary', 'final'].indexOf(currentStep)
-                      ? 'bg-green-600'
-                      : 'bg-gray-200'
+                      ? 'bg-success'
+                      : 'bg-muted'
                       }`} />
                   )}
                 </div>

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Outfit } from "next/font/google";
+import { Inter, Young_Serif } from "next/font/google";
 import "../globals.css";
 import { NextIntlClientProvider } from 'next-intl';
 import { notFound } from 'next/navigation';
@@ -12,9 +12,10 @@ const inter = Inter({
   display: "swap",
 });
 
-const outfit = Outfit({
+const youngSerif = Young_Serif({
+  weight: "400",
   subsets: ["latin"],
-  variable: "--font-outfit",
+  variable: "--font-young-serif",
   display: "swap",
 });
 
@@ -45,7 +46,7 @@ export default async function RootLayout({
 
   return (
     <html lang={locale} suppressHydrationWarning>
-      <body className={`${inter.variable} ${outfit.variable} font-sans antialiased`} suppressHydrationWarning>
+      <body className={`${inter.variable} ${youngSerif.variable} font-sans antialiased`} suppressHydrationWarning>
         <QueryProvider>
           <ThemeRegistry>
             <NextIntlClientProvider locale={locale} messages={messages}>

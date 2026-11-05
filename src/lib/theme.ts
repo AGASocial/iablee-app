@@ -53,9 +53,9 @@ export const theme = {
 
   // Gradientes
   gradients: {
-    primary: 'linear-gradient(135deg, oklch(0.55 0.22 260) 0%, oklch(0.45 0.22 260) 100%)', // Royal Blue -> Deep Blue
-    primaryLight: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
-    primaryDark: 'linear-gradient(135deg, oklch(0.45 0.22 260) 0%, oklch(0.35 0.22 260) 100%)',
+    primary: 'linear-gradient(135deg, #0766EE 0%, #103065 100%)',
+    primaryLight: 'linear-gradient(135deg, #E7EFFC 0%, #CFDFF9 100%)',
+    primaryDark: 'linear-gradient(135deg, #103065 0%, #0B1A36 100%)',
     success: 'linear-gradient(135deg, oklch(0.60 0.20 145) 0%, oklch(0.50 0.20 145) 100%)',
     card: 'linear-gradient(145deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%)', // Glass effect
     cardDark: 'linear-gradient(145deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%)',
