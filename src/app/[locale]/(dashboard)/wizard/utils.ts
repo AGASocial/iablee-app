@@ -11,7 +11,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { AssetType } from "@/lib/assetTypes";
-import type { AssetFormData, BeneficiaryFormData, FieldErrors, FileUploadItem } from "./components/types";
+import type { AssetFormData, BeneficiaryFormData, FieldErrors, FileUploadItem, WizardStep } from "./components/types";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -30,6 +30,25 @@ const ASSET_ICON_MAP: Record<string, LucideIcon> = {
 };
 
 const ADVANCED_FIELDS = new Set(["website", "valid_until", "email", "password"]);
+const DRAFT_ALLOWED_CUSTOM_FIELD_TYPES = new Set(["text", "textarea", "date", "url", "number", "select"]);
+const SENSITIVE_CUSTOM_FIELD_KEY_PATTERNS = /(password|secret|token|pin|apikey|api_key|private_key|private|seed|mnemonic|cvv|card)/i;
+const WIZARD_DRAFT_VERSION = 1;
+
+export interface WizardDraftPayload {
+  version: number;
+  userId: string;
+  step: WizardStep;
+  asset: {
+    assetType: string;
+    assetName: string;
+    description: string;
+    website: string;
+    validUntil: string;
+    email: string;
+    customFields: Record<string, string>;
+  };
+  beneficiary: BeneficiaryFormData;
+}
 
 export function getAssetIcon(iconName: string | null | undefined): LucideIcon {
   if (!iconName) return File;
@@ -128,4 +147,258 @@ export function validateBeneficiary(beneficiary: BeneficiaryFormData): FieldErro
 
 export function formatBytesToMb(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1);
+}
+
+function isAllowedDraftCustomFieldType(type: string | undefined): boolean {
+  if (!type) return false;
+  return DRAFT_ALLOWED_CUSTOM_FIELD_TYPES.has(type.toLowerCase());
+}
+
+export function sanitizeDraftCustomFields(customFields: Record<string, string>, assetType: AssetType | null): Record<string, string> {
+  const definitions = new Map(assetType?.customFields.map((field) => [field.key, field]) ?? []);
+  const entries = Object.entries(customFields).filter(([key]) => {
+    const definition = definitions.get(key);
+    if (!definition) return false;
+    if (definition.type === "password") return false;
+    if (!isAllowedDraftCustomFieldType(definition.type)) return false;
+    if (SENSITIVE_CUSTOM_FIELD_KEY_PATTERNS.test(key)) return false;
+    return true;
+  });
+  return Object.fromEntries(entries);
+}
+
+type WizardCompleteRequestBody = {
+  asset: {
+    assetType: string;
+    assetName: string;
+    description: string;
+    website: string;
+    validUntil: string;
+    email: string;
+    password: string;
+    customFields: Record<string, string>;
+  };
+  beneficiary: BeneficiaryFormData;
+  fileUrls: string[];
+  fileMetadata: Array<{
+    path: string;
+    fileName: string;
+    fileType: string;
+    fileSize: number;
+  }>;
+  locale: string;
+  idempotencyKey: string;
+};
+
+type WizardCompletionAttemptKeyState = {
+  key: string;
+  fingerprint: string;
+  reused: boolean;
+};
+
+const RETRYABLE_IDEMPOTENCY_ERROR = "IDEMPOTENCY_IN_PROGRESS";
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function sendWizardCompleteRequest(payload: WizardCompleteRequestBody): Promise<Response> {
+  return fetch("/api/wizard/complete", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": payload.idempotencyKey,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function submitWizardCompleteWithRetry(payload: WizardCompleteRequestBody): Promise<Response> {
+  const firstAttempt = await sendWizardCompleteRequest(payload);
+  if (firstAttempt.status !== 409) return firstAttempt;
+
+  const firstBody = await firstAttempt.clone().json().catch(() => null) as
+    | { error?: string; retryable?: boolean }
+    | null;
+  const shouldRetry = firstBody?.error === RETRYABLE_IDEMPOTENCY_ERROR && firstBody.retryable === true;
+  if (!shouldRetry) return firstAttempt;
+
+  await sleep(1000);
+  return sendWizardCompleteRequest(payload);
+}
+
+export function getWizardDraftStorageKey(userId: string): string {
+  return `wizard:draft:${userId}`;
+}
+
+function normalizeRecordForFingerprint(record: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(record)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, value]) => [key, value.trim()]),
+  );
+}
+
+export function buildWizardCompletionFingerprint({
+  asset,
+  beneficiary,
+  files,
+}: {
+  asset: AssetFormData;
+  beneficiary: BeneficiaryFormData;
+  files: FileUploadItem[];
+}): string {
+  const fileIdentity = files
+    .map((file) => {
+      const parts = [file.id];
+      if (typeof file.file?.name === "string" && file.file.name.trim()) {
+        parts.push(file.file.name.trim());
+      }
+      if (typeof file.file?.size === "number" && Number.isFinite(file.file.size)) {
+        parts.push(String(file.file.size));
+      }
+      return parts.join(":");
+    })
+    .sort((left, right) => left.localeCompare(right));
+
+  return JSON.stringify({
+    asset: {
+      assetType: asset.assetType.trim(),
+      assetName: asset.assetName.trim(),
+      description: asset.description.trim(),
+      website: asset.website.trim(),
+      validUntil: asset.validUntil.trim(),
+      email: asset.email.trim(),
+      password: asset.password.trim(),
+      customFields: normalizeRecordForFingerprint(asset.customFields),
+    },
+    beneficiary: {
+      fullName: beneficiary.fullName.trim(),
+      email: beneficiary.email.trim(),
+      relationshipId: beneficiary.relationshipId,
+      phoneNumber: beneficiary.phoneNumber.trim(),
+      notes: beneficiary.notes.trim(),
+    },
+    files: fileIdentity,
+  });
+}
+
+export function resolveWizardCompletionAttemptKey({
+  currentKey,
+  currentFingerprint,
+  nextFingerprint,
+  createKey = () => crypto.randomUUID(),
+}: {
+  currentKey: string | null;
+  currentFingerprint: string | null;
+  nextFingerprint: string;
+  createKey?: () => string;
+}): WizardCompletionAttemptKeyState {
+  if (currentKey && currentFingerprint === nextFingerprint) {
+    return {
+      key: currentKey,
+      fingerprint: nextFingerprint,
+      reused: true,
+    };
+  }
+
+  return {
+    key: createKey(),
+    fingerprint: nextFingerprint,
+    reused: false,
+  };
+}
+
+export function buildWizardDraft({
+  userId,
+  step,
+  assetData,
+  beneficiaryData,
+  assetType,
+}: {
+  userId: string;
+  step: WizardStep;
+  assetData: AssetFormData;
+  beneficiaryData: BeneficiaryFormData;
+  assetType: AssetType | null;
+}): WizardDraftPayload {
+  return {
+    version: WIZARD_DRAFT_VERSION,
+    userId,
+    step,
+    asset: {
+      assetType: assetData.assetType,
+      assetName: assetData.assetName,
+      description: assetData.description,
+      website: assetData.website,
+      validUntil: assetData.validUntil,
+      email: assetData.email,
+      customFields: sanitizeDraftCustomFields(assetData.customFields, assetType),
+    },
+    beneficiary: {
+      fullName: beneficiaryData.fullName,
+      email: beneficiaryData.email,
+      relationshipId: beneficiaryData.relationshipId,
+      phoneNumber: beneficiaryData.phoneNumber,
+      notes: beneficiaryData.notes,
+    },
+  };
+}
+
+function normalizeDraftCustomFields(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object") return {};
+  const entries = Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string");
+  return Object.fromEntries(entries);
+}
+
+export function parseWizardDraft(raw: string | null, userId: string, assetTypes: AssetType[] = []): WizardDraftPayload | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<WizardDraftPayload>;
+    if (!parsed || typeof parsed !== "object") return null;
+    if (parsed.userId !== userId) return null;
+    if (!parsed.asset || !parsed.beneficiary) return null;
+    if (typeof parsed.asset.assetType !== "string") return null;
+    if (typeof parsed.asset.assetName !== "string") return null;
+    if (typeof parsed.asset.description !== "string") return null;
+    if (typeof parsed.asset.website !== "string") return null;
+    if (typeof parsed.asset.validUntil !== "string") return null;
+    if (typeof parsed.asset.email !== "string") return null;
+    if (!parsed.asset.customFields || typeof parsed.asset.customFields !== "object") return null;
+    if (typeof parsed.beneficiary.fullName !== "string") return null;
+    if (typeof parsed.beneficiary.email !== "string") return null;
+    if (typeof parsed.beneficiary.phoneNumber !== "string") return null;
+    if (typeof parsed.beneficiary.notes !== "string") return null;
+    if (!["asset-type", "asset-details", "beneficiary"].includes(String(parsed.step))) return null;
+    const parsedAssetType = assetTypes.find((assetType) => assetType.key === parsed.asset?.assetType) ?? null;
+    const sanitizedCustomFields = sanitizeDraftCustomFields(
+      normalizeDraftCustomFields(parsed.asset.customFields),
+      parsedAssetType,
+    );
+    return {
+      version: Number(parsed.version ?? WIZARD_DRAFT_VERSION),
+      userId: parsed.userId,
+      step: parsed.step as WizardStep,
+      asset: {
+        assetType: parsed.asset.assetType,
+        assetName: parsed.asset.assetName,
+        description: parsed.asset.description,
+        website: parsed.asset.website,
+        validUntil: parsed.asset.validUntil,
+        email: parsed.asset.email,
+        customFields: sanitizedCustomFields,
+      },
+      beneficiary: {
+        fullName: parsed.beneficiary.fullName,
+        email: parsed.beneficiary.email,
+        relationshipId: parsed.beneficiary.relationshipId ?? null,
+        phoneNumber: parsed.beneficiary.phoneNumber,
+        notes: parsed.beneficiary.notes,
+      },
+    };
+  } catch {
+    return null;
+  }
 }
