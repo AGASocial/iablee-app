@@ -10,8 +10,7 @@ import {
     securitySessionCookieOptions,
 } from "@/lib/security-cookie";
 import { takeSecurityPinIpLimit, takeSecurityPinUserLimit } from "@/lib/rate-limit";
-import { isPinLocked } from "@/lib/pin-lockout";
-import { recordPinFailedAttempt } from "@/lib/pin-failures";
+import { beginPinAttempt, pinAttemptBlocksCompare } from "@/lib/pin-failures";
 
 export async function POST(req: NextRequest) {
     try {
@@ -34,76 +33,57 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "PIN is required" }, { status: 400 });
         }
 
-        const { data: userData, error: fetchError } = await supabaseAdmin
-            .from("users")
-            .select("security_pin_hash, pin_locked_until")
-            .eq("id", user.id)
-            .single();
-
-        if (fetchError || !userData) {
-            console.error("Error fetching user data:", fetchError);
+        const claim = await beginPinAttempt(user.id);
+        if (!claim) {
             return NextResponse.json(
                 { error: "Failed to verify PIN" },
                 { status: 500 }
             );
         }
 
-        if (isPinLocked(userData.pin_locked_until)) {
+        if (pinAttemptBlocksCompare(claim)) {
             return NextResponse.json(
                 {
                     success: false,
                     error: "PIN locked due to too many failed attempts",
-                    lockedUntil: userData.pin_locked_until,
+                    lockedUntil: claim.lockedUntil,
                 },
                 { status: 423 }
             );
         }
 
-        if (!userData.security_pin_hash) {
+        if (!claim.mayCompare || !claim.pinHash) {
             return NextResponse.json(
                 { error: "Security PIN not set" },
                 { status: 400 }
             );
         }
 
-        const isValid = await bcrypt.compare(pin, userData.security_pin_hash);
+        const isValid = await bcrypt.compare(pin, claim.pinHash);
 
         if (!isValid) {
-            const failure = await recordPinFailedAttempt(user.id);
-            if (!failure) {
-                return NextResponse.json(
-                    { error: "Failed to verify PIN" },
-                    { status: 500 }
-                );
-            }
-
-            if (failure.locked) {
-                return NextResponse.json(
-                    {
-                        success: false,
-                        error: "PIN locked due to too many failed attempts",
-                        lockedUntil: failure.lockedUntil,
-                    },
-                    { status: 423 }
-                );
-            }
-
             return NextResponse.json(
                 {
                     success: false,
                     error: "Invalid PIN",
-                    remainingAttempts: failure.remainingAttempts,
+                    remainingAttempts: claim.remainingAttempts,
                 },
                 { status: 401 }
             );
         }
 
-        await supabaseAdmin
+        const { error: clearError } = await supabaseAdmin
             .from("users")
             .update({ pin_failed_attempts: 0, pin_locked_until: null })
             .eq("id", user.id);
 
-        const token = await createSecuritySessionToken(user.id, "pin_verified");
+        if (clearError) {
+            console.error("Error clearing PIN lockout:", clearError);
+        }
+
+        const token = await createSecuritySessionToken(user.id, "pin_verified", {
+            pinVersion: claim.pinVersion,
+        });
 
         const cookieStore = await cookies();
         cookieStore.set(

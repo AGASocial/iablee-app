@@ -5,9 +5,14 @@ import { NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
 import { POST } from '../route';
 import { createRouteClient } from '@/lib/supabase-server';
+import { consumeOpenPinResetGrants } from '@/lib/pin-reset-grants';
 
 jest.mock('@/lib/supabase-server', () => ({
   createRouteClient: jest.fn(),
+}));
+
+jest.mock('@/lib/pin-reset-grants', () => ({
+  consumeOpenPinResetGrants: jest.fn().mockResolvedValue(true),
 }));
 
 jest.mock('@/lib/rate-limit', () => ({
@@ -42,13 +47,17 @@ describe('POST /api/auth/login', () => {
     mockCookies.mockResolvedValue({ set: setCookie });
     mockCreateRouteClient.mockResolvedValue({
       auth: {
-        signInWithPassword: jest.fn().mockResolvedValue({ error: null }),
+        signInWithPassword: jest.fn().mockResolvedValue({
+          data: { user: { id: 'user-1' } },
+          error: null,
+        }),
       },
     });
 
     const response = await POST(loginRequest());
 
     expect(response.status).toBe(200);
+    expect(consumeOpenPinResetGrants).toHaveBeenCalledWith('user-1');
     expect(setCookie).toHaveBeenCalledWith('security_session', '', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -71,5 +80,6 @@ describe('POST /api/auth/login', () => {
 
     expect(response.status).toBe(401);
     expect(setCookie).not.toHaveBeenCalled();
+    expect(consumeOpenPinResetGrants).not.toHaveBeenCalled();
   });
 });

@@ -25,15 +25,6 @@ function normalizeEmail(email: string | null | undefined): string {
   return (email ?? '').trim().toLowerCase();
 }
 
-function emailsMatch(
-  tokenEmail: string | null | undefined,
-  beneficiaryEmail: string | null | undefined
-): boolean {
-  const sentTo = normalizeEmail(tokenEmail);
-  const current = normalizeEmail(beneficiaryEmail);
-  return sentTo.length > 0 && sentTo === current;
-}
-
 function buildVerificationUrl(token: string, locale: EmailLocale): string {
   const appUrl = getAppUrl();
   const params = new URLSearchParams({
@@ -117,7 +108,7 @@ export async function sendBeneficiaryVerificationEmail(params: {
 
   if (emailError) {
     console.error('Error sending beneficiary verification email:', emailError);
-    return { sent: false, error: emailError.message };
+    return { sent: false, error: 'Failed to send verification email' };
   }
 
   return { sent: true };
@@ -131,74 +122,31 @@ export async function verifyBeneficiaryEmailToken(
   token: string
 ): Promise<VerifyBeneficiaryEmailResult> {
   const tokenHash = hashToken(token);
-  const now = new Date().toISOString();
+  const { data, error } = await supabaseAdmin.rpc('verify_beneficiary_email', {
+    p_token_hash: tokenHash,
+  });
 
-  const { data: record, error } = await supabaseAdmin
-    .from('beneficiary_email_verifications')
-    .select('id, beneficiary_id, expires_at, used_at, email, beneficiary:beneficiaries(full_name, email)')
-    .eq('token_hash', tokenHash)
-    .maybeSingle();
-
-  if (error || !record) {
+  if (error) {
+    console.error('Error verifying beneficiary email:', error);
     return { ok: false, reason: 'invalid' };
   }
 
-  if (record.used_at) {
-    return { ok: false, reason: 'used' };
-  }
+  const row = (Array.isArray(data) ? data[0] : data) as
+    | { status?: string; beneficiary_name?: string | null }
+    | null
+    | undefined;
 
-  if (record.expires_at < now) {
-    return { ok: false, reason: 'expired' };
-  }
-
-  const beneficiary = Array.isArray(record.beneficiary)
-    ? record.beneficiary[0]
-    : record.beneficiary;
-
-  if (!emailsMatch(record.email, beneficiary?.email)) {
-    const { error: expireError } = await supabaseAdmin
-      .from('beneficiary_email_verifications')
-      .update({ used_at: now })
-      .eq('id', record.id)
-      .is('used_at', null);
-    if (expireError) {
-      console.error('Error expiring mismatched verification token:', expireError);
-    }
+  if (!row || row.status === 'invalid' || !row.status) {
     return { ok: false, reason: 'invalid' };
   }
-
-  const { data: marked, error: markUsedError } = await supabaseAdmin
-    .from('beneficiary_email_verifications')
-    .update({ used_at: now })
-    .eq('id', record.id)
-    .is('used_at', null)
-    .select('id')
-    .maybeSingle();
-
-  if (markUsedError || !marked) {
-    if (markUsedError) {
-      console.error('Error marking verification token as used:', markUsedError);
-    }
-    return { ok: false, reason: markUsedError ? 'invalid' : 'used' };
+  if (row.status === 'expired' || row.status === 'used') {
+    return { ok: false, reason: row.status };
+  }
+  if (row.status === 'success') {
+    return { ok: true, beneficiaryName: row.beneficiary_name || 'Beneficiary' };
   }
 
-  const { error: updateError } = await supabaseAdmin
-    .from('beneficiaries')
-    .update({
-      email_verified: true,
-      email_verified_at: now,
-    })
-    .eq('id', record.beneficiary_id);
-
-  if (updateError) {
-    console.error('Error updating beneficiary email_verified:', updateError);
-    return { ok: false, reason: 'invalid' };
-  }
-
-  return {
-    ok: true,
-    beneficiaryName: beneficiary?.full_name ?? 'Beneficiary',
-  };
+  return { ok: false, reason: 'invalid' };
 }
 
 export function getVerificationResultPath(

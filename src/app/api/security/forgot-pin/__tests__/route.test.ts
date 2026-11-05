@@ -18,8 +18,11 @@ import { resetRateLimitStore } from '@/lib/rate-limit';
 jest.mock('@/lib/supabase-server', () => ({
   createAuthenticatedRouteClient: jest.fn(),
 }));
+jest.mock('@/lib/beneficiary-email-copy', () => ({
+  resolveEmailLocale: (locale?: string | null) => (locale === 'en' || locale === 'es' ? locale : 'es'),
+}));
 jest.mock('@/lib/supabase-admin', () => ({
-  supabaseAdmin: { from: jest.fn() },
+  supabaseAdmin: { from: jest.fn(), rpc: jest.fn() },
 }));
 jest.mock('resend', () => ({
   Resend: jest.fn().mockImplementation(() => ({
@@ -43,6 +46,7 @@ describe('POST /api/security/forgot-pin', () => {
     });
     insert.mockResolvedValue({ error: null });
     mockSendEmail.mockResolvedValue({ error: null });
+    (supabaseAdmin.rpc as jest.Mock).mockResolvedValue({ error: null });
   });
 
   function mockUser(lockedUntil: string | null, invalidateError: { message: string } | null = null) {
@@ -89,6 +93,34 @@ describe('POST /api/security/forgot-pin', () => {
       })
     );
     expect(insert.mock.calls[0][0].code).not.toBe('000042');
+    expect(supabaseAdmin.rpc).toHaveBeenCalledWith('consume_open_pin_reset_grants', {
+      p_user_id: 'user-1',
+    });
+  });
+
+  it('sends the reset email in the request locale', async () => {
+    mockUser(null);
+
+    const spanish = await POST(new Request('http://localhost/api/security/forgot-pin', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ locale: 'es' }),
+    }) as never);
+    expect(spanish.status).toBe(200);
+    expect(mockSendEmail).toHaveBeenCalledWith(expect.objectContaining({
+      subject: 'Tu código para restablecer el PIN de seguridad',
+      html: expect.stringContaining('Tu código de seguridad es'),
+    }));
+
+    mockSendEmail.mockClear();
+    const english = await POST(new Request('http://localhost/api/security/forgot-pin', {
+      method: 'POST',
+      headers: { referer: 'http://localhost/en/dashboard' },
+    }) as never);
+    expect(english.status).toBe(200);
+    expect(mockSendEmail).toHaveBeenCalledWith(expect.objectContaining({
+      subject: 'Your Security PIN Reset Code',
+    }));
   });
 
   it('refuses to send a code while reset is locked', async () => {

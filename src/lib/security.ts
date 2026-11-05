@@ -12,33 +12,55 @@ function signingKey(): Uint8Array {
 const RESET_GRANT_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+export interface SecuritySessionOptions {
+  jti?: string;
+  pinVersion: number;
+}
+
 export async function createSecuritySessionToken(
   userId: string,
   purpose: SecuritySessionPurpose = 'pin_verified',
-  jti?: string
+  options?: SecuritySessionOptions
 ): Promise<string> {
-  const builder = new SignJWT({ userId, role: 'security_pin_verified', purpose })
+  if (!options || !Number.isInteger(options.pinVersion) || options.pinVersion < 0) {
+    throw new Error('Security session requires a PIN version');
+  }
+
+  const builder = new SignJWT({
+    userId,
+    role: 'security_pin_verified',
+    purpose,
+    pinVersion: options.pinVersion,
+  })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('15m');
 
-  if (jti) {
-    builder.setJti(jti);
+  if (options.jti) {
+    builder.setJti(options.jti);
   }
 
   return await builder.sign(signingKey());
 }
 
-interface SecuritySessionClaims {
+export interface SecuritySessionSnapshot {
   purpose: SecuritySessionPurpose;
   jti: string | null;
+  pinVersion: number | null;
 }
 
-async function readSecuritySessionClaims(
+function parsePinVersion(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) {
+    return value;
+  }
+  return null;
+}
+
+export async function readSecuritySession(
   token: string,
   userId: string,
   purpose?: SecuritySessionPurpose
-): Promise<SecuritySessionClaims | null> {
+): Promise<SecuritySessionSnapshot | null> {
   if (!userId) return null;
 
   let key: Uint8Array;
@@ -67,7 +89,7 @@ async function readSecuritySessionClaims(
     const jti = typeof payload.jti === 'string' && RESET_GRANT_ID.test(payload.jti)
       ? payload.jti
       : null;
-    return { purpose: tokenPurpose, jti };
+    return { purpose: tokenPurpose, jti, pinVersion: parsePinVersion(payload.pinVersion) };
   } catch {
     return null;
   }
@@ -78,7 +100,7 @@ export async function verifySecuritySessionToken(
   userId: string,
   purpose?: SecuritySessionPurpose
 ): Promise<boolean> {
-  return (await readSecuritySessionClaims(token, userId, purpose)) !== null;
+  return (await readSecuritySession(token, userId, purpose)) !== null;
 }
 
 /** Single-use id carried by a pin_reset cookie. Absent on verify-pin sessions. */
@@ -86,6 +108,6 @@ export async function readPinResetGrantId(
   token: string,
   userId: string
 ): Promise<string | null> {
-  const claims = await readSecuritySessionClaims(token, userId, 'pin_reset');
+  const claims = await readSecuritySession(token, userId, 'pin_reset');
   return claims?.jti ?? null;
 }

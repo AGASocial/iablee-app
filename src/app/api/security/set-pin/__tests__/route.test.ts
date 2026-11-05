@@ -28,20 +28,26 @@ jest.mock('bcryptjs', () => ({
 const GRANT_ID = '11111111-1111-4111-8111-111111111111';
 
 describe('POST /api/security/set-pin', () => {
-  const updateEq = jest.fn().mockResolvedValue({ error: null });
-  const update = jest.fn().mockReturnValue({ eq: updateEq });
+  const is = jest.fn();
+  const eq = jest.fn();
+  const select = jest.fn();
+  const update = jest.fn();
   const rpc = supabaseAdmin.rpc as jest.Mock;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    updateEq.mockResolvedValue({ error: null });
+    const builder = { eq, is, select };
+    eq.mockReturnValue(builder);
+    is.mockReturnValue(builder);
+    select.mockResolvedValue({ data: [{ id: 'user-1' }], error: null });
+    update.mockReturnValue(builder);
     (createAuthenticatedRouteClient as jest.Mock).mockResolvedValue({
       user: { id: 'user-1' },
     });
     (supabaseAdmin.from as jest.Mock).mockImplementation(() => ({ update }));
   });
 
-  function mockPin(hasPin: boolean, applied = false) {
+  function mockPin(hasPin: boolean, applied: number | null = null) {
     rpc.mockImplementation((fn: string) => {
       if (fn === 'user_has_security_pin') {
         return Promise.resolve({ data: hasPin, error: null });
@@ -60,7 +66,7 @@ describe('POST /api/security/set-pin', () => {
     });
   }
 
-  it('writes the first PIN through the service client without reading the hash', async () => {
+  it('writes the first PIN only while the hash is still null', async () => {
     mockPin(false);
 
     const response = await POST(request() as never);
@@ -70,8 +76,22 @@ describe('POST /api/security/set-pin', () => {
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({ security_pin_hash: 'hashed-pin' })
     );
+    expect(is).toHaveBeenCalledWith('security_pin_hash', null);
     expect(readPinResetGrant).not.toHaveBeenCalled();
     expect(rpc).not.toHaveBeenCalledWith('apply_pin_reset', expect.anything());
+  });
+
+  it('returns 409 when the first PIN lost the race to an existing hash', async () => {
+    mockPin(false);
+    select.mockResolvedValue({ data: [], error: null });
+
+    const response = await POST(request() as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.error).toMatch(/reset code/i);
+    expect(is).toHaveBeenCalledWith('security_pin_hash', null);
+    expect(createSecuritySessionToken).not.toHaveBeenCalled();
   });
 
   it('refuses to replace an existing PIN without a reset grant', async () => {
@@ -88,7 +108,7 @@ describe('POST /api/security/set-pin', () => {
   });
 
   it('rejects a reset grant that was already consumed', async () => {
-    mockPin(true, false);
+    mockPin(true, null);
     (readPinResetGrant as jest.Mock).mockResolvedValue(GRANT_ID);
 
     const response = await POST(request() as never);
@@ -103,8 +123,8 @@ describe('POST /api/security/set-pin', () => {
     });
   });
 
-  it('replaces an existing PIN only when the grant is consumed', async () => {
-    mockPin(true, true);
+  it('replaces an existing PIN only when the grant returns the new version', async () => {
+    mockPin(true, 4);
     (readPinResetGrant as jest.Mock).mockResolvedValue(GRANT_ID);
 
     const response = await POST(request() as never);
@@ -115,7 +135,9 @@ describe('POST /api/security/set-pin', () => {
       p_grant_id: GRANT_ID,
       p_pin_hash: 'hashed-pin',
     }));
-    expect(createSecuritySessionToken).toHaveBeenCalledWith('user-1', 'pin_verified');
+    expect(createSecuritySessionToken).toHaveBeenCalledWith('user-1', 'pin_verified', {
+      pinVersion: 4,
+    });
     expect(cookies).toHaveBeenCalled();
   });
 });

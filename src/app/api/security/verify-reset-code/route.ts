@@ -5,8 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { createSecuritySessionToken } from "@/lib/security";
 import { hashPinResetCode } from "@/lib/pin-reset-otp";
 import { checkRateLimit, getClientIp, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
-import { isPinLocked } from "@/lib/pin-lockout";
-import { recordPinResetFailedAttempt } from "@/lib/pin-failures";
+import { beginPinResetAttempt, pinAttemptBlocksCompare } from "@/lib/pin-failures";
 import {
     SECURITY_SESSION_COOKIE_NAME,
     SECURITY_SESSION_MAX_AGE_SECONDS,
@@ -51,18 +50,12 @@ export async function POST(req: NextRequest) {
             return rateLimitResponse(userRateLimit.resetAt);
         }
 
-        const { data: userData, error: userError } = await supabaseAdmin
-            .from('users')
-            .select('pin_reset_locked_until')
-            .eq('id', user.id)
-            .single();
-
-        if (userError || !userData) {
-            console.error("Error fetching PIN reset lockout:", userError);
+        const claim = await beginPinResetAttempt(user.id);
+        if (!claim) {
             return NextResponse.json({ error: "Internal server error" }, { status: 500 });
         }
 
-        if (isPinLocked(userData.pin_reset_locked_until)) {
+        if (pinAttemptBlocksCompare(claim)) {
             const cleared = await invalidateResetCodes(user.id);
             if (!cleared) {
                 return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -70,7 +63,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json(
                 {
                     error: "PIN reset locked due to too many failed attempts",
-                    lockedUntil: userData.pin_reset_locked_until,
+                    lockedUntil: claim.lockedUntil,
                 },
                 { status: 423 }
             );
@@ -95,25 +88,6 @@ export async function POST(req: NextRequest) {
         }
 
         if (!otp) {
-            const failure = await recordPinResetFailedAttempt(user.id);
-            if (!failure) {
-                return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-            }
-
-            if (failure.locked) {
-                const cleared = await invalidateResetCodes(user.id);
-                if (!cleared) {
-                    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-                }
-                return NextResponse.json(
-                    {
-                        error: "PIN reset locked due to too many failed attempts",
-                        lockedUntil: failure.lockedUntil,
-                    },
-                    { status: 423 }
-                );
-            }
-
             return NextResponse.json({ error: "Invalid or expired code" }, { status: 400 });
         }
 
@@ -144,7 +118,10 @@ export async function POST(req: NextRequest) {
             console.error("Error clearing PIN reset lockout:", resetError);
         }
 
-        const token = await createSecuritySessionToken(user.id, 'pin_reset', grantId);
+        const token = await createSecuritySessionToken(user.id, 'pin_reset', {
+            jti: grantId,
+            pinVersion: claim.pinVersion,
+        });
 
         const response = NextResponse.json({ success: true });
         response.cookies.set(

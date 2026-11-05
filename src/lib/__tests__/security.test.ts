@@ -2,7 +2,7 @@
  * @jest-environment node
  */
 import { jwtVerify } from 'jose';
-import { readPinResetGrantId, verifySecuritySessionToken } from '@/lib/security';
+import { readPinResetGrantId, readSecuritySession, verifySecuritySessionToken } from '@/lib/security';
 
 jest.mock('jose', () => ({
   SignJWT: jest.fn(),
@@ -100,6 +100,33 @@ describe('verifySecuritySessionToken', () => {
       },
     });
     await expect(readPinResetGrantId('token', 'user-a')).resolves.toBeNull();
+  });
+
+  it('keeps an integer PIN version and drops any other value', async () => {
+    mockJwtVerify.mockResolvedValue({
+      payload: {
+        userId: 'user-a',
+        role: 'security_pin_verified',
+        purpose: 'pin_verified',
+        pinVersion: 4,
+      },
+    });
+
+    await expect(readSecuritySession('token', 'user-a')).resolves.toEqual(
+      expect.objectContaining({ pinVersion: 4, purpose: 'pin_verified' })
+    );
+
+    mockJwtVerify.mockResolvedValue({
+      payload: {
+        userId: 'user-a',
+        role: 'security_pin_verified',
+        purpose: 'pin_verified',
+        pinVersion: 1.5,
+      },
+    });
+    await expect(readSecuritySession('token', 'user-a')).resolves.toEqual(
+      expect.objectContaining({ pinVersion: null })
+    );
   });
 
   it('rejects a token that is missing userId, an empty user id, and invalid tokens', async () => {

@@ -2,7 +2,8 @@
  * @jest-environment node
  */
 import { cookies } from 'next/headers';
-import { readPinResetGrantId, verifySecuritySessionToken } from '@/lib/security';
+import { readSecuritySession } from '@/lib/security';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { checkSecuritySession, hasPinResetSession, readPinResetGrant } from '@/lib/supabase-server';
 
 jest.mock('next/headers', () => ({
@@ -10,57 +11,105 @@ jest.mock('next/headers', () => ({
 }));
 
 jest.mock('@/lib/security', () => ({
-  verifySecuritySessionToken: jest.fn(),
-  readPinResetGrantId: jest.fn(),
+  readSecuritySession: jest.fn(),
 }));
+
+jest.mock('@/lib/supabase-admin', () => ({
+  supabaseAdmin: { from: jest.fn() },
+}));
+
+const GRANT_ID = '11111111-1111-4111-8111-111111111111';
 
 describe('checkSecuritySession', () => {
   const mockCookies = cookies as jest.Mock;
-  const mockVerify = verifySecuritySessionToken as jest.Mock;
-  const mockGrant = readPinResetGrantId as jest.Mock;
+  const mockRead = readSecuritySession as jest.Mock;
 
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('passes the cookie and the authenticated user id to the verifier', async () => {
+  function mockPinVersion(version: number | null) {
+    (supabaseAdmin.from as jest.Mock).mockReturnValue({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({
+            data: version === null ? null : { security_pin_version: version },
+            error: null,
+          }),
+        }),
+      }),
+    });
+  }
+
+  it('accepts a pin_verified cookie whose PIN version matches the user', async () => {
     mockCookies.mockResolvedValue({
       get: () => ({ value: 'session-token' }),
     });
-    mockVerify.mockResolvedValue(true);
+    mockRead.mockResolvedValue({ purpose: 'pin_verified', jti: null, pinVersion: 3 });
+    mockPinVersion(3);
 
     await expect(checkSecuritySession('user-a')).resolves.toBe(true);
-    expect(mockVerify).toHaveBeenCalledWith('session-token', 'user-a', 'pin_verified');
+    expect(mockRead).toHaveBeenCalledWith('session-token', 'user-a', 'pin_verified');
+    expect(supabaseAdmin.from).toHaveBeenCalledWith('users');
   });
 
-  it('rejects when the verifier rejects another user', async () => {
+  it('rejects a cookie minted for another user', async () => {
     mockCookies.mockResolvedValue({
       get: () => ({ value: 'session-token' }),
     });
-    mockVerify.mockImplementation(async (_token: string, userId: string) => userId === 'user-a');
+    mockRead.mockImplementation(async (_token: string, userId: string) => (
+      userId === 'user-a'
+        ? { purpose: 'pin_verified', jti: null, pinVersion: 1 }
+        : null
+    ));
+    mockPinVersion(1);
 
     await expect(checkSecuritySession('user-b')).resolves.toBe(false);
-    expect(mockVerify).toHaveBeenCalledWith('session-token', 'user-b', 'pin_verified');
+    expect(mockRead).toHaveBeenCalledWith('session-token', 'user-b', 'pin_verified');
   });
 
-  it('asks the verifier for a pin_reset session', async () => {
+  it('rejects a cookie when the PIN version changed', async () => {
     mockCookies.mockResolvedValue({
       get: () => ({ value: 'session-token' }),
     });
-    mockVerify.mockResolvedValue(true);
+    mockRead.mockResolvedValue({ purpose: 'pin_verified', jti: null, pinVersion: 1 });
+    mockPinVersion(2);
+
+    await expect(checkSecuritySession('user-a')).resolves.toBe(false);
+  });
+
+  it('rejects a cookie that has no PIN version', async () => {
+    mockCookies.mockResolvedValue({
+      get: () => ({ value: 'session-token' }),
+    });
+    mockRead.mockResolvedValue({ purpose: 'pin_verified', jti: null, pinVersion: null });
+
+    await expect(checkSecuritySession('user-a')).resolves.toBe(false);
+    expect(supabaseAdmin.from).not.toHaveBeenCalled();
+  });
+
+  it('asks for a pin_reset session with the same version check', async () => {
+    mockCookies.mockResolvedValue({
+      get: () => ({ value: 'session-token' }),
+    });
+    mockRead.mockResolvedValue({ purpose: 'pin_reset', jti: GRANT_ID, pinVersion: 4 });
+    mockPinVersion(4);
 
     await expect(hasPinResetSession('user-a')).resolves.toBe(true);
-    expect(mockVerify).toHaveBeenCalledWith('session-token', 'user-a', 'pin_reset');
+    expect(mockRead).toHaveBeenCalledWith('session-token', 'user-a', 'pin_reset');
   });
 
-  it('reads the single-use grant id from the pin_reset cookie', async () => {
+  it('reads the grant id only when the PIN version still matches', async () => {
     mockCookies.mockResolvedValue({
       get: () => ({ value: 'session-token' }),
     });
-    mockGrant.mockResolvedValue('11111111-1111-4111-8111-111111111111');
+    mockRead.mockResolvedValue({ purpose: 'pin_reset', jti: GRANT_ID, pinVersion: 4 });
+    mockPinVersion(4);
 
-    await expect(readPinResetGrant('user-a')).resolves.toBe('11111111-1111-4111-8111-111111111111');
-    expect(mockGrant).toHaveBeenCalledWith('session-token', 'user-a');
+    await expect(readPinResetGrant('user-a')).resolves.toBe(GRANT_ID);
+
+    mockPinVersion(5);
+    await expect(readPinResetGrant('user-a')).resolves.toBeNull();
   });
 
   it('rejects when the cookie is missing or the user id is empty', async () => {
@@ -68,7 +117,7 @@ describe('checkSecuritySession', () => {
 
     await expect(checkSecuritySession('user-a')).resolves.toBe(false);
     await expect(checkSecuritySession('')).resolves.toBe(false);
-    expect(mockVerify).not.toHaveBeenCalled();
+    expect(mockRead).not.toHaveBeenCalled();
     expect(mockCookies).toHaveBeenCalledTimes(1);
   });
 });

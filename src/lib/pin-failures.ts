@@ -66,3 +66,91 @@ export function recordPinFailedAttempt(userId: string): Promise<RecordedPinFailu
 export function recordPinResetFailedAttempt(userId: string): Promise<RecordedPinFailure | null> {
   return recordFailure('record_pin_reset_failed_attempt', userId);
 }
+
+export interface PinAttemptClaim {
+  pinHash: string | null;
+  attempts: number;
+  lockedUntil: string | null;
+  alreadyLocked: boolean;
+  mayCompare: boolean;
+  pinVersion: number;
+  remainingAttempts: number;
+}
+
+export interface PinResetAttemptClaim {
+  attempts: number;
+  lockedUntil: string | null;
+  alreadyLocked: boolean;
+  mayCompare: boolean;
+  pinVersion: number;
+  remainingAttempts: number;
+}
+
+function claimRow(data: unknown): Record<string, unknown> | null {
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row || typeof row !== 'object') return null;
+  return row as Record<string, unknown>;
+}
+
+function lockedUntilOf(value: unknown): string | null {
+  return typeof value === 'string' ? value : null;
+}
+
+/** True when the reserved attempt is already locked or this reservation reached the cap. */
+export function pinAttemptBlocksCompare(claim: { alreadyLocked: boolean; mayCompare: boolean; lockedUntil: string | null }): boolean {
+  return claim.alreadyLocked || (!claim.mayCompare && claim.lockedUntil != null);
+}
+
+/**
+ * Locks the user row and reserves a PIN attempt before bcrypt.
+ * A locked result must not be compared.
+ */
+export async function beginPinAttempt(userId: string): Promise<PinAttemptClaim | null> {
+  const { data, error } = await supabaseAdmin.rpc('begin_pin_attempt', { p_user_id: userId });
+  if (error) {
+    console.error('Error beginning PIN attempt:', error);
+    return null;
+  }
+
+  const row = claimRow(data);
+  if (!row || typeof row.failed_attempts !== 'number' || typeof row.pin_version !== 'number') {
+    console.error('begin_pin_attempt returned no row');
+    return null;
+  }
+
+  const attempts = row.failed_attempts;
+  return {
+    pinHash: typeof row.pin_hash === 'string' ? row.pin_hash : null,
+    attempts,
+    lockedUntil: lockedUntilOf(row.locked_until),
+    alreadyLocked: row.already_locked === true,
+    mayCompare: row.may_compare === true,
+    pinVersion: row.pin_version,
+    remainingAttempts: Math.max(0, PIN_LOCKOUT_MAX_ATTEMPTS - attempts),
+  };
+}
+
+/** Locks the user row and reserves a reset attempt before the OTP lookup. */
+export async function beginPinResetAttempt(userId: string): Promise<PinResetAttemptClaim | null> {
+  const { data, error } = await supabaseAdmin.rpc('begin_pin_reset_attempt', { p_user_id: userId });
+  if (error) {
+    console.error('Error beginning PIN reset attempt:', error);
+    return null;
+  }
+
+  const row = claimRow(data);
+  if (!row || typeof row.failed_attempts !== 'number' || typeof row.pin_version !== 'number') {
+    console.error('begin_pin_reset_attempt returned no row');
+    return null;
+  }
+
+  const attempts = row.failed_attempts;
+  return {
+    attempts,
+    lockedUntil: lockedUntilOf(row.locked_until),
+    alreadyLocked: row.already_locked === true,
+    mayCompare: row.may_compare === true,
+    pinVersion: row.pin_version,
+    remainingAttempts: Math.max(0, PIN_LOCKOUT_MAX_ATTEMPTS - attempts),
+  };
+}

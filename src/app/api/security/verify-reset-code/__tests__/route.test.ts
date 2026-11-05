@@ -17,9 +17,21 @@ jest.mock('@/lib/security', () => ({
   createSecuritySessionToken: jest.fn().mockResolvedValue('reset-token'),
 }));
 
+function resetClaim(overrides: Record<string, unknown> = {}) {
+  return {
+    failed_attempts: 1,
+    locked_until: null,
+    already_locked: false,
+    may_compare: true,
+    pin_version: 2,
+    ...overrides,
+  };
+}
+
 describe('POST /api/security/verify-reset-code', () => {
   const userUpdate = jest.fn();
   const otpUpdate = jest.fn();
+  const otpSelect = jest.fn();
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -29,7 +41,7 @@ describe('POST /api/security/verify-reset-code', () => {
       user: { id: 'user-1' },
     });
     (supabaseAdmin.rpc as jest.Mock).mockResolvedValue({
-      data: [{ failed_attempts: 1, locked_until: null, already_locked: false }],
+      data: [resetClaim()],
       error: null,
     });
     userUpdate.mockImplementation(() => thenable());
@@ -65,28 +77,13 @@ describe('POST /api/security/verify-reset-code', () => {
     return builder;
   }
 
-  function mockRows(options: {
-    lockedUntil?: string | null;
-    otp?: { id: string } | null;
-  }) {
+  function mockRows(options: { otp?: { id: string } | null }) {
     (supabaseAdmin.from as jest.Mock).mockImplementation((table: string) => {
       if (table === 'users') {
-        return {
-          select: () => ({
-            eq: () => ({
-              single: async () => ({
-                data: {
-                  pin_reset_locked_until: options.lockedUntil ?? null,
-                },
-                error: null,
-              }),
-            }),
-          }),
-          update: userUpdate,
-        };
+        return { update: userUpdate };
       }
       return {
-        select: () => ({
+        select: otpSelect.mockReturnValue({
           eq: () => ({
             eq: () => ({
               eq: () => ({
@@ -121,15 +118,16 @@ describe('POST /api/security/verify-reset-code', () => {
     expect(response?.status).toBe(429);
   });
 
-  it('locks from the database increment and invalidates OTPs', async () => {
+  it('locks from the reservation and does not look up the OTP', async () => {
     mockRows({});
     const lockedUntil = new Date(Date.now() + 60_000).toISOString();
     (supabaseAdmin.rpc as jest.Mock).mockResolvedValue({
-      data: [{
+      data: [resetClaim({
         failed_attempts: 5,
         locked_until: lockedUntil,
         already_locked: false,
-      }],
+        may_compare: false,
+      })],
       error: null,
     });
 
@@ -139,17 +137,16 @@ describe('POST /api/security/verify-reset-code', () => {
     expect(response.status).toBe(423);
     expect(body.error).toMatch(/locked/i);
     expect(body.lockedUntil).toBe(lockedUntil);
-    expect(supabaseAdmin.rpc).toHaveBeenCalledWith('record_pin_reset_failed_attempt', {
+    expect(supabaseAdmin.rpc).toHaveBeenCalledWith('begin_pin_reset_attempt', {
       p_user_id: 'user-1',
     });
-    expect(otpUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ verified: true })
-    );
+    expect(otpSelect).not.toHaveBeenCalled();
+    expect(otpUpdate).toHaveBeenCalledWith(expect.objectContaining({ verified: true }));
     expect(userUpdate).not.toHaveBeenCalled();
     expect(createSecuritySessionToken).not.toHaveBeenCalled();
   });
 
-  it('returns 500 when the atomic counter update fails', async () => {
+  it('returns 500 when the lock cannot be taken', async () => {
     mockRows({});
     (supabaseAdmin.rpc as jest.Mock).mockResolvedValue({
       data: null,
@@ -159,12 +156,21 @@ describe('POST /api/security/verify-reset-code', () => {
     const response = await POST(request('111111') as never);
 
     expect(response.status).toBe(500);
+    expect(otpSelect).not.toHaveBeenCalled();
     expect(createSecuritySessionToken).not.toHaveBeenCalled();
   });
 
   it('invalidates leftover codes while a reset lock is already active', async () => {
     const lockedUntil = new Date(Date.now() + 60_000).toISOString();
-    mockRows({ lockedUntil });
+    mockRows({});
+    (supabaseAdmin.rpc as jest.Mock).mockResolvedValue({
+      data: [resetClaim({
+        locked_until: lockedUntil,
+        already_locked: true,
+        may_compare: false,
+      })],
+      error: null,
+    });
 
     const response = await POST(request('123456') as never);
     const body = await response.json();
@@ -172,7 +178,7 @@ describe('POST /api/security/verify-reset-code', () => {
     expect(response.status).toBe(423);
     expect(body.lockedUntil).toBe(lockedUntil);
     expect(otpUpdate).toHaveBeenCalledWith(expect.objectContaining({ verified: true }));
-    expect(supabaseAdmin.rpc).not.toHaveBeenCalled();
+    expect(otpSelect).not.toHaveBeenCalled();
     expect(createSecuritySessionToken).not.toHaveBeenCalled();
   });
 
@@ -189,11 +195,10 @@ describe('POST /api/security/verify-reset-code', () => {
     expect(grantCall?.reset_grant_id).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
     );
-    expect(createSecuritySessionToken).toHaveBeenCalledWith(
-      'user-1',
-      'pin_reset',
-      grantCall?.reset_grant_id
-    );
+    expect(createSecuritySessionToken).toHaveBeenCalledWith('user-1', 'pin_reset', {
+      jti: grantCall?.reset_grant_id,
+      pinVersion: 2,
+    });
     const setCookie = response.headers.get('set-cookie') ?? '';
     expect(setCookie).toContain('security_session=reset-token');
     expect(setCookie.toLowerCase()).toContain('httponly');

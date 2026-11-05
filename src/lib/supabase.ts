@@ -47,6 +47,7 @@ export type Database = {
           pin_locked_until: string | null
           pin_reset_failed_attempts: number
           pin_reset_locked_until: string | null
+          security_pin_version: number
         }
         Insert: {
           id?: string
@@ -60,6 +61,7 @@ export type Database = {
           pin_locked_until?: string | null
           pin_reset_failed_attempts?: number
           pin_reset_locked_until?: string | null
+          security_pin_version?: number
         }
         Update: {
           id?: string
@@ -73,6 +75,7 @@ export type Database = {
           pin_locked_until?: string | null
           pin_reset_failed_attempts?: number
           pin_reset_locked_until?: string | null
+          security_pin_version?: number
         }
       }
       digital_assets: {

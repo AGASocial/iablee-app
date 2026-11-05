@@ -6,11 +6,47 @@ import {
   securitySessionCookieOptions,
 } from '@/lib/security-cookie';
 
-function sanitizeNextPath(nextParam: string | null): string {
-  if (!nextParam) return '/en';
-  if (!nextParam.startsWith('/')) return '/en';
-  if (nextParam.startsWith('//')) return '/en';
-  return nextParam;
+const FALLBACK_NEXT_PATH = '/en';
+
+function hasForbiddenRedirectMarker(value: string): boolean {
+  let current = value;
+  for (let i = 0; i < 3; i += 1) {
+    if (current.includes('\\') || current.includes('@') || /%5c|%40/i.test(current)) {
+      return true;
+    }
+    try {
+      const decoded = decodeURIComponent(current);
+      if (decoded === current) return false;
+      current = decoded;
+    } catch {
+      return true;
+    }
+  }
+  return current.includes('\\') || current.includes('@');
+}
+
+export function sanitizeNextPath(nextParam: string | null, origin: string): string {
+  if (!nextParam || hasForbiddenRedirectMarker(nextParam)) return FALLBACK_NEXT_PATH;
+
+  let resolved: URL;
+  let base: URL;
+  try {
+    resolved = new URL(nextParam, origin);
+    base = new URL(origin);
+  } catch {
+    return FALLBACK_NEXT_PATH;
+  }
+
+  if (resolved.origin !== base.origin || resolved.host !== base.host) return FALLBACK_NEXT_PATH;
+  if (resolved.protocol !== base.protocol) return FALLBACK_NEXT_PATH;
+  if (resolved.username || resolved.password) return FALLBACK_NEXT_PATH;
+
+  const path = `${resolved.pathname}${resolved.search}${resolved.hash}`;
+  if (!path.startsWith('/') || path.startsWith('//')) return FALLBACK_NEXT_PATH;
+  if (hasForbiddenRedirectMarker(path) || hasForbiddenRedirectMarker(resolved.href)) {
+    return FALLBACK_NEXT_PATH;
+  }
+  return path;
 }
 
 function localeFromNextPath(nextPath: string): string {
@@ -23,7 +59,7 @@ export async function GET(request: NextRequest) {
   const code = requestUrl.searchParams.get('code');
   const tokenHash = requestUrl.searchParams.get('token_hash');
   const otpType = requestUrl.searchParams.get('type') as EmailOtpType | null;
-  const nextPath = sanitizeNextPath(requestUrl.searchParams.get('next'));
+  const nextPath = sanitizeNextPath(requestUrl.searchParams.get('next'), requestUrl.origin);
   const locale = localeFromNextPath(nextPath);
   const supabase = await createRouteClient();
 

@@ -8,7 +8,7 @@ import {
 } from '@/lib/beneficiary-email-verification';
 
 jest.mock('@/lib/supabase-admin', () => ({
-  supabaseAdmin: { from: jest.fn() },
+  supabaseAdmin: { from: jest.fn(), rpc: jest.fn() },
 }));
 
 jest.mock('@/lib/beneficiary-email-copy', () => ({
@@ -40,18 +40,6 @@ describe('beneficiary email verification', () => {
     process.env.RESEND_API_KEY = 'test-key';
     mockSendEmail.mockResolvedValue({ error: null });
   });
-
-  function verificationRow(overrides: Record<string, unknown> = {}) {
-    return {
-      id: 'ver-1',
-      beneficiary_id: 'ben-1',
-      expires_at: new Date(Date.now() + 60_000).toISOString(),
-      used_at: null,
-      email: 'heir@example.com',
-      beneficiary: { full_name: 'Ada', email: 'heir@example.com' },
-      ...overrides,
-    };
-  }
 
   function mockAdmin(record: Record<string, unknown> | null) {
     (supabaseAdmin.from as jest.Mock).mockImplementation((table: string) => {
@@ -107,34 +95,63 @@ describe('beneficiary email verification', () => {
     }));
   });
 
-  it('verifies only when the token email matches the beneficiary email', async () => {
-    mockAdmin(verificationRow({ email: 'heir@example.com', beneficiary: { full_name: 'Ada', email: ' Heir@Example.com ' } }));
+  it('returns a fixed message when the email provider fails', async () => {
+    mockAdmin(null);
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockSendEmail.mockResolvedValue({
+      error: { message: 'Invalid API key re_secret_value', name: 'validation_error' },
+    });
+
+    const result = await sendBeneficiaryVerificationEmail({
+      beneficiaryId: 'ben-1',
+      beneficiaryName: 'Ada',
+      email: 'heir@example.com',
+    });
+
+    expect(result).toEqual({ sent: false, error: 'Failed to send verification email' });
+    expect(JSON.stringify(result)).not.toContain('re_secret_value');
+    expect(spy).toHaveBeenCalledWith(
+      'Error sending beneficiary verification email:',
+      expect.objectContaining({ message: 'Invalid API key re_secret_value' })
+    );
+    spy.mockRestore();
+  });
+
+  it('verifies through one database call and does not update the beneficiary itself', async () => {
+    (supabaseAdmin.rpc as jest.Mock).mockResolvedValue({
+      data: [{ status: 'success', beneficiary_name: 'Ada' }],
+      error: null,
+    });
 
     const result = await verifyBeneficiaryEmailToken('abc');
 
     expect(result).toEqual({ ok: true, beneficiaryName: 'Ada' });
-    expect(updates.some((update) => update.table === 'beneficiaries' && update.payload.email_verified === true)).toBe(true);
+    expect(supabaseAdmin.rpc).toHaveBeenCalledWith('verify_beneficiary_email', {
+      p_token_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
+    expect(supabaseAdmin.from).not.toHaveBeenCalled();
   });
 
-  it('does not verify a beneficiary after the email changed', async () => {
-    mockAdmin(verificationRow({
-      email: 'old@example.com',
-      beneficiary: { full_name: 'Ada', email: 'new@example.com' },
-    }));
+  it('maps a mismatched token email to invalid', async () => {
+    (supabaseAdmin.rpc as jest.Mock).mockResolvedValue({
+      data: [{ status: 'invalid', beneficiary_name: null }],
+      error: null,
+    });
 
     const result = await verifyBeneficiaryEmailToken('abc');
 
     expect(result).toEqual({ ok: false, reason: 'invalid' });
-    expect(updates.some((update) => update.table === 'beneficiaries')).toBe(false);
-    expect(updates.some((update) => update.table === 'beneficiary_email_verifications' && update.payload.used_at)).toBe(true);
+    expect(supabaseAdmin.from).not.toHaveBeenCalled();
   });
 
-  it('rejects a token that has no stored email', async () => {
-    mockAdmin(verificationRow({ email: null }));
+  it('maps an empty stored email to invalid', async () => {
+    (supabaseAdmin.rpc as jest.Mock).mockResolvedValue({
+      data: [{ status: 'invalid', beneficiary_name: null }],
+      error: null,
+    });
 
     const result = await verifyBeneficiaryEmailToken('abc');
 
     expect(result).toEqual({ ok: false, reason: 'invalid' });
-    expect(updates.some((update) => update.table === 'beneficiaries')).toBe(false);
   });
 });

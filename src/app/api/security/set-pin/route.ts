@@ -9,6 +9,9 @@ import {
     securitySessionCookieOptions,
 } from "@/lib/security-cookie";
 import bcrypt from "bcryptjs";
+import { assignInitialSecurityPin } from "@/lib/security-pin-write";
+
+const RESET_REQUIRED = "A verified reset code is required to replace an existing PIN";
 
 export async function POST(req: NextRequest) {
     try {
@@ -48,7 +51,7 @@ export async function POST(req: NextRequest) {
             const grantId = await readPinResetGrant(user.id);
             if (!grantId) {
                 return NextResponse.json(
-                    { error: "A verified reset code is required to replace an existing PIN" },
+                    { error: RESET_REQUIRED },
                     { status: 403 }
                 );
             }
@@ -70,14 +73,16 @@ export async function POST(req: NextRequest) {
                 );
             }
 
-            if (applied !== true) {
+            if (typeof applied !== "number" || applied < 1) {
                 return NextResponse.json(
-                    { error: "A verified reset code is required to replace an existing PIN" },
+                    { error: RESET_REQUIRED },
                     { status: 403 }
                 );
             }
 
-            const token = await createSecuritySessionToken(user.id, "pin_verified");
+            const token = await createSecuritySessionToken(user.id, "pin_verified", {
+                pinVersion: applied,
+            });
             const cookieStore = await cookies();
             cookieStore.set(
                 SECURITY_SESSION_COOKIE_NAME,
@@ -88,20 +93,15 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ success: true });
         }
 
-        const { error: updateError } = await supabaseAdmin
-            .from("users")
-            .update({
-                security_pin_hash: hash,
-                security_pin_updated_at: new Date().toISOString(),
-            })
-            .eq("id", user.id);
-
-        if (updateError) {
-            console.error("Error updating PIN:", updateError);
+        const written = await assignInitialSecurityPin(user.id, hash);
+        if (written === "error") {
             return NextResponse.json(
                 { error: "Failed to set security PIN" },
                 { status: 500 }
             );
+        }
+        if (written === "conflict") {
+            return NextResponse.json({ error: RESET_REQUIRED }, { status: 409 });
         }
 
         return NextResponse.json({ success: true });

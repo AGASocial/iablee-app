@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button";
 import { PinInput } from "@/components/ui/pin-input";
 import { Loader2, Lock, ShieldCheck, AlertCircle } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 
 
 interface SecurityPinModalProps {
@@ -18,6 +18,7 @@ interface SecurityPinModalProps {
 
 export default function SecurityPinModal({ isOpen, mode, onSuccess, onCancel, forceOpen = false }: SecurityPinModalProps) {
     const t = useTranslations();
+    const locale = useLocale();
     const [pin, setPin] = useState("");
     const [step, setStep] = useState<"enter" | "create" | "confirm" | "reset-request" | "reset-verify">(mode === "setup" ? "create" : "enter");
     const [loading, setLoading] = useState(false);
@@ -112,7 +113,9 @@ export default function SecurityPinModal({ isOpen, mode, onSuccess, onCancel, fo
         setError(null);
         try {
             const res = await fetch("/api/security/forgot-pin", {
-                method: "POST"
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ locale }),
             });
 
             if (!res.ok) {

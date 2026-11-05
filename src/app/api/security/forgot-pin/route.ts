@@ -4,9 +4,51 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { checkRateLimit, getClientIp, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
 import { generatePinResetCode, hashPinResetCode } from "@/lib/pin-reset-otp";
 import { isPinLocked } from "@/lib/pin-lockout";
+import { consumeOpenPinResetGrants } from "@/lib/pin-reset-grants";
+import { resolveEmailLocale } from "@/lib/beneficiary-email-copy";
 import { Resend } from 'resend';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
+
+function pinResetEmail(locale: string | null, code: string): { subject: string; html: string } {
+    if (resolveEmailLocale(locale) === 'es') {
+        return {
+            subject: 'Tu código para restablecer el PIN de seguridad',
+            html: `<p>Tu código de seguridad es: <strong>${code}</strong></p><p>Este código expira en 15 minutos.</p>`,
+        };
+    }
+
+    return {
+        subject: 'Your Security PIN Reset Code',
+        html: `<p>Your security code is: <strong>${code}</strong></p><p>This code will expire in 15 minutes.</p>`,
+    };
+}
+
+async function localeFromRequest(request: NextRequest): Promise<string | null> {
+    let bodyLocale: string | null = null;
+    try {
+        const raw = await request.text();
+        if (raw.trim()) {
+            const parsed = JSON.parse(raw) as { locale?: unknown };
+            if (typeof parsed.locale === 'string') bodyLocale = parsed.locale;
+        }
+    } catch {
+        bodyLocale = null;
+    }
+    if (bodyLocale) return bodyLocale;
+
+    const headerLocale = request.headers.get('x-locale');
+    if (headerLocale) return headerLocale;
+
+    const referer = request.headers.get('referer');
+    if (!referer) return null;
+    try {
+        const match = new URL(referer).pathname.match(/^\/(en|es)(\/|$)/);
+        return match?.[1] ?? null;
+    } catch {
+        return null;
+    }
+}
 
 export async function POST(request: NextRequest) {
     try {
@@ -16,6 +58,7 @@ export async function POST(request: NextRequest) {
             return rateLimitResponse(rateLimit.resetAt);
         }
 
+        const locale = await localeFromRequest(request);
         const { user } = await createAuthenticatedRouteClient();
 
         if (!user || !user.email) {
@@ -28,6 +71,11 @@ export async function POST(request: NextRequest) {
         );
         if (!userRateLimit.allowed) {
             return rateLimitResponse(userRateLimit.resetAt);
+        }
+
+        const consumed = await consumeOpenPinResetGrants(user.id);
+        if (!consumed) {
+            return NextResponse.json({ error: "Failed to generate OTP" }, { status: 500 });
         }
 
         const { data: userData, error: userError } = await supabaseAdmin
@@ -80,11 +128,12 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Failed to generate OTP" }, { status: 500 });
         }
 
+        const email = pinResetEmail(locale, code);
         const { error: emailError } = await resend.emails.send({
             from: 'Iablee Security <security@security.iablee.com>',
             to: [user.email],
-            subject: 'Your Security PIN Reset Code',
-            html: `<p>Your security code is: <strong>${code}</strong></p><p>This code will expire in 15 minutes.</p>`
+            subject: email.subject,
+            html: email.html,
         });
 
         if (emailError) {
