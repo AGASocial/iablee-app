@@ -82,10 +82,10 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
     <div className="flex-1 space-y-8 p-4 sm:p-8 pt-6">
       <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground drop-shadow-[0_1px_1px_rgba(0,0,0,0.18)] dark:text-slate-700 sm:text-3xl">
+          <h2 className="text-2xl font-bold tracking-tight text-foreground drop-shadow-[0_1px_1px_rgba(0,0,0,0.18)] sm:text-3xl">
             {t('dashboard') || 'Dashboard'}
           </h2>
-          <p className="mt-1 text-sm font-medium text-slate-700 dark:text-slate-700">
+          <p className="mt-1 text-sm font-medium text-muted-foreground">
             {t('overviewDigitalAssets')}
           </p>
         </div>
@@ -165,8 +165,8 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
         <Card className="col-span-1 glass-card border border-border/60 bg-card/90 shadow-xl dark:bg-card/90 dark:shadow-black/40">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b border-border/50 pb-4">
             <div>
-              <CardTitle className="text-xl text-foreground dark:text-slate-100">{t('yourDigitalAssets')}</CardTitle>
-              <CardDescription className="text-base text-muted-foreground dark:text-slate-300">{t('overviewDigitalAssets')}</CardDescription>
+              <CardTitle className="text-xl text-foreground">{t('yourDigitalAssets')}</CardTitle>
+              <CardDescription className="text-base text-muted-foreground">{t('overviewDigitalAssets')}</CardDescription>
             </div>
           </CardHeader>
           <CardContent className="pt-6">
@@ -214,8 +214,8 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
         <Card className="col-span-1 glass-card border border-border/60 bg-card/90 shadow-xl dark:bg-card/90 dark:shadow-black/40">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b border-border/50 pb-4">
             <div>
-              <CardTitle className="text-xl text-foreground dark:text-slate-100">{t('recentBeneficiaries')}</CardTitle>
-              <CardDescription className="text-base text-muted-foreground dark:text-slate-300">{t('manageBeneficiaries')}</CardDescription>
+              <CardTitle className="text-xl text-foreground">{t('recentBeneficiaries')}</CardTitle>
+              <CardDescription className="text-base text-muted-foreground">{t('manageBeneficiaries')}</CardDescription>
             </div>
           </CardHeader>
           <CardContent className="pt-6">
@@ -243,7 +243,7 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
                       <div className="flex gap-2 flex-wrap mt-2">
                         {beneficiary.email && (
                           <span className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full font-bold ${
-                            beneficiary.email_verified ? 'bg-green-500/10 text-green-500' : 'bg-amber-500/10 text-amber-600'
+                            beneficiary.email_verified ? 'bg-success/10 text-success' : 'bg-warning text-warning-foreground'
                           }`}>
                             {beneficiary.email_verified ? t('emailVerified') : t('emailNotVerified')}
                           </span>
