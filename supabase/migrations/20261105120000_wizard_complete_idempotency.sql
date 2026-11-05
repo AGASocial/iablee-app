@@ -61,12 +61,18 @@ BEGIN
 
   GET DIAGNOSTICS v_inserted = ROW_COUNT;
 
-  SELECT response
-  INTO v_saved_response
-  FROM public.wizard_completion_idempotency
-  WHERE user_id = p_user_id
-    AND idempotency_key = btrim(p_idempotency_key)
-  FOR UPDATE;
+  BEGIN
+    SELECT response
+    INTO v_saved_response
+    FROM public.wizard_completion_idempotency
+    WHERE user_id = p_user_id
+      AND idempotency_key = btrim(p_idempotency_key)
+    FOR UPDATE NOWAIT;
+  EXCEPTION
+    WHEN lock_not_available THEN
+      RAISE EXCEPTION 'idempotency key is currently being processed'
+        USING ERRCODE = '55P03';
+  END;
 
   IF v_inserted = 0 THEN
     IF v_saved_response IS NULL THEN

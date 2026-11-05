@@ -263,7 +263,13 @@ export function buildWizardDraft({
   };
 }
 
-export function parseWizardDraft(raw: string | null, userId: string): WizardDraftPayload | null {
+function normalizeDraftCustomFields(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object") return {};
+  const entries = Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string");
+  return Object.fromEntries(entries);
+}
+
+export function parseWizardDraft(raw: string | null, userId: string, assetTypes: AssetType[] = []): WizardDraftPayload | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as Partial<WizardDraftPayload>;
@@ -282,6 +288,11 @@ export function parseWizardDraft(raw: string | null, userId: string): WizardDraf
     if (typeof parsed.beneficiary.phoneNumber !== "string") return null;
     if (typeof parsed.beneficiary.notes !== "string") return null;
     if (!["asset-type", "asset-details", "beneficiary"].includes(String(parsed.step))) return null;
+    const parsedAssetType = assetTypes.find((assetType) => assetType.key === parsed.asset?.assetType) ?? null;
+    const sanitizedCustomFields = sanitizeDraftCustomFields(
+      normalizeDraftCustomFields(parsed.asset.customFields),
+      parsedAssetType,
+    );
     return {
       version: Number(parsed.version ?? WIZARD_DRAFT_VERSION),
       userId: parsed.userId,
@@ -293,7 +304,7 @@ export function parseWizardDraft(raw: string | null, userId: string): WizardDraf
         website: parsed.asset.website,
         validUntil: parsed.asset.validUntil,
         email: parsed.asset.email,
-        customFields: parsed.asset.customFields as Record<string, string>,
+        customFields: sanitizedCustomFields,
       },
       beneficiary: {
         fullName: parsed.beneficiary.fullName,

@@ -3,6 +3,7 @@ import { File, Mail } from "lucide-react";
 import {
   buildWizardDraft,
   getAssetIcon,
+  parseWizardDraft,
   sanitizeDraftCustomFields,
   submitWizardCompleteWithRetry,
   validateAssetDetails,
@@ -178,6 +179,53 @@ describe("wizard validation utilities", () => {
         null,
       ),
     ).toEqual({});
+  });
+
+  it("re-sanitizes draft custom fields on parse to avoid trusting localStorage", () => {
+    const assetType: AssetType = {
+      ...assetTypeWithRequiredFields,
+      customFields: [
+        { key: "safe_note", label: "Safe note", type: "text" },
+        { key: "safe_date", label: "Safe date", type: "date" },
+        { key: "secret_hint", label: "Secret hint", type: "text" },
+        { key: "upload", label: "Upload", type: "file" },
+      ],
+    };
+    const raw = JSON.stringify({
+      version: 1,
+      userId: "user-1",
+      step: "asset-details",
+      asset: {
+        assetType: "document",
+        assetName: "Docs",
+        description: "",
+        website: "",
+        validUntil: "",
+        email: "",
+        customFields: {
+          safe_note: "keep",
+          safe_date: "2026-11-05",
+          secret_hint: "drop",
+          upload: "drop",
+          unknown_field: "drop",
+          not_a_string: { nested: true },
+        },
+      },
+      beneficiary: {
+        fullName: "Ana",
+        email: "",
+        relationshipId: null,
+        phoneNumber: "",
+        notes: "",
+      },
+    });
+
+    const parsed = parseWizardDraft(raw, "user-1", [assetType]);
+
+    expect(parsed?.asset.customFields).toEqual({
+      safe_note: "keep",
+      safe_date: "2026-11-05",
+    });
   });
 
   describe("submitWizardCompleteWithRetry", () => {

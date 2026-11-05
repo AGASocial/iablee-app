@@ -25,6 +25,7 @@ import {
   formatBytesToMb,
   getWizardDraftStorageKey,
   parseWizardDraft,
+  sanitizeDraftCustomFields,
   submitWizardCompleteWithRetry,
   validateAssetDetails,
   validateAssetType,
@@ -487,6 +488,8 @@ export default function WizardPage() {
 
   const continueWithDraft = () => {
     if (!draftPrompt) return;
+    const restoredAssetType = assetTypes.find((assetType) => assetType.key === draftPrompt.asset.assetType) ?? null;
+    const sanitizedCustomFields = sanitizeDraftCustomFields(draftPrompt.asset.customFields, restoredAssetType);
     setAssetData((prev) => ({
       ...prev,
       assetType: draftPrompt.asset.assetType,
@@ -496,7 +499,7 @@ export default function WizardPage() {
       validUntil: draftPrompt.asset.validUntil,
       email: draftPrompt.asset.email,
       password: "",
-      customFields: draftPrompt.asset.customFields,
+      customFields: sanitizedCustomFields,
     }));
     setBeneficiaryData(draftPrompt.beneficiary);
     setStep(draftPrompt.step);
@@ -528,10 +531,10 @@ export default function WizardPage() {
       return;
     }
 
-    const existingDraft = parseWizardDraft(localStorage.getItem(draftStorageKey), user.id);
+    const existingDraft = parseWizardDraft(localStorage.getItem(draftStorageKey), user.id, assetTypes);
     setDraftPrompt(existingDraft);
     setHasHydratedDraft(true);
-  }, [draftStorageKey, user?.id]);
+  }, [draftStorageKey, user?.id, assetTypes]);
 
   useEffect(() => {
     if (!hasHydratedDraft || !draftStorageKey || !user?.id || wizardView !== "form") return;
