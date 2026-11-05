@@ -1,4 +1,5 @@
 # Iablee App — Deployment Guide (Fresh Supabase)
+<!-- local-identity-verify: byagasocial mac ssh 2026-11-05 -->
 
 This guide covers deploying the Iablee Next.js app against a **fresh Supabase project**: database schema (tables, triggers, RLS), Storage, Auth redirect URLs, environment variables, and optional billing/encryption.
 
