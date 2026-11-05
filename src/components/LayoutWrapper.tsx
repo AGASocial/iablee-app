@@ -63,10 +63,10 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
         "hidden md:flex flex-col fixed inset-y-0 z-50 transition-all duration-300",
         sidebarCollapsed ? "w-20" : "w-60"
       )}>
-        <div className="relative flex-1 flex flex-col min-h-0 bg-card/75 dark:bg-[#0F172A] border-r border-border dark:border-white/5 shadow-xl transition-all duration-300">
+        <div className="relative flex-1 flex flex-col min-h-0 bg-sidebar border-r border-sidebar-border shadow-xl transition-all duration-300">
           {/* Logo Area */}
           <div className={cn(
-            "flex items-center h-20 border-b border-border dark:border-white/5 bg-card/50 dark:bg-[#0F172A]/50 backdrop-blur-xl transition-all duration-300 shrink-0",
+            "flex items-center h-20 border-b border-sidebar-border bg-sidebar/95 backdrop-blur-xl transition-all duration-300 shrink-0",
             sidebarCollapsed ? "justify-center px-0" : "px-6"
           )}>
             <div className={cn(
@@ -173,8 +173,8 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
       {sidebarOpen && (
         <div className="fixed inset-0 z-50 flex md:hidden">
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
-          <div className="relative flex w-60 flex-col bg-card dark:bg-[#0F172A] shadow-2xl animate-in slide-in-from-left duration-300">
-            <div className="flex items-center justify-between p-4 border-b border-border dark:border-white/10">
+          <div className="relative flex w-60 flex-col bg-sidebar border-r border-sidebar-border shadow-2xl animate-in slide-in-from-left duration-300">
+            <div className="flex items-center justify-between p-4 border-b border-sidebar-border">
               <div className="flex items-center gap-3">
                 <div className="relative h-12 w-32 overflow-hidden rounded-lg">
                   <Image
