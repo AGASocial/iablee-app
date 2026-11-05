@@ -36,7 +36,7 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
   const t = useTranslations();
   const locale = useLocale();
   const { data, isLoading: loading, refetch } = useDashboard({ initialData });
-  const { data: securityData, isLoading: loadingSecurity } = useSecuritySession();
+  const { data: securityData, isLoading: loadingSecurity, isError: securityError } = useSecuritySession();
   const { invalidateDashboard } = useInvalidateData();
   const stats = data?.stats ?? {
     totalAssets: 0,
@@ -46,11 +46,14 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
   };
   const assets = data?.assets ?? [];
   const beneficiaries = data?.beneficiaries ?? [];
-  const hasPin = securityData?.hasPin ?? false;
+  // If the security query fails, treat PIN status as unknown instead of pending.
+  const hasPin = securityData?.hasPin ?? true;
   const showOnboardingChecklist =
     !loading &&
     !loadingSecurity &&
-    (!hasPin || stats.totalAssets === 0 || stats.totalBeneficiaries === 0);
+    (stats.totalAssets === 0 ||
+      stats.totalBeneficiaries === 0 ||
+      (!securityError && securityData?.hasPin === false));
   const [showAddModal, setShowAddModal] = useState(false);
   const [form, setForm] = useState({
     full_name: '',

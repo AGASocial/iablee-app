@@ -110,11 +110,14 @@ export default function DashboardOnboardingChecklist({
 
       {nextStep ? (
         <div className="mt-6">
-          <Link href={nextStep.href}>
-            <Button className="w-full sm:w-auto focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
+          <Button
+            asChild
+            className="w-full sm:w-auto focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            <Link href={nextStep.href}>
               {nextStepLabelByKey[nextStep.key]}
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
       ) : null}
     </section>
