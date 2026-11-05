@@ -5,7 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Shield, Users, Key, Activity, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { Link } from '@/i18n/navigation';
-import { useDashboard, useInvalidateData, type DashboardData } from '@/hooks/useDataQueries';
+import {
+  useDashboard,
+  useInvalidateData,
+  useSecuritySession,
+  type DashboardData,
+} from '@/hooks/useDataQueries';
+import DashboardOnboardingChecklist from '@/components/dashboard/DashboardOnboardingChecklist';
 
 interface DashboardClientProps {
   initialData?: DashboardData;
@@ -30,6 +36,7 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
   const t = useTranslations();
   const locale = useLocale();
   const { data, isLoading: loading, refetch } = useDashboard({ initialData });
+  const { data: securityData, isLoading: loadingSecurity } = useSecuritySession();
   const { invalidateDashboard } = useInvalidateData();
   const stats = data?.stats ?? {
     totalAssets: 0,
@@ -39,6 +46,11 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
   };
   const assets = data?.assets ?? [];
   const beneficiaries = data?.beneficiaries ?? [];
+  const hasPin = securityData?.hasPin ?? false;
+  const showOnboardingChecklist =
+    !loading &&
+    !loadingSecurity &&
+    (!hasPin || stats.totalAssets === 0 || stats.totalBeneficiaries === 0);
   const [showAddModal, setShowAddModal] = useState(false);
   const [form, setForm] = useState({
     full_name: '',
@@ -90,6 +102,14 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
           </p>
         </div>
       </div>
+
+      {showOnboardingChecklist ? (
+        <DashboardOnboardingChecklist
+          hasPin={hasPin}
+          totalAssets={stats.totalAssets}
+          totalBeneficiaries={stats.totalBeneficiaries}
+        />
+      ) : null}
 
       {/* Stats Overview */}
       <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
