@@ -83,7 +83,9 @@ export function AuthForm({ type }: AuthFormProps) {
         if (!response.ok) throw new Error(result.error ?? "Login failed")
 
         window.dispatchEvent(new Event('auth-changed'))
-        toast.success("Login successful!")
+        toast.success(t("loginSuccessTitle"), {
+          description: t("loginSuccessMessage"),
+        })
         router.push("/")
       }
     } catch (error) {

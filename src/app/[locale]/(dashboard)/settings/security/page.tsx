@@ -47,6 +47,15 @@ export default function SecuritySettingsPage() {
         return true;
     };
 
+    const messageForPinStatus = (status: number) => {
+        if (status === 401) return t("invalidSecurityPin");
+        if (status === 423) return t("securityPinLocked");
+        if (status === 429) return t("securityPinRateLimited");
+        if (status === 400) return t("pinLengthError");
+        if (status === 403 || status === 409) return t("securityPinResetRequired");
+        return t("errorChangingPin");
+    };
+
     const handleSubmit = async () => {
         if (!isFormValid()) return;
 
@@ -72,10 +81,9 @@ export default function SecuritySettingsPage() {
                 body: JSON.stringify(payload),
             });
 
-            const data = await res.json();
-
             if (!res.ok) {
-                throw new Error(data.error || t('errorChangingPin'));
+                toast.error(messageForPinStatus(res.status));
+                return;
             }
 
             toast.success(t('pinChangedSuccess'));
@@ -94,9 +102,8 @@ export default function SecuritySettingsPage() {
             // Refresh security status
             await checkStatus();
 
-        } catch (error: unknown) {
-            const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
-            toast.error(errorMessage);
+        } catch {
+            toast.error(t('errorChangingPin'));
         } finally {
             setLoading(false);
         }

@@ -66,7 +66,9 @@ describe('AuthForm', () => {
         expect(mockFetch).toHaveBeenCalledWith('/api/auth/login', expect.objectContaining({
           method: 'POST',
         }));
-        expect(toast.success).toHaveBeenCalledWith('Login successful!');
+        expect(toast.success).toHaveBeenCalledWith('loginSuccessTitle', {
+          description: 'loginSuccessMessage',
+        });
       });
     });
 
