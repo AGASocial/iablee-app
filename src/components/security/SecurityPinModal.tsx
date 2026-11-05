@@ -57,6 +57,15 @@ export default function SecurityPinModal({ isOpen, mode, onSuccess, onCancel, fo
         }
     };
 
+    const messageForPinStatus = (status: number, kind: "verify" | "set") => {
+        if (status === 401) return t("invalidSecurityPin");
+        if (status === 423) return t("securityPinLocked");
+        if (status === 429) return t("securityPinRateLimited");
+        if (status === 400) return t("pinLengthError");
+        if (status === 403 || status === 409) return t("securityPinResetRequired");
+        return kind === "verify" ? t("failedToVerifySecurityPin") : t("failedToSetSecurityPin");
+    };
+
     const verifyPin = async (enteredPin: string) => {
         setLoading(true);
         try {
@@ -67,15 +76,17 @@ export default function SecurityPinModal({ isOpen, mode, onSuccess, onCancel, fo
             });
 
             if (!res.ok) {
-                const data = await res.json();
-                throw new Error(data.error || "Verification failed");
+                setError(messageForPinStatus(res.status, "verify"));
+                setPin("");
+                setShowForgotLink(true);
+                return;
             }
 
             onSuccess();
         } catch (err: unknown) {
-            const error = err as Error;
-            setError(error.message || "Invalid PIN");
-            setPin(""); // clear pin to allow retry
+            console.error(err);
+            setError(t("failedToVerifySecurityPin"));
+            setPin("");
             setShowForgotLink(true);
         } finally {
             setLoading(false);
@@ -92,15 +103,16 @@ export default function SecurityPinModal({ isOpen, mode, onSuccess, onCancel, fo
             });
 
             if (!res.ok) {
-                const data = await res.json();
-                throw new Error(data.error || "Failed to set PIN");
+                setError(messageForPinStatus(res.status, "set"));
+                setStep("create");
+                setPin("");
+                return;
             }
 
-            // If we came from reset flow, we should probably allow success now.
             onSuccess();
         } catch (err: unknown) {
-            const error = err as Error;
-            setError(error.message || "Error setting PIN");
+            console.error(err);
+            setError(t("failedToSetSecurityPin"));
             setStep("create");
             setPin("");
         } finally {

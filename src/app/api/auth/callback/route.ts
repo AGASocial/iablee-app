@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { EmailOtpType } from '@supabase/supabase-js';
 import { getAuthRedirectOrigin } from '@/lib/app-url';
 import { consumeOpenPinResetGrants } from '@/lib/pin-reset-grants';
+import { abandonAuthenticatedSession } from '@/lib/revoke-auth-session';
 import { createRouteClient } from '@/lib/supabase-server';
 import {
   SECURITY_SESSION_COOKIE_NAME,
@@ -112,7 +113,9 @@ export async function GET(request: NextRequest) {
 
   const consumed = await consumeOpenPinResetGrants(sessionUserId);
   if (!consumed) {
-    return fail(`/${locale}/auth/login?error=auth_callback_failed`);
+    const errorResponse = fail(`/${locale}/auth/login?error=auth_callback_failed`);
+    await abandonAuthenticatedSession(supabase, errorResponse);
+    return errorResponse;
   }
 
   const successResponse = NextResponse.redirect(new URL(nextPath, origin));

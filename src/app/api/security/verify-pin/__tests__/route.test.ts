@@ -123,19 +123,24 @@ describe('POST /api/security/verify-pin lockout', () => {
     expect(body.remainingAttempts).toBe(1);
     expect(mockRpc).toHaveBeenCalledWith('begin_pin_attempt', { p_user_id: 'user-1' });
     expect(mockRpc).not.toHaveBeenCalledWith('record_pin_failed_attempt', expect.anything());
+    expect(mockRpc).not.toHaveBeenCalledWith('finalize_failed_pin_attempt', expect.anything());
     expect(mockCompare).toHaveBeenCalledWith('0000', 'hash');
     expect(update).not.toHaveBeenCalled();
   });
 
   it('compares the fifth PIN and locks only when it is wrong', async () => {
-    const select = jest.fn().mockResolvedValue({ data: [{ id: 'user-1' }], error: null });
-    const gte = jest.fn().mockReturnValue({ select });
-    const eq = jest.fn().mockReturnValue({ gte });
-    const update = jest.fn().mockReturnValue({ eq });
-    mockFrom.mockReturnValue({ update });
-    mockRpc.mockResolvedValue({
-      data: [claim({ failed_attempts: 5, may_compare: true, pin_hash: 'hash' })],
-      error: null,
+    const lockedUntil = '2026-11-05T12:15:00.000Z';
+    mockRpc.mockImplementation((fn: string) => {
+      if (fn === 'finalize_failed_pin_attempt') {
+        return Promise.resolve({
+          data: [{ locked: true, locked_until: lockedUntil, failed_attempts: 5 }],
+          error: null,
+        });
+      }
+      return Promise.resolve({
+        data: [claim({ failed_attempts: 5, may_compare: true, pin_hash: 'hash' })],
+        error: null,
+      });
     });
     mockCompare.mockResolvedValue(false);
 
@@ -149,10 +154,38 @@ describe('POST /api/security/verify-pin lockout', () => {
 
     expect(response.status).toBe(423);
     expect(body.remainingAttempts).toBe(0);
-    expect(body.lockedUntil).toEqual(expect.any(String));
+    expect(body.lockedUntil).toBe(lockedUntil);
     expect(mockCompare).toHaveBeenCalledWith('000000', 'hash');
-    expect(update).toHaveBeenCalledWith({ pin_locked_until: expect.any(String) });
-    expect(gte).toHaveBeenCalledWith('pin_failed_attempts', 5);
+    expect(mockRpc).toHaveBeenCalledWith('finalize_failed_pin_attempt', {
+      p_user_id: 'user-1',
+      p_scope: 'pin',
+      p_compare_failed: true,
+    });
+    expect(mockFrom).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 when the fifth-failure lock cannot be stored', async () => {
+    mockRpc.mockImplementation((fn: string) => {
+      if (fn === 'finalize_failed_pin_attempt') {
+        return Promise.resolve({ data: null, error: { message: 'db down' } });
+      }
+      return Promise.resolve({
+        data: [claim({ failed_attempts: 5, may_compare: true, pin_hash: 'hash' })],
+        error: null,
+      });
+    });
+    mockCompare.mockResolvedValue(false);
+
+    const request = new Request('http://localhost/api/security/verify-pin', {
+      method: 'POST',
+      body: JSON.stringify({ pin: '000000' }),
+    });
+
+    const response = await POST(request as never);
+
+    expect(response.status).toBe(500);
+    expect(mockCompare).toHaveBeenCalledWith('000000', 'hash');
+    expect(mockFrom).not.toHaveBeenCalled();
   });
 
   it('accepts a correct fifth PIN without locking', async () => {

@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'crypto';
 import { Resend } from 'resend';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { getAppUrl } from '@/lib/app-url';
+import { getAuthRedirectOrigin } from '@/lib/app-url';
 import {
   escapeHtml,
   getBeneficiaryVerificationCopy,
@@ -27,7 +27,7 @@ function normalizeEmail(email: string | null | undefined): string {
 }
 
 function buildVerificationUrl(token: string, locale: EmailLocale): string {
-  const appUrl = getAppUrl();
+  const appUrl = getAuthRedirectOrigin();
   const params = new URLSearchParams({
     token,
     locale,

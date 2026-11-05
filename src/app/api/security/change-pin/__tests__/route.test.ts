@@ -152,24 +152,32 @@ describe('POST /api/security/change-pin', () => {
     expect(body.remainingAttempts).toBe(1);
     expect(supabaseAdmin.rpc).toHaveBeenCalledWith('begin_pin_attempt', { p_user_id: 'user-1' });
     expect(supabaseAdmin.rpc).not.toHaveBeenCalledWith('record_pin_failed_attempt', expect.anything());
+    expect(supabaseAdmin.rpc).not.toHaveBeenCalledWith('finalize_failed_pin_attempt', expect.anything());
     expect(bcrypt.compare).toHaveBeenCalled();
     expect(supabaseAdmin.from).not.toHaveBeenCalled();
   });
 
   it('compares the fifth PIN and locks only after that compare fails', async () => {
-    const update = jest.fn().mockReturnValue(chain);
-    (supabaseAdmin.from as jest.Mock).mockImplementation(() => ({ update }));
+    const lockedUntil = '2026-11-05T12:15:00.000Z';
     (bcrypt.compare as jest.Mock).mockResolvedValue(false);
-    (supabaseAdmin.rpc as jest.Mock).mockResolvedValue({
-      data: [{
-        pin_hash: 'current-hash',
-        failed_attempts: 5,
-        locked_until: null,
-        already_locked: false,
-        may_compare: true,
-        pin_version: 2,
-      }],
-      error: null,
+    (supabaseAdmin.rpc as jest.Mock).mockImplementation((fn: string) => {
+      if (fn === 'finalize_failed_pin_attempt') {
+        return Promise.resolve({
+          data: [{ locked: true, locked_until: lockedUntil, failed_attempts: 5 }],
+          error: null,
+        });
+      }
+      return Promise.resolve({
+        data: [{
+          pin_hash: 'current-hash',
+          failed_attempts: 5,
+          locked_until: null,
+          already_locked: false,
+          may_compare: true,
+          pin_version: 2,
+        }],
+        error: null,
+      });
     });
 
     const response = await POST(request({ currentPin: '000000', newPin: '222222' }) as never);
@@ -177,10 +185,14 @@ describe('POST /api/security/change-pin', () => {
 
     expect(response.status).toBe(423);
     expect(body.remainingAttempts).toBe(0);
-    expect(body.lockedUntil).toEqual(expect.any(String));
+    expect(body.lockedUntil).toBe(lockedUntil);
     expect(bcrypt.compare).toHaveBeenCalledWith('000000', 'current-hash');
-    expect(update).toHaveBeenCalledWith({ pin_locked_until: expect.any(String) });
-    expect(chain.gte).toHaveBeenCalledWith('pin_failed_attempts', 5);
+    expect(supabaseAdmin.rpc).toHaveBeenCalledWith('finalize_failed_pin_attempt', {
+      p_user_id: 'user-1',
+      p_scope: 'pin',
+      p_compare_failed: true,
+    });
+    expect(supabaseAdmin.from).not.toHaveBeenCalled();
   });
 
   it('uses the verify-pin rate limit bucket', async () => {

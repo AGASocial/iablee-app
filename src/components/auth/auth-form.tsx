@@ -66,7 +66,9 @@ export function AuthForm({ type }: AuthFormProps) {
         const result = await response.json()
         if (!response.ok) throw new Error(result.error ?? "Registration failed")
 
-        toast.success("Registration successful! Please check your email to verify your account.")
+        toast.success(t("registrationConfirmationTitle"), {
+          description: t("registrationConfirmationMessage"),
+        })
         router.push("/auth/login?registered=true")
       } else {
         const response = await fetch('/api/auth/login', {

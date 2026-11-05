@@ -18,7 +18,7 @@ jest.mock('@/lib/beneficiary-email-copy', () => ({
   getBeneficiaryVerificationCopy: () => ({
     ownerFallback: 'Owner',
     subject: () => 'subject',
-    inlineHtml: () => '<p>hi</p>',
+    inlineHtml: (input: { verificationUrl: string }) => mockInlineHtml(input),
   }),
 }));
 
@@ -29,6 +29,7 @@ jest.mock('resend', () => ({
 }));
 
 const mockSendEmail = jest.fn();
+const mockInlineHtml = jest.fn((_input: { verificationUrl: string }) => '<p>hi</p>');
 
 describe('beneficiary email verification', () => {
   const inserts: Record<string, unknown>[] = [];
@@ -94,6 +95,40 @@ describe('beneficiary email verification', () => {
       beneficiary_id: 'ben-1',
       email: 'heir@example.com',
     }));
+  });
+
+  it('builds the verification link from the auth redirect origin', async () => {
+    const previous = {
+      NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
+      NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+      VERCEL_URL: process.env.VERCEL_URL,
+    };
+    process.env.NEXT_PUBLIC_SITE_URL = 'https://app.iablee.test/ignored-path';
+    process.env.NEXT_PUBLIC_APP_URL = 'https://preview.example';
+    process.env.VERCEL_URL = 'vercel.example';
+    mockAdmin(null);
+
+    try {
+      await sendBeneficiaryVerificationEmail({
+        beneficiaryId: 'ben-1',
+        beneficiaryName: 'Ada',
+        email: 'heir@example.com',
+      });
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+
+    expect(mockInlineHtml).toHaveBeenCalledWith(expect.objectContaining({
+      verificationUrl: expect.stringMatching(
+        /^https:\/\/app\.iablee\.test\/api\/beneficiaries\/verify-email\?/
+      ),
+    }));
+    const url = mockInlineHtml.mock.calls[0]?.[0]?.verificationUrl ?? '';
+    expect(url).not.toContain('preview.example');
+    expect(url).not.toContain('vercel.example');
   });
 
   it('returns a fixed message when the email provider fails', async () => {

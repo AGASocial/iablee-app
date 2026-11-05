@@ -12,6 +12,12 @@ const RESET_KEYS = [
   'backToPinEntry',
   'failedToSendResetEmail',
   'invalidResetCode',
+  'invalidSecurityPin',
+  'securityPinLocked',
+  'securityPinRateLimited',
+  'failedToVerifySecurityPin',
+  'failedToSetSecurityPin',
+  'securityPinResetRequired',
 ] as const;
 
 describe('SecurityPinModal reset copy', () => {
@@ -34,7 +40,11 @@ describe('SecurityPinModal reset copy', () => {
   it('renders reset titles, buttons, and errors through translations', async () => {
     const fetchMock = global.fetch as jest.Mock;
     fetchMock
-      .mockResolvedValueOnce({ ok: false, json: async () => ({ error: 'Invalid PIN' }) })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        json: async () => ({ error: 'Invalid PIN' }),
+      })
       .mockResolvedValueOnce({ ok: false, json: async () => ({}) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({}) })
       .mockResolvedValueOnce({ ok: false, json: async () => ({ error: 'Invalid code' }) });
@@ -46,8 +56,10 @@ describe('SecurityPinModal reset copy', () => {
     fireEvent.change(screen.getAllByRole('textbox')[0], { target: { value: '123456' } });
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'forgotPin' })).toBeInTheDocument();
+      expect(screen.getByText('invalidSecurityPin')).toBeInTheDocument();
     });
+    expect(screen.queryByText('Invalid PIN')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'forgotPin' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'forgotPin' }));
 
     expect(screen.getByText('resetSecurityPin')).toBeInTheDocument();
@@ -71,5 +83,24 @@ describe('SecurityPinModal reset copy', () => {
     await waitFor(() => {
       expect(screen.getByText('invalidResetCode')).toBeInTheDocument();
     });
+  });
+
+  it('maps a locked PIN response to the localized lock message', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: false,
+      status: 423,
+      json: async () => ({ error: 'PIN locked due to too many failed attempts' }),
+    });
+
+    render(
+      <SecurityPinModal isOpen mode="verify" onSuccess={jest.fn()} onCancel={jest.fn()} />
+    );
+
+    fireEvent.change(screen.getAllByRole('textbox')[0], { target: { value: '123456' } });
+
+    await waitFor(() => {
+      expect(screen.getByText('securityPinLocked')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('PIN locked due to too many failed attempts')).not.toBeInTheDocument();
   });
 });

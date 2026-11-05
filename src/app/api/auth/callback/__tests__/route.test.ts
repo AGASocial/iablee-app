@@ -2,12 +2,17 @@
  * @jest-environment node
  */
 import { NextRequest } from 'next/server';
+import { cookies } from 'next/headers';
 import { GET, sanitizeNextPath } from '../route';
 import { createRouteClient } from '@/lib/supabase-server';
 import { consumeOpenPinResetGrants } from '@/lib/pin-reset-grants';
 
 jest.mock('@/lib/supabase-server', () => ({
   createRouteClient: jest.fn(),
+}));
+
+jest.mock('next/headers', () => ({
+  cookies: jest.fn(),
 }));
 
 jest.mock('@/lib/pin-reset-grants', () => ({
@@ -104,8 +109,23 @@ describe('GET /api/auth/callback', () => {
     expect(response.headers.get('location')).toBe('http://localhost:3000/es/dashboard');
   });
 
-  it('does not complete the redirect when grant consumption fails', async () => {
-    clientWithExchange({ data: { user: { id: 'user-1' } }, error: null });
+  it('signs out and clears auth cookies when grant consumption fails', async () => {
+    const signOut = jest.fn().mockResolvedValue({ error: null });
+    const setCookie = jest.fn();
+    (cookies as jest.Mock).mockResolvedValue({
+      getAll: () => [{ name: 'sb-ref-auth-token', value: 'live-session' }],
+      set: setCookie,
+    });
+    mockCreateRouteClient.mockResolvedValue({
+      auth: {
+        exchangeCodeForSession: jest.fn().mockResolvedValue({
+          data: { user: { id: 'user-1' } },
+          error: null,
+        }),
+        verifyOtp: jest.fn(),
+        signOut,
+      },
+    });
     (consumeOpenPinResetGrants as jest.Mock).mockResolvedValue(false);
 
     const response = await GET(
@@ -113,11 +133,19 @@ describe('GET /api/auth/callback', () => {
     );
 
     expect(response.status).toBe(307);
+    expect(signOut).toHaveBeenCalledWith({ scope: 'local' });
     expect(response.headers.get('location')).toBe(
       'http://localhost:3000/en/auth/login?error=auth_callback_failed'
     );
-    const setCookie = response.headers.get('set-cookie') ?? '';
-    expect(setCookie).not.toContain('security_session=');
+    const setCookieHeader = response.headers.get('set-cookie') ?? '';
+    expect(setCookieHeader).not.toContain('security_session=');
+    expect(setCookieHeader).toContain('sb-ref-auth-token=');
+    expect(setCookieHeader.toLowerCase()).toContain('max-age=0');
+    expect(setCookieHeader).not.toContain('live-session');
+    expect(setCookie).toHaveBeenCalledWith('sb-ref-auth-token', '', expect.objectContaining({
+      maxAge: 0,
+      httpOnly: false,
+    }));
   });
 
   it('does not consume grants when the exchange fails', async () => {

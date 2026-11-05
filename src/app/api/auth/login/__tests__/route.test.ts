@@ -82,4 +82,41 @@ describe('POST /api/auth/login', () => {
     expect(setCookie).not.toHaveBeenCalled();
     expect(consumeOpenPinResetGrants).not.toHaveBeenCalled();
   });
+
+  it('signs out and clears auth cookies when the PIN reset grant cannot be consumed', async () => {
+    const setCookie = jest.fn();
+    const signOut = jest.fn().mockResolvedValue({ error: null });
+    mockCookies.mockResolvedValue({
+      set: setCookie,
+      getAll: () => [{ name: 'sb-ref-auth-token', value: 'live-session' }],
+    });
+    mockCreateRouteClient.mockResolvedValue({
+      auth: {
+        signInWithPassword: jest.fn().mockResolvedValue({
+          data: { user: { id: 'user-1' } },
+          error: null,
+        }),
+        signOut,
+      },
+    });
+    (consumeOpenPinResetGrants as jest.Mock).mockResolvedValue(false);
+
+    const response = await POST(loginRequest());
+
+    expect(response.status).toBe(500);
+    expect(signOut).toHaveBeenCalledWith({ scope: 'local' });
+    expect(setCookie).toHaveBeenCalledWith('sb-ref-auth-token', '', expect.objectContaining({
+      maxAge: 0,
+      path: '/',
+      sameSite: 'lax',
+      httpOnly: false,
+    }));
+    expect(setCookie).toHaveBeenCalledWith('security_session', '', expect.objectContaining({
+      maxAge: 0,
+    }));
+    const setCookieHeader = response.headers.get('set-cookie') ?? '';
+    expect(setCookieHeader).toContain('sb-ref-auth-token=');
+    expect(setCookieHeader.toLowerCase()).toContain('max-age=0');
+    expect(setCookieHeader).not.toContain('live-session');
+  });
 });

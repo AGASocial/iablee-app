@@ -188,10 +188,19 @@ describe('POST /api/security/verify-reset-code', () => {
   });
 
   it('still checks the fifth code and locks only when it does not match', async () => {
+    const lockedUntil = '2026-11-05T12:15:00.000Z';
     mockRows({});
-    (supabaseAdmin.rpc as jest.Mock).mockResolvedValue({
-      data: [resetClaim({ failed_attempts: 5, may_compare: true })],
-      error: null,
+    (supabaseAdmin.rpc as jest.Mock).mockImplementation((fn: string) => {
+      if (fn === 'finalize_failed_pin_attempt') {
+        return Promise.resolve({
+          data: [{ locked: true, locked_until: lockedUntil, failed_attempts: 5 }],
+          error: null,
+        });
+      }
+      return Promise.resolve({
+        data: [resetClaim({ failed_attempts: 5, may_compare: true })],
+        error: null,
+      });
     });
 
     const response = await POST(request('111111') as never);
@@ -199,11 +208,15 @@ describe('POST /api/security/verify-reset-code', () => {
 
     expect(response.status).toBe(423);
     expect(body.remainingAttempts).toBe(0);
+    expect(body.lockedUntil).toBe(lockedUntil);
     expect(body.error).toMatch(/locked/i);
     expect(otpSelect).toHaveBeenCalled();
-    expect(userUpdate).toHaveBeenCalledWith({
-      pin_reset_locked_until: expect.any(String),
+    expect(supabaseAdmin.rpc).toHaveBeenCalledWith('finalize_failed_pin_attempt', {
+      p_user_id: 'user-1',
+      p_scope: 'reset',
+      p_compare_failed: true,
     });
+    expect(userUpdate).not.toHaveBeenCalled();
     expect(createSecuritySessionToken).not.toHaveBeenCalled();
   });
 
@@ -221,6 +234,7 @@ describe('POST /api/security/verify-reset-code', () => {
     expect(body.remainingAttempts).toBe(1);
     expect(otpSelect).toHaveBeenCalled();
     expect(userUpdate).not.toHaveBeenCalled();
+    expect(supabaseAdmin.rpc).not.toHaveBeenCalledWith('finalize_failed_pin_attempt', expect.anything());
   });
 
   it('issues a single-use pin_reset grant for a matching hashed code', async () => {

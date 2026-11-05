@@ -118,7 +118,9 @@ describe('AuthForm', () => {
         expect(mockFetch).toHaveBeenCalledWith('/api/auth/register', expect.objectContaining({
           method: 'POST',
         }));
-        expect(toast.success).toHaveBeenCalled();
+        expect(toast.success).toHaveBeenCalledWith('registrationConfirmationTitle', {
+          description: 'registrationConfirmationMessage',
+        });
       });
     });
   });

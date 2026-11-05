@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { createRouteClient } from '@/lib/supabase-server';
 import { clearSecuritySession } from '@/lib/security-cookie';
 import { consumeOpenPinResetGrants } from '@/lib/pin-reset-grants';
+import { abandonAuthenticatedSession } from '@/lib/revoke-auth-session';
 import { checkRateLimit, getClientIp, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 
 export async function POST(request: NextRequest) {
@@ -31,11 +32,16 @@ export async function POST(request: NextRequest) {
     }
 
     const consumed = await consumeOpenPinResetGrants(data.user.id);
+    if (!consumed) {
+      const response = NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+      await abandonAuthenticatedSession(supabase, response);
+      const cookieStore = await cookies();
+      clearSecuritySession(cookieStore);
+      return response;
+    }
+
     const cookieStore = await cookies();
     clearSecuritySession(cookieStore);
-    if (!consumed) {
-      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

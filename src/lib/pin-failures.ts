@@ -1,5 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { isPinLocked, nextLockoutExpiry, PIN_LOCKOUT_MAX_ATTEMPTS } from '@/lib/pin-lockout';
+import { isPinLocked, PIN_LOCKOUT_MAX_ATTEMPTS } from '@/lib/pin-lockout';
 
 export interface RecordedPinFailure {
   attempts: number;
@@ -107,8 +107,9 @@ export type FailedPinCompareResult =
   | { action: 'error' };
 
 /**
- * The attempt that reaches the cap is compared first. Lock only after that compare fails.
- * A cleared counter (parallel success) matches zero rows and does not lock.
+ * The attempt that reaches the cap is compared first. The 15-minute lock is
+ * applied by finalize_failed_pin_attempt in one database transaction. A
+ * parallel success that already cleared the counter does not lock.
  */
 export async function finishFailedPinCompare(
   userId: string,
@@ -120,26 +121,26 @@ export async function finishFailedPinCompare(
     return { action: 'continue', remainingAttempts };
   }
 
-  const lockedUntil = nextLockoutExpiry();
-  const attemptsColumn = scope === 'pin' ? 'pin_failed_attempts' : 'pin_reset_failed_attempts';
-  const patch = scope === 'pin'
-    ? { pin_locked_until: lockedUntil }
-    : { pin_reset_locked_until: lockedUntil };
-
-  const { data, error } = await supabaseAdmin
-    .from('users')
-    .update(patch)
-    .eq('id', userId)
-    .gte(attemptsColumn, PIN_LOCKOUT_MAX_ATTEMPTS)
-    .select('id');
+  const { data, error } = await supabaseAdmin.rpc('finalize_failed_pin_attempt', {
+    p_user_id: userId,
+    p_scope: scope,
+    p_compare_failed: true,
+  });
 
   if (error) {
     console.error('Error locking exhausted PIN attempts:', error);
     return { action: 'error' };
   }
 
-  if (!data || data.length === 0) {
+  const row = claimRow(data);
+  if (!row || row.locked !== true) {
     return { action: 'continue', remainingAttempts: 0 };
+  }
+
+  const lockedUntil = lockedUntilOf(row.locked_until);
+  if (!lockedUntil) {
+    console.error('finalize_failed_pin_attempt locked without an expiry');
+    return { action: 'error' };
   }
 
   return { action: 'locked', lockedUntil, remainingAttempts: 0 };
