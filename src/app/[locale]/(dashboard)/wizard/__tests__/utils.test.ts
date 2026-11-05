@@ -1,7 +1,9 @@
 import type { AssetType } from "@/lib/assetTypes";
 import { File, Mail } from "lucide-react";
 import {
+  buildWizardDraft,
   getAssetIcon,
+  sanitizeDraftCustomFields,
   validateAssetDetails,
   validateAssetType,
   validateBeneficiary,
@@ -75,5 +77,47 @@ describe("wizard validation utilities", () => {
   it("falls back to default icon when icon key is unknown", () => {
     expect(getAssetIcon("SomethingElse")).toBe(File);
     expect(getAssetIcon("Mail")).toBe(Mail);
+  });
+
+  it("does not include password or sensitive custom fields in draft payload", () => {
+    const assetType: AssetType = {
+      ...assetTypeWithRequiredFields,
+      customFields: [
+        { key: "public_note", label: "notes", type: "text" },
+        { key: "secret_hint", label: "Secret key", type: "text" },
+      ],
+    };
+    const draft = buildWizardDraft({
+      userId: "user-1",
+      step: "asset-details",
+      assetType,
+      assetData: {
+        ...baseAssetData,
+        password: "never-store-this",
+        customFields: {
+          public_note: "visible",
+          secret_hint: "top-secret",
+        },
+      },
+      beneficiaryData: baseBeneficiary,
+    });
+
+    expect(draft.asset).not.toHaveProperty("password");
+    expect(draft.asset.customFields).toEqual({ public_note: "visible" });
+  });
+
+  it("keeps non-sensitive custom fields in draft payload", () => {
+    expect(
+      sanitizeDraftCustomFields(
+        {
+          favorite_color: "blue",
+          contact_name: "Ana",
+        },
+        assetTypeWithRequiredFields,
+      ),
+    ).toEqual({
+      favorite_color: "blue",
+      contact_name: "Ana",
+    });
   });
 });

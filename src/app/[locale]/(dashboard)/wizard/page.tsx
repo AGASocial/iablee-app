@@ -19,7 +19,17 @@ import { StepIndicator } from "./components/StepIndicator";
 import { SuccessStep } from "./components/SuccessStep";
 import { WelcomeStep } from "./components/WelcomeStep";
 import type { AssetFormData, BeneficiaryFormData, FieldErrors, FileUploadItem, UploadStatus, UploadedFileMeta, WizardStep } from "./components/types";
-import { MAX_WIZARD_FILES, formatBytesToMb, validateAssetDetails, validateAssetType, validateBeneficiary } from "./utils";
+import {
+  MAX_WIZARD_FILES,
+  buildWizardDraft,
+  formatBytesToMb,
+  getWizardDraftStorageKey,
+  parseWizardDraft,
+  validateAssetDetails,
+  validateAssetType,
+  validateBeneficiary,
+  type WizardDraftPayload,
+} from "./utils";
 
 type WizardView = "welcome" | "form" | "success";
 
@@ -27,6 +37,13 @@ type SecuritySessionResponse = {
   authenticated: boolean;
   hasPin: boolean;
   locked: boolean;
+};
+
+type LimitCheckResponse = {
+  allowed: boolean;
+  reason?: string;
+  limit?: number;
+  current?: number;
 };
 
 export default function WizardPage() {
@@ -58,6 +75,8 @@ export default function WizardPage() {
   const [pinMode, setPinMode] = useState<"setup" | "verify">("verify");
   const [pinReason, setPinReason] = useState<string | null>(null);
   const [retryAfterPin, setRetryAfterPin] = useState(false);
+  const [hasHydratedDraft, setHasHydratedDraft] = useState(false);
+  const [draftPrompt, setDraftPrompt] = useState<WizardDraftPayload | null>(null);
   const [showErrors, setShowErrors] = useState({
     assetType: false,
     assetDetails: false,
@@ -86,6 +105,7 @@ export default function WizardPage() {
     () => assetTypes.find((assetType) => assetType.key === assetData.assetType) ?? null,
     [assetTypes, assetData.assetType],
   );
+  const draftStorageKey = useMemo(() => (user?.id ? getWizardDraftStorageKey(user.id) : null), [user?.id]);
 
   const assetTypeErrors = validateAssetType(assetData);
   const assetDetailErrors = validateAssetDetails(assetData, currentAssetType, files);
@@ -236,6 +256,27 @@ export default function WizardPage() {
     return true;
   };
 
+  const checkSubscriptionLimits = async () => {
+    const [assetRes, beneficiaryRes] = await Promise.all([
+      fetch("/api/subscription/check-limit?type=asset"),
+      fetch("/api/subscription/check-limit?type=beneficiary"),
+    ]);
+
+    if (!assetRes.ok || !beneficiaryRes.ok) {
+      throw new Error("errorSavingAsset");
+    }
+
+    const assetLimit = (await assetRes.json()) as LimitCheckResponse;
+    const beneficiaryLimit = (await beneficiaryRes.json()) as LimitCheckResponse;
+
+    if (!assetLimit.allowed) {
+      throw new Error("assetLimitReached");
+    }
+    if (!beneficiaryLimit.allowed) {
+      throw new Error("beneficiaryLimitReached");
+    }
+  };
+
   const openPinModalForSecurity = () => {
     const needsSetup = !security.hasPin;
     const friendlyPinMessage = needsSetup ? tr("wizard-pin-setup-message") : tr("wizard-pin-protect-message");
@@ -337,6 +378,8 @@ export default function WizardPage() {
     try {
       const sessionReady = await checkSecuritySession();
       if (!sessionReady) return;
+      await checkSubscriptionLimits();
+      const idempotencyKey = crypto.randomUUID();
 
       const uploadedFiles = await uploadPendingFiles();
       const fileUrls = uploadedFiles.map((file) => file.path);
@@ -349,7 +392,10 @@ export default function WizardPage() {
 
       const res = await fetch("/api/wizard/complete", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+        },
         body: JSON.stringify({
           asset: {
             assetType: assetData.assetType,
@@ -371,6 +417,7 @@ export default function WizardPage() {
           fileUrls,
           fileMetadata,
           locale,
+          idempotencyKey,
         }),
       });
 
@@ -386,6 +433,10 @@ export default function WizardPage() {
       }
 
       setRetryAfterPin(false);
+      if (draftStorageKey) {
+        localStorage.removeItem(draftStorageKey);
+      }
+      setDraftPrompt(null);
       setWizardView("success");
     } catch (error) {
       console.error("Error creating asset and beneficiary:", error);
@@ -431,6 +482,34 @@ export default function WizardPage() {
     });
   };
 
+  const startWizardFromScratch = () => {
+    if (draftStorageKey) {
+      localStorage.removeItem(draftStorageKey);
+    }
+    setDraftPrompt(null);
+    resetWizard();
+    setWizardView("welcome");
+  };
+
+  const continueWithDraft = () => {
+    if (!draftPrompt) return;
+    setAssetData((prev) => ({
+      ...prev,
+      assetType: draftPrompt.asset.assetType,
+      assetName: draftPrompt.asset.assetName,
+      description: draftPrompt.asset.description,
+      website: draftPrompt.asset.website,
+      validUntil: draftPrompt.asset.validUntil,
+      email: draftPrompt.asset.email,
+      password: "",
+      customFields: draftPrompt.asset.customFields,
+    }));
+    setBeneficiaryData(draftPrompt.beneficiary);
+    setStep(draftPrompt.step);
+    setWizardView("form");
+    setDraftPrompt(null);
+  };
+
   const onNextFromAssetType = () => {
     markStepTouched("assetType");
     if (!canContinueAssetType) {
@@ -449,15 +528,75 @@ export default function WizardPage() {
     setStep("beneficiary");
   };
 
+  useEffect(() => {
+    if (!draftStorageKey || !user?.id || typeof window === "undefined") {
+      setHasHydratedDraft(true);
+      return;
+    }
+
+    const existingDraft = parseWizardDraft(localStorage.getItem(draftStorageKey), user.id);
+    setDraftPrompt(existingDraft);
+    setHasHydratedDraft(true);
+  }, [draftStorageKey, user?.id]);
+
+  useEffect(() => {
+    if (!hasHydratedDraft || !draftStorageKey || !user?.id || wizardView !== "form") return;
+    const handler = window.setTimeout(() => {
+      const draft = buildWizardDraft({
+        userId: user.id,
+        step,
+        assetData,
+        beneficiaryData,
+        assetType: currentAssetType,
+      });
+      localStorage.setItem(draftStorageKey, JSON.stringify(draft));
+    }, 450);
+
+    return () => window.clearTimeout(handler);
+  }, [
+    hasHydratedDraft,
+    draftStorageKey,
+    user?.id,
+    wizardView,
+    step,
+    assetData,
+    beneficiaryData,
+    currentAssetType,
+  ]);
+
   return (
     <ProtectedRoute>
       <div className="mx-auto w-full max-w-3xl rounded-2xl border border-border bg-card p-4 sm:p-6">
         {wizardView === "welcome" ? (
-          <WelcomeStep
-            userName={user?.user_metadata?.full_name || user?.email || tr("wizard-user-fallback")}
-            onStart={() => setWizardView("form")}
-            translate={tr}
-          />
+          <>
+            {draftPrompt ? (
+              <div className="mb-4 rounded-xl border border-primary/40 bg-primary/10 p-4">
+                <p className="text-sm font-medium text-foreground">{tr("wizard-draft-continue-title")}</p>
+                <p className="mt-1 text-sm text-muted-foreground">{tr("wizard-draft-continue-description")}</p>
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                  <button
+                    type="button"
+                    className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground"
+                    onClick={continueWithDraft}
+                  >
+                    {tr("wizard-draft-continue-button")}
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex h-10 items-center justify-center rounded-md border border-border px-4 text-sm font-medium text-foreground"
+                    onClick={startWizardFromScratch}
+                  >
+                    {tr("wizard-draft-restart-button")}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            <WelcomeStep
+              userName={user?.user_metadata?.full_name || user?.email || tr("wizard-user-fallback")}
+              onStart={() => setWizardView("form")}
+              translate={tr}
+            />
+          </>
         ) : null}
 
         {wizardView === "form" ? (
