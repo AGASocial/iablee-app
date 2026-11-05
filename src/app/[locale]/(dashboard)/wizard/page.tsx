@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/navigation";
 import { toast } from "sonner";
@@ -22,9 +22,11 @@ import type { AssetFormData, BeneficiaryFormData, FieldErrors, FileUploadItem, U
 import {
   MAX_WIZARD_FILES,
   buildWizardDraft,
+  buildWizardCompletionFingerprint,
   formatBytesToMb,
   getWizardDraftStorageKey,
   parseWizardDraft,
+  resolveWizardCompletionAttemptKey,
   sanitizeDraftCustomFields,
   submitWizardCompleteWithRetry,
   validateAssetDetails,
@@ -108,6 +110,7 @@ export default function WizardPage() {
     [assetTypes, assetData.assetType],
   );
   const draftStorageKey = useMemo(() => (user?.id ? getWizardDraftStorageKey(user.id) : null), [user?.id]);
+  const completionAttemptRef = useRef<{ key: string; fingerprint: string } | null>(null);
 
   const assetTypeErrors = validateAssetType(assetData);
   const assetDetailErrors = validateAssetDetails(assetData, currentAssetType, files);
@@ -381,7 +384,20 @@ export default function WizardPage() {
       const sessionReady = await checkSecuritySession();
       if (!sessionReady) return;
       await checkSubscriptionLimits();
-      const idempotencyKey = crypto.randomUUID();
+      const attemptFingerprint = buildWizardCompletionFingerprint({
+        asset: assetData,
+        beneficiary: beneficiaryData,
+        files,
+      });
+      const attemptState = resolveWizardCompletionAttemptKey({
+        currentKey: completionAttemptRef.current?.key ?? null,
+        currentFingerprint: completionAttemptRef.current?.fingerprint ?? null,
+        nextFingerprint: attemptFingerprint,
+      });
+      completionAttemptRef.current = {
+        key: attemptState.key,
+        fingerprint: attemptState.fingerprint,
+      };
 
       const uploadedFiles = await uploadPendingFiles();
       const fileUrls = uploadedFiles.map((file) => file.path);
@@ -413,7 +429,7 @@ export default function WizardPage() {
         fileUrls,
         fileMetadata,
         locale,
-        idempotencyKey,
+        idempotencyKey: attemptState.key,
       });
 
       if (!res.ok) {
@@ -431,6 +447,7 @@ export default function WizardPage() {
       if (draftStorageKey) {
         localStorage.removeItem(draftStorageKey);
       }
+      completionAttemptRef.current = null;
       setDraftPrompt(null);
       setWizardView("success");
     } catch (error) {
@@ -458,6 +475,7 @@ export default function WizardPage() {
       beneficiary: false,
     });
     setFiles([]);
+    completionAttemptRef.current = null;
     setAssetData({
       assetType: "",
       assetName: "",
@@ -481,6 +499,7 @@ export default function WizardPage() {
     if (draftStorageKey) {
       localStorage.removeItem(draftStorageKey);
     }
+    completionAttemptRef.current = null;
     setDraftPrompt(null);
     resetWizard();
     setWizardView("welcome");

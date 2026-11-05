@@ -2,8 +2,10 @@ import type { AssetType } from "@/lib/assetTypes";
 import { File, Mail } from "lucide-react";
 import {
   buildWizardDraft,
+  buildWizardCompletionFingerprint,
   getAssetIcon,
   parseWizardDraft,
+  resolveWizardCompletionAttemptKey,
   sanitizeDraftCustomFields,
   submitWizardCompleteWithRetry,
   validateAssetDetails,
@@ -136,6 +138,24 @@ describe("wizard validation utilities", () => {
     ).toEqual({
       favorite_color: "blue",
       contact_name: "Ana",
+    });
+  });
+
+  it("does not treat every field containing 'key' as sensitive", () => {
+    const assetType: AssetType = {
+      ...assetTypeWithRequiredFields,
+      customFields: [{ key: "monkey_name", label: "Monkey Name", type: "text" }],
+    };
+
+    expect(
+      sanitizeDraftCustomFields(
+        {
+          monkey_name: "Bongo",
+        },
+        assetType,
+      ),
+    ).toEqual({
+      monkey_name: "Bongo",
     });
   });
 
@@ -318,6 +338,86 @@ describe("wizard validation utilities", () => {
 
       expect(response.status).toBe(409);
       expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("completion idempotency attempt key", () => {
+    it("reuses the same key for retries of the same completion fingerprint", () => {
+      const attemptA = resolveWizardCompletionAttemptKey({
+        currentKey: null,
+        currentFingerprint: null,
+        nextFingerprint: "fingerprint-1",
+        createKey: () => "first-key",
+      });
+
+      const attemptB = resolveWizardCompletionAttemptKey({
+        currentKey: attemptA.key,
+        currentFingerprint: attemptA.fingerprint,
+        nextFingerprint: "fingerprint-1",
+        createKey: () => "second-key",
+      });
+
+      expect(attemptA.key).toBe("first-key");
+      expect(attemptB.key).toBe("first-key");
+      expect(attemptB.reused).toBe(true);
+    });
+
+    it("mints a new key when submission identity changes", () => {
+      const attempt = resolveWizardCompletionAttemptKey({
+        currentKey: "first-key",
+        currentFingerprint: "fingerprint-1",
+        nextFingerprint: "fingerprint-2",
+        createKey: () => "second-key",
+      });
+
+      expect(attempt.key).toBe("second-key");
+      expect(attempt.reused).toBe(false);
+    });
+
+    it("builds a stable fingerprint regardless of custom field or file order", () => {
+      const first = buildWizardCompletionFingerprint({
+        asset: {
+          ...baseAssetData,
+          assetType: "document",
+          assetName: "Doc",
+          customFields: {
+            b: "2",
+            a: "1",
+          },
+        },
+        beneficiary: {
+          ...baseBeneficiary,
+          fullName: "Ana",
+          relationshipId: 4,
+        },
+        files: [
+          { id: "file-b", file: {} as File, status: "uploaded", uploaded: { path: "/b", fileName: "b", fileType: "text/plain", fileSize: 1 } },
+          { id: "file-a", file: {} as File, status: "uploaded", uploaded: { path: "/a", fileName: "a", fileType: "text/plain", fileSize: 1 } },
+        ],
+      });
+
+      const second = buildWizardCompletionFingerprint({
+        asset: {
+          ...baseAssetData,
+          assetType: "document",
+          assetName: "Doc",
+          customFields: {
+            a: "1",
+            b: "2",
+          },
+        },
+        beneficiary: {
+          ...baseBeneficiary,
+          fullName: "Ana",
+          relationshipId: 4,
+        },
+        files: [
+          { id: "file-a", file: {} as File, status: "uploaded", uploaded: { path: "/a", fileName: "a", fileType: "text/plain", fileSize: 1 } },
+          { id: "file-b", file: {} as File, status: "uploaded", uploaded: { path: "/b", fileName: "b", fileType: "text/plain", fileSize: 1 } },
+        ],
+      });
+
+      expect(first).toBe(second);
     });
   });
 });

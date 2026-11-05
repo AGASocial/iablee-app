@@ -93,6 +93,14 @@ async function persistVerificationResult(
     .match({ user_id: userId, idempotency_key: idempotencyKey });
 }
 
+async function parseWizardCompleteBody(request: Request): Promise<WizardCompleteBody | null> {
+  try {
+    return (await request.json()) as WizardCompleteBody;
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(request: Request) {
   const auth = await getAuthenticatedContext();
   if (!auth.ok) {
@@ -102,9 +110,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Security PIN required' }, { status: 403 });
   }
   const { supabase, user } = auth.ctx;
+  const body = await parseWizardCompleteBody(request);
+  if (!body) {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  }
 
   try {
-    const body = (await request.json()) as WizardCompleteBody;
     const asset = body.asset;
     const beneficiary = body.beneficiary;
     const fileUrls = Array.isArray(body.fileUrls) ? body.fileUrls : [];
@@ -191,7 +202,8 @@ export async function POST(request: Request) {
       },
       { status: rpcData.idempotent ? 200 : 201 },
     );
-  } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  } catch (error) {
+    console.error('Unexpected wizard completion error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

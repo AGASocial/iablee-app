@@ -277,4 +277,53 @@ describe('POST /api/wizard/complete', () => {
     expect(supabaseAdmin.rpc).not.toHaveBeenCalled();
     expect(canCreateAsset).not.toHaveBeenCalled();
   });
+
+  it('returns 400 when request body is invalid JSON', async () => {
+    (getAuthenticatedContext as jest.Mock).mockResolvedValue({
+      ok: true,
+      ctx: {
+        user: { id: 'user-1' },
+        hasPin: true,
+        hasSecuritySession: true,
+        pinRequired: false,
+        supabase: { from: jest.fn() },
+      },
+    });
+
+    const badRequest = new Request('http://localhost/api/wizard/complete', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Idempotency-Key': '0f3d2068-6ef6-4f17-849f-8d0ee8f02153',
+      },
+      body: '{"asset": ',
+    }) as never;
+
+    const response = await POST(badRequest);
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body).toEqual({ error: 'Invalid request body' });
+  });
+
+  it('returns 500 for unexpected runtime failures after body parsing', async () => {
+    (getAuthenticatedContext as jest.Mock).mockResolvedValue({
+      ok: true,
+      ctx: {
+        user: { id: 'user-1' },
+        hasPin: true,
+        hasSecuritySession: true,
+        pinRequired: false,
+        supabase: { from: jest.fn() },
+      },
+    });
+    (canCreateAsset as jest.Mock).mockRejectedValue(new Error('db unavailable'));
+    (canCreateBeneficiary as jest.Mock).mockResolvedValue({ allowed: true });
+
+    const response = await POST(request());
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body).toEqual({ error: 'Internal server error' });
+  });
 });

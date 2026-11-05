@@ -31,7 +31,7 @@ const ASSET_ICON_MAP: Record<string, LucideIcon> = {
 
 const ADVANCED_FIELDS = new Set(["website", "valid_until", "email", "password"]);
 const DRAFT_ALLOWED_CUSTOM_FIELD_TYPES = new Set(["text", "textarea", "date", "url", "number", "select"]);
-const SENSITIVE_CUSTOM_FIELD_KEY_PATTERNS = /(password|secret|token|pin|key|apikey|private|seed|mnemonic|cvv|card)/i;
+const SENSITIVE_CUSTOM_FIELD_KEY_PATTERNS = /(?:^|[_\W])(password|secret|token|pin|apikey|api_key|private_key|private|seed|mnemonic|cvv|card)(?:$|[_\W])/i;
 const WIZARD_DRAFT_VERSION = 1;
 
 export interface WizardDraftPayload {
@@ -190,6 +190,12 @@ type WizardCompleteRequestBody = {
   idempotencyKey: string;
 };
 
+type WizardCompletionAttemptKeyState = {
+  key: string;
+  fingerprint: string;
+  reused: boolean;
+};
+
 const RETRYABLE_IDEMPOTENCY_ERROR = "IDEMPOTENCY_IN_PROGRESS";
 
 function sleep(ms: number): Promise<void> {
@@ -225,6 +231,75 @@ export async function submitWizardCompleteWithRetry(payload: WizardCompleteReque
 
 export function getWizardDraftStorageKey(userId: string): string {
   return `wizard:draft:${userId}`;
+}
+
+function normalizeRecordForFingerprint(record: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(record)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, value]) => [key, value.trim()]),
+  );
+}
+
+export function buildWizardCompletionFingerprint({
+  asset,
+  beneficiary,
+  files,
+}: {
+  asset: AssetFormData;
+  beneficiary: BeneficiaryFormData;
+  files: FileUploadItem[];
+}): string {
+  const fileIdentity = files
+    .map((file) => file.uploaded?.path ?? file.id)
+    .sort((left, right) => left.localeCompare(right));
+
+  return JSON.stringify({
+    asset: {
+      assetType: asset.assetType.trim(),
+      assetName: asset.assetName.trim(),
+      description: asset.description.trim(),
+      website: asset.website.trim(),
+      validUntil: asset.validUntil.trim(),
+      email: asset.email.trim(),
+      password: asset.password.trim(),
+      customFields: normalizeRecordForFingerprint(asset.customFields),
+    },
+    beneficiary: {
+      fullName: beneficiary.fullName.trim(),
+      email: beneficiary.email.trim(),
+      relationshipId: beneficiary.relationshipId,
+      phoneNumber: beneficiary.phoneNumber.trim(),
+      notes: beneficiary.notes.trim(),
+    },
+    files: fileIdentity,
+  });
+}
+
+export function resolveWizardCompletionAttemptKey({
+  currentKey,
+  currentFingerprint,
+  nextFingerprint,
+  createKey = () => crypto.randomUUID(),
+}: {
+  currentKey: string | null;
+  currentFingerprint: string | null;
+  nextFingerprint: string;
+  createKey?: () => string;
+}): WizardCompletionAttemptKeyState {
+  if (currentKey && currentFingerprint === nextFingerprint) {
+    return {
+      key: currentKey,
+      fingerprint: nextFingerprint,
+      reused: true,
+    };
+  }
+
+  return {
+    key: createKey(),
+    fingerprint: nextFingerprint,
+    reused: false,
+  };
 }
 
 export function buildWizardDraft({
