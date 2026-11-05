@@ -16,6 +16,7 @@
   "dashboardChecklistStepAddBeneficiaryTitle": "Add your first beneficiary",
   "dashboardChecklistStatusDone": "Done",
   "dashboardChecklistStatusPending": "Pending",
+  "dashboardChecklistStatusUnknown": "Unknown",
   "dashboardChecklistActionCreatePin": "Create your PIN",
   "dashboardChecklistActionCreateAsset": "Add your first asset",
   "dashboardChecklistActionCreateBeneficiary": "Add your first beneficiary",

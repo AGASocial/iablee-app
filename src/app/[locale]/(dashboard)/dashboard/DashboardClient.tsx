@@ -46,15 +46,15 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
   };
   const assets = data?.assets ?? [];
   const beneficiaries = data?.beneficiaries ?? [];
-  const isSecurityKnown = !securityError;
-  const hasPin = securityData?.hasPin === true;
-  const hasPendingPinStep = isSecurityKnown && securityData?.hasPin === false;
+  const securityStatusUnknown = securityError;
+  const hasPin = securityStatusUnknown ? false : securityData?.hasPin === true;
   const showOnboardingChecklist =
     !loading &&
     !loadingSecurity &&
-    (stats.totalAssets === 0 ||
-      stats.totalBeneficiaries === 0 ||
-      hasPendingPinStep);
+    (securityError ||
+      securityData?.hasPin === false ||
+      stats.totalAssets === 0 ||
+      stats.totalBeneficiaries === 0);
   const [showAddModal, setShowAddModal] = useState(false);
   const [form, setForm] = useState({
     full_name: '',
@@ -110,7 +110,8 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
       {showOnboardingChecklist ? (
         <DashboardOnboardingChecklist
           hasPin={hasPin}
-          includePin={isSecurityKnown}
+          includePin
+          pinStatusUnknown={securityStatusUnknown}
           totalAssets={stats.totalAssets}
           totalBeneficiaries={stats.totalBeneficiaries}
         />

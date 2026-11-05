@@ -14,6 +14,7 @@ jest.mock("next-intl", () => ({
       dashboardChecklistStepAddBeneficiaryTitle: "Add your first beneficiary",
       dashboardChecklistStatusDone: "Done",
       dashboardChecklistStatusPending: "Pending",
+      dashboardChecklistStatusUnknown: "Unknown",
       dashboardChecklistActionCreatePin: "Create your PIN",
       dashboardChecklistActionCreateAsset: "Add your first asset",
       dashboardChecklistActionCreateBeneficiary: "Add your first beneficiary",
@@ -51,6 +52,19 @@ describe("DashboardOnboardingChecklist", () => {
     );
 
     expect(screen.getByRole("link", { name: "Create your PIN" })).toHaveAttribute("href", "/settings/security");
+  });
+
+  it("shows unknown status for PIN when security status is unknown", () => {
+    render(
+      <DashboardOnboardingChecklist
+        hasPin={false}
+        pinStatusUnknown
+        totalAssets={2}
+        totalBeneficiaries={1}
+      />
+    );
+
+    expect(screen.getByText("Unknown")).toBeInTheDocument();
   });
 
   it("hides CTA when all steps are complete", () => {

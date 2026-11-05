@@ -25,11 +25,20 @@ jest.mock("@/hooks/useDataQueries", () => ({
 
 jest.mock("@/components/dashboard/DashboardOnboardingChecklist", () => ({
   __esModule: true,
-  default: ({ hasPin, includePin }: { hasPin: boolean; includePin?: boolean }) => (
+  default: ({
+    hasPin,
+    includePin,
+    pinStatusUnknown,
+  }: {
+    hasPin: boolean;
+    includePin?: boolean;
+    pinStatusUnknown?: boolean;
+  }) => (
     <div
       data-testid="dashboard-checklist"
       data-haspin={String(hasPin)}
       data-include-pin={String(includePin ?? true)}
+      data-pin-status-unknown={String(pinStatusUnknown ?? false)}
     />
   ),
 }));
@@ -86,7 +95,7 @@ describe("DashboardClient checklist behavior with security query errors", () => 
     });
   });
 
-  it("does not show onboarding checklist when security session query fails and setup is complete", () => {
+  it("shows checklist with PIN pending when security session query fails and setup is complete", () => {
     mockUseSecuritySession.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -95,7 +104,9 @@ describe("DashboardClient checklist behavior with security query errors", () => 
 
     render(<DashboardClient />);
 
-    expect(screen.queryByTestId("dashboard-checklist")).not.toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-checklist")).toHaveAttribute("data-include-pin", "true");
+    expect(screen.getByTestId("dashboard-checklist")).toHaveAttribute("data-haspin", "false");
+    expect(screen.getByTestId("dashboard-checklist")).toHaveAttribute("data-pin-status-unknown", "true");
   });
 
   it("shows checklist if assets are missing while security session fails", () => {
@@ -119,7 +130,9 @@ describe("DashboardClient checklist behavior with security query errors", () => 
 
     render(<DashboardClient />);
 
-    expect(screen.getByTestId("dashboard-checklist")).toHaveAttribute("data-include-pin", "false");
+    expect(screen.getByTestId("dashboard-checklist")).toHaveAttribute("data-include-pin", "true");
+    expect(screen.getByTestId("dashboard-checklist")).toHaveAttribute("data-haspin", "false");
+    expect(screen.getByTestId("dashboard-checklist")).toHaveAttribute("data-pin-status-unknown", "true");
   });
 
   it("shows checklist if beneficiaries are missing while security session fails", () => {
@@ -143,7 +156,9 @@ describe("DashboardClient checklist behavior with security query errors", () => 
 
     render(<DashboardClient />);
 
-    expect(screen.getByTestId("dashboard-checklist")).toHaveAttribute("data-include-pin", "false");
+    expect(screen.getByTestId("dashboard-checklist")).toHaveAttribute("data-include-pin", "true");
+    expect(screen.getByTestId("dashboard-checklist")).toHaveAttribute("data-haspin", "false");
+    expect(screen.getByTestId("dashboard-checklist")).toHaveAttribute("data-pin-status-unknown", "true");
   });
 
   it("shows onboarding checklist when security session is valid and setup is incomplete", () => {

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 interface DashboardOnboardingChecklistProps {
   hasPin: boolean;
   includePin?: boolean;
+  pinStatusUnknown?: boolean;
   totalAssets: number;
   totalBeneficiaries: number;
 }
@@ -21,6 +22,7 @@ type ChecklistStep = {
 export default function DashboardOnboardingChecklist({
   hasPin,
   includePin = true,
+  pinStatusUnknown = false,
   totalAssets,
   totalBeneficiaries,
 }: DashboardOnboardingChecklistProps) {
@@ -86,7 +88,12 @@ export default function DashboardOnboardingChecklist({
             beneficiary: t("dashboardChecklistStepAddBeneficiaryTitle"),
           };
 
-          const statusLabel = step.done ? t("dashboardChecklistStatusDone") : t("dashboardChecklistStatusPending");
+          const statusLabel =
+            step.done
+              ? t("dashboardChecklistStatusDone")
+              : step.key === "pin" && pinStatusUnknown
+                ? t("dashboardChecklistStatusUnknown")
+                : t("dashboardChecklistStatusPending");
 
           return (
             <li
