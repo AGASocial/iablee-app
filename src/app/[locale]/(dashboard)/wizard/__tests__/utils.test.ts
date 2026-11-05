@@ -91,6 +91,7 @@ describe("wizard validation utilities", () => {
         { key: "secret_hint", label: "Secret key", type: "text" },
         { key: "safe_date", label: "Safe date", type: "date" },
         { key: "pin_code", label: "Pin code", type: "number" },
+        { key: "pinCode", label: "Pin code camel", type: "number" },
       ],
     };
     const draft = buildWizardDraft({
@@ -105,6 +106,7 @@ describe("wizard validation utilities", () => {
           secret_hint: "top-secret",
           safe_date: "2026-11-05",
           pin_code: "1234",
+          pinCode: "5678",
           unknown_field: "should-be-removed",
         },
       },
@@ -418,6 +420,41 @@ describe("wizard validation utilities", () => {
       });
 
       expect(first).toBe(second);
+    });
+
+    it("keeps the same fingerprint before and after uploaded.path is set", () => {
+      const file = { name: "doc.pdf", size: 1024 } as File;
+      const basePayload = {
+        asset: {
+          ...baseAssetData,
+          assetType: "document",
+          assetName: "Doc",
+        },
+        beneficiary: {
+          ...baseBeneficiary,
+          fullName: "Ana",
+          relationshipId: 4,
+        },
+      };
+
+      const beforeUpload = buildWizardCompletionFingerprint({
+        ...basePayload,
+        files: [{ id: "file-1", file, status: "pending" }],
+      });
+
+      const afterUpload = buildWizardCompletionFingerprint({
+        ...basePayload,
+        files: [
+          {
+            id: "file-1",
+            file,
+            status: "uploaded",
+            uploaded: { path: "/uploads/file-1", fileName: "doc.pdf", fileType: "application/pdf", fileSize: 1024 },
+          },
+        ],
+      });
+
+      expect(beforeUpload).toBe(afterUpload);
     });
   });
 });

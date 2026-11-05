@@ -31,7 +31,7 @@ const ASSET_ICON_MAP: Record<string, LucideIcon> = {
 
 const ADVANCED_FIELDS = new Set(["website", "valid_until", "email", "password"]);
 const DRAFT_ALLOWED_CUSTOM_FIELD_TYPES = new Set(["text", "textarea", "date", "url", "number", "select"]);
-const SENSITIVE_CUSTOM_FIELD_KEY_PATTERNS = /(?:^|[_\W])(password|secret|token|pin|apikey|api_key|private_key|private|seed|mnemonic|cvv|card)(?:$|[_\W])/i;
+const SENSITIVE_CUSTOM_FIELD_KEY_PATTERNS = /(password|secret|token|pin|apikey|api_key|private_key|private|seed|mnemonic|cvv|card)/i;
 const WIZARD_DRAFT_VERSION = 1;
 
 export interface WizardDraftPayload {
@@ -251,7 +251,16 @@ export function buildWizardCompletionFingerprint({
   files: FileUploadItem[];
 }): string {
   const fileIdentity = files
-    .map((file) => file.uploaded?.path ?? file.id)
+    .map((file) => {
+      const parts = [file.id];
+      if (typeof file.file?.name === "string" && file.file.name.trim()) {
+        parts.push(file.file.name.trim());
+      }
+      if (typeof file.file?.size === "number" && Number.isFinite(file.file.size)) {
+        parts.push(String(file.file.size));
+      }
+      return parts.join(":");
+    })
     .sort((left, right) => left.localeCompare(right));
 
   return JSON.stringify({
