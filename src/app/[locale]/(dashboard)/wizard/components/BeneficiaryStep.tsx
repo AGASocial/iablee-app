@@ -18,7 +18,7 @@ interface BeneficiaryStepProps {
   onChange: <K extends keyof BeneficiaryFormData>(field: K, value: BeneficiaryFormData[K]) => void;
   onBack: () => void;
   onSave: () => void;
-  canSave: boolean;
+  onValidateBlur?: () => void;
   translate: (key: string, values?: Record<string, string | number>) => string;
 }
 
@@ -30,11 +30,11 @@ export function BeneficiaryStep({
   onChange,
   onBack,
   onSave,
-  canSave,
+  onValidateBlur,
   translate,
 }: BeneficiaryStepProps) {
   return (
-    <section className="space-y-5">
+    <section className="space-y-5" onBlurCapture={onValidateBlur}>
       <div>
         <h2 className="font-heading text-2xl text-foreground">{translate("wizard-step-beneficiary-title")}</h2>
         <p className="mt-1 text-sm text-muted-foreground">{translate("wizard-step-beneficiary-description")}</p>
@@ -139,7 +139,7 @@ export function BeneficiaryStep({
         <Button type="button" variant="outline" className="h-11 flex-1" onClick={onBack}>
           {translate("back")}
         </Button>
-        <Button type="button" className="h-11 flex-1" onClick={onSave} disabled={!canSave || saving}>
+        <Button type="button" className="h-11 flex-1" onClick={onSave} disabled={saving}>
           {saving ? translate("saving") : translate("wizard-save")}
         </Button>
       </div>

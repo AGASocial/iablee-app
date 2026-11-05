@@ -18,7 +18,7 @@ import { BeneficiaryStep } from "./components/BeneficiaryStep";
 import { StepIndicator } from "./components/StepIndicator";
 import { SuccessStep } from "./components/SuccessStep";
 import { WelcomeStep } from "./components/WelcomeStep";
-import type { AssetFormData, BeneficiaryFormData, FileUploadItem, UploadStatus, UploadedFileMeta, WizardStep } from "./components/types";
+import type { AssetFormData, BeneficiaryFormData, FieldErrors, FileUploadItem, UploadStatus, UploadedFileMeta, WizardStep } from "./components/types";
 import { MAX_WIZARD_FILES, formatBytesToMb, validateAssetDetails, validateAssetType, validateBeneficiary } from "./utils";
 
 type WizardView = "welcome" | "form" | "success";
@@ -55,6 +55,7 @@ export default function WizardPage() {
   const [relationships, setRelationships] = useState<Array<{ id: number; key: string }>>([]);
   const [files, setFiles] = useState<FileUploadItem[]>([]);
   const [pinOpen, setPinOpen] = useState(false);
+  const [pinMode, setPinMode] = useState<"setup" | "verify">("verify");
   const [pinReason, setPinReason] = useState<string | null>(null);
   const [retryAfterPin, setRetryAfterPin] = useState(false);
   const [showErrors, setShowErrors] = useState({
@@ -92,7 +93,61 @@ export default function WizardPage() {
 
   const canContinueAssetType = Object.keys(assetTypeErrors).length === 0;
   const canContinueAssetDetails = Object.keys(assetDetailErrors).length === 0;
-  const canSave = Object.keys(beneficiaryErrors).length === 0 && !saving;
+  const canSave = Object.keys(beneficiaryErrors).length === 0;
+
+  const markStepTouched = (target: keyof typeof showErrors) => {
+    setShowErrors((prev) => (prev[target] ? prev : { ...prev, [target]: true }));
+  };
+
+  const focusElementById = (id: string): boolean => {
+    const element = document.getElementById(id);
+    if (!element) return false;
+    element.focus();
+    return true;
+  };
+
+  const focusFirstAssetTypeError = () => {
+    const firstOption = document.querySelector<HTMLElement>('[data-asset-type-option="true"]');
+    firstOption?.focus();
+  };
+
+  const focusFirstAssetDetailsError = (errors: FieldErrors) => {
+    if (errors.assetName && focusElementById("asset-name")) return;
+    if (errors.description && focusElementById("asset-description")) return;
+
+    const advancedFieldOrder: Array<[keyof FieldErrors, string]> = [
+      ["website", "asset-website"],
+      ["validUntil", "asset-valid-until"],
+      ["email", "asset-email"],
+      ["password", "asset-password"],
+    ];
+    const firstAdvanced = advancedFieldOrder.find(([key]) => Boolean(errors[key]));
+    if (firstAdvanced) {
+      setShowAdvanced(true);
+      requestAnimationFrame(() => {
+        focusElementById(firstAdvanced[1]);
+      });
+      return;
+    }
+
+    const firstCustom = Object.keys(errors).find((key) => key.startsWith("custom:"));
+    if (!firstCustom) return;
+    setShowAdvanced(true);
+    requestAnimationFrame(() => {
+      const customId = `custom-${firstCustom.replace("custom:", "")}`;
+      if (focusElementById(customId)) return;
+      const dropzone = document.querySelector<HTMLElement>('[data-file-dropzone="true"]');
+      dropzone?.focus();
+    });
+  };
+
+  const focusFirstBeneficiaryError = (errors: FieldErrors) => {
+    if (errors.fullName && focusElementById("beneficiary-name")) return;
+    if (errors.email && focusElementById("beneficiary-email")) return;
+    if (errors.relationshipId) {
+      focusElementById("beneficiary-relationship");
+    }
+  };
 
   useEffect(() => {
     fetch("/api/relationships?minGenerationLevel=3")
@@ -160,8 +215,18 @@ export default function WizardPage() {
       throw new Error("failedToCheckSecuritySession");
     }
     const data = (await res.json()) as SecuritySessionResponse;
-    if (data.locked || !data.hasPin) {
+    if (!data.hasPin) {
+      const pinMessage = tr("wizard-pin-setup-message");
+      setPinMode("setup");
+      setPinReason(pinMessage);
+      setRetryAfterPin(true);
+      setPinOpen(true);
+      toast.error(pinMessage);
+      return false;
+    }
+    if (data.locked) {
       const pinMessage = tr("wizard-pin-protect-message");
+      setPinMode("verify");
       setPinReason(pinMessage);
       setRetryAfterPin(true);
       setPinOpen(true);
@@ -239,8 +304,11 @@ export default function WizardPage() {
 
   const handleSave = async () => {
     if (saving) return;
-    setShowErrors((prev) => ({ ...prev, beneficiary: true }));
-    if (!canSave) return;
+    markStepTouched("beneficiary");
+    if (!canSave) {
+      focusFirstBeneficiaryError(beneficiaryErrors);
+      return;
+    }
 
     setSaving(true);
     setSaveError(null);
@@ -290,7 +358,9 @@ export default function WizardPage() {
         const err = body && typeof body === "object" ? (body as { message?: string; error?: string }) : {};
         const pinMessage = wizardApiErrorMessage(res.status, err.error, t);
         if (pinMessage) {
-          const friendlyPinMessage = tr("wizard-pin-protect-message");
+          const needsSetup = !security.hasPin;
+          const friendlyPinMessage = needsSetup ? tr("wizard-pin-setup-message") : tr("wizard-pin-protect-message");
+          setPinMode(needsSetup ? "setup" : "verify");
           setPinReason(friendlyPinMessage);
           setRetryAfterPin(true);
           setPinOpen(true);
@@ -343,14 +413,20 @@ export default function WizardPage() {
   };
 
   const onNextFromAssetType = () => {
-    setShowErrors((prev) => ({ ...prev, assetType: true }));
-    if (!canContinueAssetType) return;
+    markStepTouched("assetType");
+    if (!canContinueAssetType) {
+      focusFirstAssetTypeError();
+      return;
+    }
     setStep("asset-details");
   };
 
   const onNextFromAssetDetails = () => {
-    setShowErrors((prev) => ({ ...prev, assetDetails: true }));
-    if (!canContinueAssetDetails) return;
+    markStepTouched("assetDetails");
+    if (!canContinueAssetDetails) {
+      focusFirstAssetDetailsError(assetDetailErrors);
+      return;
+    }
     setStep("beneficiary");
   };
 
@@ -387,7 +463,7 @@ export default function WizardPage() {
                 }}
                 onBack={() => setWizardView("welcome")}
                 onNext={onNextFromAssetType}
-                canContinue={canContinueAssetType}
+                onValidateBlur={() => markStepTouched("assetType")}
                 fieldError={showErrors.assetType ? assetTypeErrors.assetType : undefined}
                 translate={tr}
               />
@@ -425,7 +501,7 @@ export default function WizardPage() {
                 onRemoveFile={handleRemoveFile}
                 onBack={() => setStep("asset-type")}
                 onNext={onNextFromAssetDetails}
-                canContinue={canContinueAssetDetails}
+                onValidateBlur={() => markStepTouched("assetDetails")}
                 translate={tr}
               />
             ) : null}
@@ -441,7 +517,7 @@ export default function WizardPage() {
                 }}
                 onBack={() => setStep("asset-details")}
                 onSave={() => void handleSave()}
-                canSave={canSave}
+                onValidateBlur={() => markStepTouched("beneficiary")}
                 translate={tr}
               />
             ) : null}
@@ -470,7 +546,7 @@ export default function WizardPage() {
 
       <SecurityPinModal
         isOpen={pinOpen}
-        mode={security.hasPin ? "verify" : "setup"}
+        mode={pinMode}
         forceOpen={false}
         onSuccess={async () => {
           await security.checkStatus();

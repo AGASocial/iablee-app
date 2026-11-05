@@ -24,7 +24,7 @@ interface AssetDetailsStepProps {
   onRemoveFile: (id: string) => void;
   onBack: () => void;
   onNext: () => void;
-  canContinue: boolean;
+  onValidateBlur?: () => void;
   translate: (key: string, values?: Record<string, string | number>) => string;
 }
 
@@ -43,7 +43,7 @@ export function AssetDetailsStep({
   onRemoveFile,
   onBack,
   onNext,
-  canContinue,
+  onValidateBlur,
   translate,
 }: AssetDetailsStepProps) {
   const requiredAdvanced = hasRequiredAdvancedFields(assetType);
@@ -51,7 +51,7 @@ export function AssetDetailsStep({
   const showAttachments = Boolean(assetType?.fileAccept) || fileCustomFields.length > 0;
 
   return (
-    <section className="space-y-5">
+    <section className="space-y-5" onBlurCapture={onValidateBlur}>
       <div>
         <h2 className="font-heading text-2xl text-foreground">{translate("wizard-step-asset-details-title")}</h2>
         <p className="mt-1 text-sm text-muted-foreground">{translate("wizard-step-asset-details-description")}</p>
@@ -274,7 +274,7 @@ export function AssetDetailsStep({
         <Button type="button" variant="outline" className="h-11 flex-1" onClick={onBack}>
           {translate("back")}
         </Button>
-        <Button type="button" className="h-11 flex-1" onClick={onNext} disabled={!canContinue}>
+        <Button type="button" className="h-11 flex-1" onClick={onNext}>
           {translate("wizard-next")}
         </Button>
       </div>

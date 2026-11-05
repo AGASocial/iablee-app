@@ -47,6 +47,8 @@ describe('POST /api/wizard/complete', () => {
       ok: true,
       ctx: {
         user: { id: 'user-1' },
+        hasPin: true,
+        hasSecuritySession: true,
         pinRequired: false,
         supabase: {
           from: (table: string) => {
@@ -95,5 +97,47 @@ describe('POST /api/wizard/complete', () => {
     expect(supabaseAdmin.from).not.toHaveBeenCalled();
     expect(canCreateAsset).not.toHaveBeenCalled();
     expect(maybeSendBeneficiaryVerificationEmail).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 when the user has no configured PIN', async () => {
+    (getAuthenticatedContext as jest.Mock).mockResolvedValue({
+      ok: true,
+      ctx: {
+        user: { id: 'user-1' },
+        hasPin: false,
+        hasSecuritySession: false,
+        pinRequired: false,
+        supabase: { from: jest.fn() },
+      },
+    });
+
+    const response = await POST(request());
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.error).toBe('Security PIN required');
+    expect(supabaseAdmin.from).not.toHaveBeenCalled();
+    expect(canCreateAsset).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 when the PIN session is locked', async () => {
+    (getAuthenticatedContext as jest.Mock).mockResolvedValue({
+      ok: true,
+      ctx: {
+        user: { id: 'user-1' },
+        hasPin: true,
+        hasSecuritySession: false,
+        pinRequired: true,
+        supabase: { from: jest.fn() },
+      },
+    });
+
+    const response = await POST(request());
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.error).toBe('Security PIN required');
+    expect(supabaseAdmin.from).not.toHaveBeenCalled();
+    expect(canCreateAsset).not.toHaveBeenCalled();
   });
 });

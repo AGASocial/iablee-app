@@ -357,6 +357,7 @@
   "wizard-file-status-uploaded": "Subido",
   "wizard-file-status-error": "Error al subir",
   "wizard-upload-failed-retry": "Algunos archivos no se pudieron subir. Reintenta para completar el guardado.",
+  "wizard-pin-setup-message": "Configura tu PIN de seguridad para proteger lo que guardas. Continuaremos automaticamente despues de configurarlo.",
   "wizard-pin-protect-message": "Para proteger lo que guardas, confirma tu PIN.",
   "wizard-pin-confirmed": "PIN confirmado. Continuamos con el guardado.",
   "failedToCheckSecuritySession": "No pudimos validar tu sesión de seguridad.",

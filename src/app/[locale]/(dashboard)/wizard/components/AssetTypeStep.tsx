@@ -14,8 +14,8 @@ interface AssetTypeStepProps {
   onSelect: (key: string) => void;
   onBack: () => void;
   onNext: () => void;
-  canContinue: boolean;
   fieldError?: string;
+  onValidateBlur?: () => void;
   translate: (key: string, values?: Record<string, string | number>) => string;
 }
 
@@ -29,12 +29,12 @@ export function AssetTypeStep({
   onSelect,
   onBack,
   onNext,
-  canContinue,
   fieldError,
+  onValidateBlur,
   translate,
 }: AssetTypeStepProps) {
   return (
-    <section className="space-y-5">
+    <section className="space-y-5" onBlurCapture={onValidateBlur}>
       <div>
         <h2 className="font-heading text-2xl text-foreground">{translate("wizard-step-asset-type-title")}</h2>
         <p className="mt-1 text-sm text-muted-foreground">{translate("wizard-step-asset-type-description")}</p>
@@ -82,6 +82,7 @@ export function AssetTypeStep({
                   key={assetType.key}
                   type="button"
                   onClick={() => onSelect(assetType.key)}
+                  data-asset-type-option="true"
                   className={cn(
                     "rounded-xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     selected ? "border-primary bg-brand-tint" : "border-border bg-card hover:border-primary/40",
@@ -105,7 +106,7 @@ export function AssetTypeStep({
         <Button type="button" variant="outline" className="h-11 flex-1" onClick={onBack}>
           {translate("back")}
         </Button>
-        <Button type="button" className="h-11 flex-1" onClick={onNext} disabled={!canContinue}>
+        <Button type="button" className="h-11 flex-1" onClick={onNext}>
           {translate("wizard-next")}
         </Button>
       </div>

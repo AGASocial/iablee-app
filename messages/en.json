@@ -363,6 +363,7 @@
   "wizard-file-status-uploaded": "Uploaded",
   "wizard-file-status-error": "Upload failed",
   "wizard-upload-failed-retry": "Some files failed to upload. Retry to complete saving.",
+  "wizard-pin-setup-message": "Set up your security PIN to protect what you save. We will continue automatically after setup.",
   "wizard-pin-protect-message": "To protect what you save, confirm your PIN.",
   "wizard-pin-confirmed": "PIN confirmed. We can continue saving.",
   "failedToCheckSecuritySession": "We could not validate your security session.",

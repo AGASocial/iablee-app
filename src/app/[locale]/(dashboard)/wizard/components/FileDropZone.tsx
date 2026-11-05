@@ -49,6 +49,7 @@ export function FileDropZone({
     <div className="space-y-3">
       <button
         type="button"
+        data-file-dropzone="true"
         aria-label={translate("wizard-file-dropzone-label")}
         disabled={disabled}
         onClick={openFileDialog}
