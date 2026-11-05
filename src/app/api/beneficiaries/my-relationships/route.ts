@@ -28,7 +28,11 @@ export const GET = withTiming('GET /api/beneficiaries/my-relationships', async (
     return NextResponse.json({ error: 'Security PIN required' }, { status: 403 });
   }
 
-  const sessionEmail = auth.ctx.user.email;
+  if (!auth.ctx.user.email_confirmed_at) {
+    return NextResponse.json({ error: 'Email confirmation required' }, { status: 403 });
+  }
+
+  const sessionEmail = auth.ctx.user.email?.trim().toLowerCase() ?? '';
   if (!sessionEmail) {
     return NextResponse.json({ error: 'User email not available' }, { status: 400 });
   }

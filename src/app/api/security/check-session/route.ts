@@ -7,6 +7,9 @@ export const GET = withTiming('GET /api/security/check-session', async () => {
         const result = await getSecurityContext();
 
         if (!result.ok) {
+            if (result.status === 503) {
+                return NextResponse.json({ error: result.error }, { status: 503 });
+            }
             return NextResponse.json({ authenticated: false, locked: true, hasPin: false }, { status: 200 });
         }
 

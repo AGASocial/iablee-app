@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAuthenticatedRouteClient } from "@/lib/supabase-server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { checkRateLimit, getClientIp, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
+import { generatePinResetCode, hashPinResetCode } from "@/lib/pin-reset-otp";
+import { isPinLocked } from "@/lib/pin-lockout";
 import { Resend } from 'resend';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -28,21 +30,42 @@ export async function POST(request: NextRequest) {
             return rateLimitResponse(userRateLimit.resetAt);
         }
 
-        // Generate 6-digit code
-        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        const { data: userData, error: userError } = await supabaseAdmin
+            .from('users')
+            .select('pin_reset_locked_until')
+            .eq('id', user.id)
+            .single();
 
-        // Define expiry (15 mins from now)
+        if (userError || !userData) {
+            console.error("Error fetching PIN reset lockout:", userError);
+            return NextResponse.json({ error: "Failed to generate OTP" }, { status: 500 });
+        }
+
+        if (isPinLocked(userData.pin_reset_locked_until)) {
+            return NextResponse.json(
+                {
+                    error: "PIN reset locked due to too many failed attempts",
+                    lockedUntil: userData.pin_reset_locked_until,
+                },
+                { status: 423 }
+            );
+        }
+
+        const code = generatePinResetCode();
+        const codeHash = hashPinResetCode(code);
         const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
-        // Store OTP via admin client (RLS denies client access on security_otps)
+        await supabaseAdmin
+            .from('security_otps')
+            .update({ verified: true, expires_at: new Date().toISOString() })
+            .eq('user_id', user.id)
+            .eq('verified', false);
+
         const { error: dbError } = await supabaseAdmin
             .from('security_otps')
             .insert({
                 user_id: user.id,
-                code: code, // In a real prod app, consider hashing this. For MVP/Security PIN reset, plain might be acceptable if short lived. 
-                // However, plain text OTP in DB is a risk if DB is compromised. 
-                // But since it's just for PIN reset and not full account takeover (assuming PIN doesn't guard login), it might be a calculated risk.
-                // Let's stick to plain for now for simplicity as per plan, but acknowledge risk.
+                code: codeHash,
                 expires_at: expiresAt,
                 verified: false
             });
@@ -52,7 +75,6 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Failed to generate OTP" }, { status: 500 });
         }
 
-        // Send Email via Resend
         const { error: emailError } = await resend.emails.send({
             from: 'Iablee Security <security@security.iablee.com>',
             to: [user.email],

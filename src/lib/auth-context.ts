@@ -14,16 +14,21 @@ export interface AuthenticatedContext {
 async function buildContext(
   supabase: SupabaseClient<Database>,
   user: User
-): Promise<AuthenticatedContext> {
+): Promise<AuthenticatedContext | { unavailable: true }> {
   const hasSecuritySession = await checkSecuritySession(user.id);
 
-  const { data: userData } = await supabase
+  const { data: userData, error } = await supabase
     .from('users')
     .select('security_pin_hash')
     .eq('id', user.id)
     .single();
 
-  const hasPin = !!userData?.security_pin_hash;
+  // A missing row or a failed read is not "this user has no PIN".
+  if (error || !userData) {
+    return { unavailable: true };
+  }
+
+  const hasPin = Boolean(userData.security_pin_hash);
   const pinRequired = hasPin && !hasSecuritySession;
 
   return {
@@ -41,7 +46,7 @@ async function buildContext(
  */
 export async function getSecurityContext(): Promise<
   | { ok: true; ctx: AuthenticatedContext }
-  | { ok: false; status: 401; error: string }
+  | { ok: false; status: 401 | 503; error: string }
 > {
   const { supabase, user } = await createAuthenticatedRouteClient();
 
@@ -50,6 +55,10 @@ export async function getSecurityContext(): Promise<
   }
 
   const ctx = await buildContext(supabase, user);
+  if ('unavailable' in ctx) {
+    return { ok: false, status: 503, error: 'Security status unavailable' };
+  }
+
   return { ok: true, ctx };
 }
 
@@ -59,7 +68,7 @@ export async function getSecurityContext(): Promise<
  */
 export async function getAuthenticatedContext(): Promise<
   | { ok: true; ctx: AuthenticatedContext }
-  | { ok: false; status: 401 | 403; error: string }
+  | { ok: false; status: 401 | 403 | 503; error: string }
 > {
   const result = await getSecurityContext();
   if (!result.ok) return result;

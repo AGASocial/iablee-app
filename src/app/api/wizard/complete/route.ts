@@ -81,7 +81,7 @@ export async function POST(request: Request) {
             }
         }
 
-        const normalizedEmail = beneficiary.email?.trim() || null;
+        const normalizedEmail = beneficiary.email?.trim().toLowerCase() || null;
 
         // Create the beneficiary
         const { data: beneficiaryData, error: beneficiaryError } = await supabase

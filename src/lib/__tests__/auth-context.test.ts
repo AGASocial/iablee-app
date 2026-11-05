@@ -84,4 +84,57 @@ describe('PIN-gated auth context', () => {
     const result = await getAuthenticatedContext();
     expect(result.ok).toBe(true);
   });
+
+  it('returns 503 when the PIN hash cannot be read', async () => {
+    mockCreateAuth.mockResolvedValue({
+      supabase: {
+        from: () => ({
+          select: () => ({
+            eq: () => ({
+              single: () =>
+                Promise.resolve({ data: null, error: { message: 'db down', code: 'XX000' } }),
+            }),
+          }),
+        }),
+      },
+      user: { id: 'user-1' },
+    });
+    mockCheckSession.mockResolvedValue(false);
+
+    const security = await getSecurityContext();
+    expect(security.ok).toBe(false);
+    if (!security.ok) {
+      expect(security.status).toBe(503);
+    }
+
+    const gated = await getAuthenticatedContext();
+    expect(gated.ok).toBe(false);
+    if (!gated.ok) {
+      expect(gated.status).toBe(503);
+    }
+  });
+
+  it('treats a present row with a null hash as no PIN', async () => {
+    mockCreateAuth.mockResolvedValue({
+      supabase: {
+        from: () => ({
+          select: () => ({
+            eq: () => ({
+              single: () =>
+                Promise.resolve({ data: { security_pin_hash: null }, error: null }),
+            }),
+          }),
+        }),
+      },
+      user: { id: 'user-1' },
+    });
+    mockCheckSession.mockResolvedValue(false);
+
+    const result = await getSecurityContext();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.ctx.hasPin).toBe(false);
+      expect(result.ctx.pinRequired).toBe(false);
+    }
+  });
 });

@@ -27,6 +27,7 @@
   "beneficiaryRelationshipsInfoTitle": "Important information",
   "beneficiaryRelationshipsInfoDescription": "This list shows only relationships where your email has been verified. You cannot view digital assets until the account holder activates the release process.",
   "error": "Error",
+  "retry": "Retry",
   "attachments": "Attachments",
   "removeBeneficiary": "Remove Beneficiary",
   "beneficiaryUpdatedSuccess": "Beneficiary updated successfully",

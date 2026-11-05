@@ -22,6 +22,19 @@ describe('GET /api/beneficiaries/my-relationships', () => {
   const mockRpc = supabaseAdmin.rpc as jest.Mock;
   const request = new Request('http://localhost/api/beneficiaries/my-relationships');
 
+  function authed(user: Record<string, unknown>) {
+    mockGetAuthenticatedContext.mockResolvedValue({
+      ok: true,
+      ctx: {
+        user,
+        supabase: {},
+        hasSecuritySession: true,
+        hasPin: true,
+        pinRequired: false,
+      },
+    });
+  }
+
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -116,16 +129,26 @@ describe('GET /api/beneficiaries/my-relationships', () => {
     expect(mockRpc).not.toHaveBeenCalled();
   });
 
+  it('returns 403 when the session email is not confirmed', async () => {
+    authed({
+      id: 'user-1',
+      email: 'user@example.com',
+      email_confirmed_at: null,
+    });
+
+    const response = await GET(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.error).toBe('Email confirmation required');
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
   it('returns 400 when session user has no email', async () => {
-    mockGetAuthenticatedContext.mockResolvedValue({
-      ok: true,
-      ctx: {
-        user: { id: 'user-1', email: undefined },
-        supabase: {},
-        hasSecuritySession: true,
-        hasPin: true,
-        pinRequired: false,
-      },
+    authed({
+      id: 'user-1',
+      email: undefined,
+      email_confirmed_at: '2026-01-01T00:00:00Z',
     });
 
     const response = await GET(request);
@@ -147,15 +170,10 @@ describe('GET /api/beneficiaries/my-relationships', () => {
       },
     ];
 
-    mockGetAuthenticatedContext.mockResolvedValue({
-      ok: true,
-      ctx: {
-        user: { id: 'user-1', email: 'Beneficiary@Example.COM' },
-        supabase: {},
-        hasSecuritySession: true,
-        hasPin: true,
-        pinRequired: false,
-      },
+    authed({
+      id: 'user-1',
+      email: '  Beneficiary@Example.COM ',
+      email_confirmed_at: '2026-01-01T00:00:00Z',
     });
     mockRpc.mockResolvedValue({ data: relationships, error: null });
 
@@ -164,21 +182,16 @@ describe('GET /api/beneficiaries/my-relationships', () => {
 
     expect(response.status).toBe(200);
     expect(mockRpc).toHaveBeenCalledWith('get_my_beneficiary_relationships', {
-      p_email: 'Beneficiary@Example.COM',
+      p_email: 'beneficiary@example.com',
     });
     expect(body.relationships).toEqual(relationships);
   });
 
   it('returns 500 without leaking RPC error details', async () => {
-    mockGetAuthenticatedContext.mockResolvedValue({
-      ok: true,
-      ctx: {
-        user: { id: 'user-1', email: 'user@example.com' },
-        supabase: {},
-        hasSecuritySession: true,
-        hasPin: true,
-        pinRequired: false,
-      },
+    authed({
+      id: 'user-1',
+      email: 'user@example.com',
+      email_confirmed_at: '2026-01-01T00:00:00Z',
     });
     mockRpc.mockResolvedValue({
       data: null,

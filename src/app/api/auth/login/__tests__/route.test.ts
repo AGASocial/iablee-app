@@ -38,8 +38,8 @@ describe('POST /api/auth/login', () => {
   });
 
   it('clears security_session after a successful login', async () => {
-    const deleteCookie = jest.fn();
-    mockCookies.mockResolvedValue({ delete: deleteCookie });
+    const setCookie = jest.fn();
+    mockCookies.mockResolvedValue({ set: setCookie });
     mockCreateRouteClient.mockResolvedValue({
       auth: {
         signInWithPassword: jest.fn().mockResolvedValue({ error: null }),
@@ -49,12 +49,18 @@ describe('POST /api/auth/login', () => {
     const response = await POST(loginRequest());
 
     expect(response.status).toBe(200);
-    expect(deleteCookie).toHaveBeenCalledWith('security_session');
+    expect(setCookie).toHaveBeenCalledWith('security_session', '', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 0,
+    });
   });
 
   it('keeps security_session when login fails', async () => {
-    const deleteCookie = jest.fn();
-    mockCookies.mockResolvedValue({ delete: deleteCookie });
+    const setCookie = jest.fn();
+    mockCookies.mockResolvedValue({ set: setCookie });
     mockCreateRouteClient.mockResolvedValue({
       auth: {
         signInWithPassword: jest.fn().mockResolvedValue({ error: { message: 'Invalid login' } }),
@@ -64,6 +70,6 @@ describe('POST /api/auth/login', () => {
     const response = await POST(loginRequest());
 
     expect(response.status).toBe(401);
-    expect(deleteCookie).not.toHaveBeenCalled();
+    expect(setCookie).not.toHaveBeenCalled();
   });
 });

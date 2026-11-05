@@ -15,8 +15,8 @@ jest.mock('next/headers', () => ({
 
 describe('POST /api/auth/logout', () => {
   it('clears security_session after sign-out', async () => {
-    const deleteCookie = jest.fn();
-    (cookies as jest.Mock).mockResolvedValue({ delete: deleteCookie });
+    const setCookie = jest.fn();
+    (cookies as jest.Mock).mockResolvedValue({ set: setCookie });
     (createRouteClient as jest.Mock).mockResolvedValue({
       auth: {
         signOut: jest.fn().mockResolvedValue({ error: null }),
@@ -26,6 +26,12 @@ describe('POST /api/auth/logout', () => {
     const response = await POST();
 
     expect(response.status).toBe(200);
-    expect(deleteCookie).toHaveBeenCalledWith('security_session');
+    expect(setCookie).toHaveBeenCalledWith('security_session', '', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 0,
+    });
   });
 });

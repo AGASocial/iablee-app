@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import MyBeneficiaryRelationshipsPage from '../page';
 import { useSecurity } from '@/context/SecurityContext';
 
@@ -96,7 +96,7 @@ describe('MyBeneficiaryRelationshipsPage', () => {
     expect(screen.queryByText('relationships.not-a-real')).not.toBeInTheDocument();
   });
 
-  it('does not treat a PIN 403 as a fatal error', async () => {
+  it('shows a translated error and retry when a 403 does not unlock the gate', async () => {
     const state = securityState({ locked: false });
     mockUseSecurity.mockReturnValue(state);
     mockFetch.mockResolvedValue({
@@ -107,10 +107,15 @@ describe('MyBeneficiaryRelationshipsPage', () => {
 
     render(<MyBeneficiaryRelationshipsPage />);
 
+    expect(await screen.findByRole('button', { name: 'retry' })).toBeInTheDocument();
+    expect(screen.getAllByText('error').length).toBeGreaterThan(0);
+    expect(screen.queryByText('loading')).not.toBeInTheDocument();
+    expect(state.checkStatus).toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'retry' }));
+
     await waitFor(() => {
-      expect(state.checkStatus).toHaveBeenCalled();
+      expect(mockFetch).toHaveBeenCalledTimes(2);
     });
-    expect(screen.queryByText('error')).not.toBeInTheDocument();
-    expect(screen.getByText('loading')).toBeInTheDocument();
   });
 });

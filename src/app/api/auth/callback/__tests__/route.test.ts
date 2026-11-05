@@ -26,5 +26,9 @@ describe('GET /api/auth/callback', () => {
     expect(response.status).toBe(307);
     const setCookie = response.headers.get('set-cookie') ?? '';
     expect(setCookie).toContain('security_session=');
+    expect(setCookie.toLowerCase()).toContain('max-age=0');
+    expect(setCookie.toLowerCase()).toContain('httponly');
+    expect(setCookie.toLowerCase()).toContain('path=/');
+    expect(setCookie.toLowerCase()).toContain('samesite=lax');
   });
 });

@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import type { Database } from '@/lib/supabase';
 import { verifySecuritySessionToken } from '@/lib/security';
+import { SECURITY_SESSION_COOKIE_NAME } from '@/lib/security-cookie';
 
 /**
  * Creates an authenticated Supabase server client for use in API routes.
@@ -58,8 +59,21 @@ export async function checkSecuritySession(userId: string) {
     if (!userId) return false;
 
     const cookieStore = await cookies();
-    const securitySession = cookieStore.get("security_session");
+    const securitySession = cookieStore.get(SECURITY_SESSION_COOKIE_NAME);
     if (!securitySession?.value) return false;
 
-    return await verifySecuritySessionToken(securitySession.value, userId);
+    return await verifySecuritySessionToken(securitySession.value, userId, 'pin_verified');
+}
+
+/**
+ * True only for a security_session minted by the PIN-reset OTP, not by verify-pin.
+ */
+export async function hasPinResetSession(userId: string) {
+    if (!userId) return false;
+
+    const cookieStore = await cookies();
+    const securitySession = cookieStore.get(SECURITY_SESSION_COOKIE_NAME);
+    if (!securitySession?.value) return false;
+
+    return await verifySecuritySessionToken(securitySession.value, userId, 'pin_reset');
 }

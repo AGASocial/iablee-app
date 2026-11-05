@@ -7,6 +7,7 @@ import { es, enUS } from "date-fns/locale"
 import { ShieldCheck, Calendar, User, Heart } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { useSecurity } from "@/context/SecurityContext"
 
 interface BeneficiaryRelationship {
@@ -25,6 +26,7 @@ export default function MyBeneficiaryRelationshipsPage() {
   const [relationships, setRelationships] = useState<BeneficiaryRelationship[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     if (!unlocked) {
@@ -37,18 +39,16 @@ export default function MyBeneficiaryRelationshipsPage() {
     let cancelled = false
 
     async function fetchRelationships() {
-      let pinGate = false
       try {
         setLoading(true)
         setError(null)
         const response = await fetch("/api/beneficiaries/my-relationships")
 
         if (response.status === 403) {
-          pinGate = true
           if (!cancelled) {
             setRelationships((current) => (current.length === 0 ? current : []))
-            setError(null)
-            setLoading(true)
+            setError(t("error"))
+            setLoading(false)
           }
           void checkStatus()
           return
@@ -67,7 +67,7 @@ export default function MyBeneficiaryRelationshipsPage() {
           setError(t("error"))
         }
       } finally {
-        if (!cancelled && !pinGate) {
+        if (!cancelled) {
           setLoading(false)
         }
       }
@@ -77,7 +77,7 @@ export default function MyBeneficiaryRelationshipsPage() {
     return () => {
       cancelled = true
     }
-  }, [unlocked, t, checkStatus])
+  }, [unlocked, t, checkStatus, attempt])
 
   function formatDate(dateString: string) {
     try {
@@ -94,7 +94,7 @@ export default function MyBeneficiaryRelationshipsPage() {
     return t.has(key) ? t(key) : t("relationships.other")
   }
 
-  if (!unlocked || loading) {
+  if (!unlocked) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <div className="flex flex-col items-center gap-2">
@@ -113,7 +113,23 @@ export default function MyBeneficiaryRelationshipsPage() {
             <CardTitle className="text-destructive">{t("error")}</CardTitle>
             <CardDescription>{error}</CardDescription>
           </CardHeader>
+          <CardContent>
+            <Button type="button" onClick={() => setAttempt((current) => current + 1)}>
+              {t("retry")}
+            </Button>
+          </CardContent>
         </Card>
+      </div>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[400px] items-center justify-center">
+        <div className="flex flex-col items-center gap-2">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <p className="text-sm text-muted-foreground">{t("loading")}</p>
+        </div>
       </div>
     )
   }

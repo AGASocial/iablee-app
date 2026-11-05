@@ -3,7 +3,7 @@
  */
 import { cookies } from 'next/headers';
 import { verifySecuritySessionToken } from '@/lib/security';
-import { checkSecuritySession } from '@/lib/supabase-server';
+import { checkSecuritySession, hasPinResetSession } from '@/lib/supabase-server';
 
 jest.mock('next/headers', () => ({
   cookies: jest.fn(),
@@ -28,7 +28,7 @@ describe('checkSecuritySession', () => {
     mockVerify.mockResolvedValue(true);
 
     await expect(checkSecuritySession('user-a')).resolves.toBe(true);
-    expect(mockVerify).toHaveBeenCalledWith('session-token', 'user-a');
+    expect(mockVerify).toHaveBeenCalledWith('session-token', 'user-a', 'pin_verified');
   });
 
   it('rejects when the verifier rejects another user', async () => {
@@ -38,7 +38,17 @@ describe('checkSecuritySession', () => {
     mockVerify.mockImplementation(async (_token: string, userId: string) => userId === 'user-a');
 
     await expect(checkSecuritySession('user-b')).resolves.toBe(false);
-    expect(mockVerify).toHaveBeenCalledWith('session-token', 'user-b');
+    expect(mockVerify).toHaveBeenCalledWith('session-token', 'user-b', 'pin_verified');
+  });
+
+  it('asks the verifier for a pin_reset session', async () => {
+    mockCookies.mockResolvedValue({
+      get: () => ({ value: 'session-token' }),
+    });
+    mockVerify.mockResolvedValue(true);
+
+    await expect(hasPinResetSession('user-a')).resolves.toBe(true);
+    expect(mockVerify).toHaveBeenCalledWith('session-token', 'user-a', 'pin_reset');
   });
 
   it('rejects when the cookie is missing or the user id is empty', async () => {

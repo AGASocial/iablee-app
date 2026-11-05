@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createRouteClient } from '@/lib/supabase-server';
+import { clearSecuritySession } from '@/lib/security-cookie';
 import { checkRateLimit, getClientIp, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 
 export async function POST(request: NextRequest) {
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest) {
     }
 
     const cookieStore = await cookies();
-    cookieStore.delete('security_session');
+    clearSecuritySession(cookieStore);
 
     return NextResponse.json({ success: true });
   } catch (error) {

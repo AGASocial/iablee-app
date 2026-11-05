@@ -4,6 +4,11 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 import { createSecuritySessionToken } from "@/lib/security";
+import {
+    SECURITY_SESSION_COOKIE_NAME,
+    SECURITY_SESSION_MAX_AGE_SECONDS,
+    securitySessionCookieOptions,
+} from "@/lib/security-cookie";
 import { checkRateLimit, getClientIp, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
 import {
     isPinLocked,
@@ -116,18 +121,14 @@ export async function POST(req: NextRequest) {
             .update({ pin_failed_attempts: 0, pin_locked_until: null })
             .eq("id", user.id);
 
-        const token = await createSecuritySessionToken(user.id);
+        const token = await createSecuritySessionToken(user.id, "pin_verified");
 
         const cookieStore = await cookies();
-        const expiry = new Date(Date.now() + 15 * 60 * 1000);
-
-        cookieStore.set("security_session", token, {
-            expires: expiry,
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            path: "/",
-            sameSite: "lax",
-        });
+        cookieStore.set(
+            SECURITY_SESSION_COOKIE_NAME,
+            token,
+            securitySessionCookieOptions(SECURITY_SESSION_MAX_AGE_SECONDS)
+        );
 
         return NextResponse.json({ success: true });
     } catch (err: unknown) {

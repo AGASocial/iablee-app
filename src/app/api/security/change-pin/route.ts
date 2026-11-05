@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAuthenticatedRouteClient } from "@/lib/supabase-server";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 import bcrypt from "bcryptjs";
 
 export async function POST(req: NextRequest) {
     try {
-        const { supabase, user } = await createAuthenticatedRouteClient();
+        const { user } = await createAuthenticatedRouteClient();
 
         if (!user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -20,8 +21,7 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // 1. Verify Current PIN
-        const { data: userData, error: fetchError } = await supabase
+        const { data: userData, error: fetchError } = await supabaseAdmin
             .from("users")
             .select("security_pin_hash")
             .eq("id", user.id)
@@ -35,7 +35,6 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // If user has a PIN set, they must provide the correct current PIN
         if (userData.security_pin_hash) {
             if (!currentPin) {
                 return NextResponse.json(
@@ -49,11 +48,10 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        // 2. Set New PIN
         const salt = await bcrypt.genSalt(10);
         const hash = await bcrypt.hash(newPin, salt);
 
-        const { error: updateError } = await supabase
+        const { error: updateError } = await supabaseAdmin
             .from("users")
             .update({
                 security_pin_hash: hash,
@@ -72,7 +70,6 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: true });
 
     } catch (err: unknown) {
-        // ... error handling
         const error = err as Error;
         console.error("Error changing PIN:", error);
         return NextResponse.json(

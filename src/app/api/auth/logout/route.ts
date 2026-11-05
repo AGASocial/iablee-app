@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createRouteClient } from '@/lib/supabase-server';
+import { clearSecuritySession } from '@/lib/security-cookie';
 
 export async function POST() {
   try {
@@ -12,7 +13,7 @@ export async function POST() {
     }
 
     const cookieStore = await cookies();
-    cookieStore.delete('security_session');
+    clearSecuritySession(cookieStore);
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { EmailOtpType } from '@supabase/supabase-js';
 import { createRouteClient } from '@/lib/supabase-server';
+import {
+  SECURITY_SESSION_COOKIE_NAME,
+  securitySessionCookieOptions,
+} from '@/lib/security-cookie';
 
 function sanitizeNextPath(nextParam: string | null): string {
   if (!nextParam) return '/en';
@@ -50,6 +54,10 @@ export async function GET(request: NextRequest) {
 
   const successResponse = NextResponse.redirect(new URL(nextPath, request.url));
   successResponse.cookies.delete('auth_callback_next');
-  successResponse.cookies.delete('security_session');
+  successResponse.cookies.set(
+    SECURITY_SESSION_COOKIE_NAME,
+    '',
+    securitySessionCookieOptions(0)
+  );
   return successResponse;
 }
