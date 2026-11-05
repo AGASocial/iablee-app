@@ -25,8 +25,12 @@ jest.mock("@/hooks/useDataQueries", () => ({
 
 jest.mock("@/components/dashboard/DashboardOnboardingChecklist", () => ({
   __esModule: true,
-  default: ({ hasPin }: { hasPin: boolean }) => (
-    <div data-testid="dashboard-checklist" data-haspin={String(hasPin)} />
+  default: ({ hasPin, includePin }: { hasPin: boolean; includePin?: boolean }) => (
+    <div
+      data-testid="dashboard-checklist"
+      data-haspin={String(hasPin)}
+      data-include-pin={String(includePin ?? true)}
+    />
   ),
 }));
 
@@ -82,7 +86,7 @@ describe("DashboardClient checklist behavior with security query errors", () => 
     });
   });
 
-  it("does not show onboarding checklist when security session query fails", () => {
+  it("does not show onboarding checklist when security session query fails and setup is complete", () => {
     mockUseSecuritySession.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -94,7 +98,7 @@ describe("DashboardClient checklist behavior with security query errors", () => 
     expect(screen.queryByTestId("dashboard-checklist")).not.toBeInTheDocument();
   });
 
-  it("hides onboarding checklist even if assets are missing while security session fails", () => {
+  it("shows checklist if assets are missing while security session fails", () => {
     mockUseSecuritySession.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -115,7 +119,31 @@ describe("DashboardClient checklist behavior with security query errors", () => 
 
     render(<DashboardClient />);
 
-    expect(screen.queryByTestId("dashboard-checklist")).not.toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-checklist")).toHaveAttribute("data-include-pin", "false");
+  });
+
+  it("shows checklist if beneficiaries are missing while security session fails", () => {
+    mockUseSecuritySession.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+    });
+
+    mockUseDashboard.mockReturnValue({
+      data: {
+        ...dashboardData,
+        stats: {
+          ...dashboardData.stats,
+          totalBeneficiaries: 0,
+        },
+      },
+      isLoading: false,
+      refetch: jest.fn().mockResolvedValue(undefined),
+    });
+
+    render(<DashboardClient />);
+
+    expect(screen.getByTestId("dashboard-checklist")).toHaveAttribute("data-include-pin", "false");
   });
 
   it("shows onboarding checklist when security session is valid and setup is incomplete", () => {
@@ -140,5 +168,6 @@ describe("DashboardClient checklist behavior with security query errors", () => 
     render(<DashboardClient />);
 
     expect(screen.getByTestId("dashboard-checklist")).toHaveAttribute("data-haspin", "true");
+    expect(screen.getByTestId("dashboard-checklist")).toHaveAttribute("data-include-pin", "true");
   });
 });

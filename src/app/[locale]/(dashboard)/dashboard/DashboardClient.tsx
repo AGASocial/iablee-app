@@ -46,15 +46,15 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
   };
   const assets = data?.assets ?? [];
   const beneficiaries = data?.beneficiaries ?? [];
-  // If the security query fails, treat PIN status as unknown instead of pending.
-  const hasPin = securityData?.hasPin ?? true;
+  const isSecurityKnown = !securityError;
+  const hasPin = securityData?.hasPin === true;
+  const hasPendingPinStep = isSecurityKnown && securityData?.hasPin === false;
   const showOnboardingChecklist =
     !loading &&
     !loadingSecurity &&
-    !securityError &&
     (stats.totalAssets === 0 ||
       stats.totalBeneficiaries === 0 ||
-      securityData?.hasPin === false);
+      hasPendingPinStep);
   const [showAddModal, setShowAddModal] = useState(false);
   const [form, setForm] = useState({
     full_name: '',
@@ -110,6 +110,7 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
       {showOnboardingChecklist ? (
         <DashboardOnboardingChecklist
           hasPin={hasPin}
+          includePin={isSecurityKnown}
           totalAssets={stats.totalAssets}
           totalBeneficiaries={stats.totalBeneficiaries}
         />

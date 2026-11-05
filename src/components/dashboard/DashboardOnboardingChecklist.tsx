@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 
 interface DashboardOnboardingChecklistProps {
   hasPin: boolean;
+  includePin?: boolean;
   totalAssets: number;
   totalBeneficiaries: number;
 }
@@ -19,15 +20,19 @@ type ChecklistStep = {
 
 export default function DashboardOnboardingChecklist({
   hasPin,
+  includePin = true,
   totalAssets,
   totalBeneficiaries,
 }: DashboardOnboardingChecklistProps) {
   const t = useTranslations();
   const steps: ChecklistStep[] = [
-    { key: "pin", href: "/settings/security", done: hasPin },
     { key: "asset", href: "/wizard", done: totalAssets > 0 },
     { key: "beneficiary", href: "/beneficiaries", done: totalBeneficiaries > 0 },
   ];
+
+  if (includePin) {
+    steps.unshift({ key: "pin", href: "/settings/security", done: hasPin });
+  }
 
   const completedSteps = steps.filter((step) => step.done).length;
   const totalSteps = steps.length;
