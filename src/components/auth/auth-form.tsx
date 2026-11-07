@@ -23,6 +23,7 @@ const formSchema = z.object({
   // Lenient check equivalent to zod v3 .email() (zod v4 .email() is stricter)
   email: z
     .string()
+    .trim()
     .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "Please enter a valid email address"),
   password: z
     .string()

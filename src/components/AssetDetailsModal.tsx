@@ -104,9 +104,7 @@ export default function AssetDetailsModal({
     if (openAssetKey !== syncedOpenAssetKey) {
         setSyncedOpenAssetKey(openAssetKey);
         setIsEditing(false);
-        if (!(asset && open)) {
-            setAttachments([]);
-        }
+        setAttachments([]);
     }
 
     useEffect(() => {
