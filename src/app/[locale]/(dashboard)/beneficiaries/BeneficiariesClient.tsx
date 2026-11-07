@@ -112,13 +112,21 @@ export default function BeneficiariesClient() {
         },
         */
     ];
-    useEffect(() => {
-        if (searchParams.get('action') === 'add') {
+    const actionParam = searchParams.get('action');
+    const [prevActionParam, setPrevActionParam] = useState<string | null>(null);
+    if (actionParam !== prevActionParam) {
+        setPrevActionParam(actionParam);
+        if (actionParam === 'add') {
             setShowAddModal(true);
-            // Clean the query param from the URL
+        }
+    }
+
+    useEffect(() => {
+        if (actionParam === 'add') {
+            // Clean the query param from the URL after capturing into local state
             router.replace(window.location.pathname, { scroll: false });
         }
-    }, [searchParams, router]);
+    }, [actionParam, router]);
 
     const handleAddBeneficiary = () => {
         setBeneficiaryToEdit(null);

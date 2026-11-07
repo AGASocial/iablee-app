@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { PinInput } from "@/components/ui/pin-input";
@@ -25,14 +25,17 @@ export default function SecurityPinModal({ isOpen, mode, onSuccess, onCancel, fo
     const [error, setError] = useState<string | null>(null);
     const [showForgotLink, setShowForgotLink] = useState(false);
 
-    useEffect(() => {
-        if (isOpen) {
-            setPin("");
-            setError(null);
-            setShowForgotLink(false);
-            setStep(mode === "setup" ? "create" : "enter");
-        }
-    }, [isOpen, mode]);
+    const [resetKey, setResetKey] = useState<string | null>(null);
+    const nextResetKey = `${isOpen}:${mode}`;
+    if (isOpen && nextResetKey !== resetKey) {
+        setResetKey(nextResetKey);
+        setPin("");
+        setError(null);
+        setShowForgotLink(false);
+        setStep(mode === "setup" ? "create" : "enter");
+    } else if (!isOpen && resetKey !== nextResetKey) {
+        setResetKey(nextResetKey);
+    }
 
     const handlePinComplete = async (enteredPin: string) => {
         setError(null);

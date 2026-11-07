@@ -28,20 +28,23 @@ export default function MyBeneficiaryRelationshipsPage() {
   const [error, setError] = useState<"unconfirmed" | "unavailable" | "retryable" | null>(null)
   const [attempt, setAttempt] = useState(0)
 
-  useEffect(() => {
+  const [prevUnlocked, setPrevUnlocked] = useState(unlocked)
+  if (unlocked !== prevUnlocked) {
+    setPrevUnlocked(unlocked)
     if (!unlocked) {
       setRelationships((current) => (current.length === 0 ? current : []))
       setError((current) => (current === null ? current : null))
       setLoading((current) => (current ? current : true))
-      return
     }
+  }
+
+  useEffect(() => {
+    if (!unlocked) return
 
     let cancelled = false
 
-    async function fetchRelationships() {
+    void (async () => {
       try {
-        setLoading(true)
-        setError(null)
         const response = await fetch("/api/beneficiaries/my-relationships")
 
         if (response.status === 403) {
@@ -68,6 +71,7 @@ export default function MyBeneficiaryRelationshipsPage() {
         const data = await response.json()
         if (!cancelled) {
           setRelationships(data.relationships || [])
+          setError(null)
         }
       } catch {
         if (!cancelled) {
@@ -78,9 +82,8 @@ export default function MyBeneficiaryRelationshipsPage() {
           setLoading(false)
         }
       }
-    }
+    })()
 
-    void fetchRelationships()
     return () => {
       cancelled = true
     }
@@ -125,7 +128,13 @@ export default function MyBeneficiaryRelationshipsPage() {
           </CardHeader>
           {error === "retryable" ? (
             <CardContent>
-              <Button type="button" onClick={() => setAttempt((current) => current + 1)}>
+              <Button
+                type="button"
+                onClick={() => {
+                  setLoading(true)
+                  setAttempt((current) => current + 1)
+                }}
+              >
                 {t("retry")}
               </Button>
             </CardContent>

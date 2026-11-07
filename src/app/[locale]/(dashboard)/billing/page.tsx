@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useBilling, useInvalidateData } from '@/hooks/useDataQueries';
@@ -52,6 +52,7 @@ export default function BillingPage() {
   const [loading, setLoading] = useState(true);
   const [canceling, setCanceling] = useState(false);
   const [provider, setProvider] = useState<string | null>(null);
+  const isMountedRef = useRef(true);
 
   const fetchBillingData = async () => {
     try {
@@ -60,8 +61,11 @@ export default function BillingPage() {
         fetch('/api/billing/invoices', { credentials: 'include' }),
       ]);
 
+      if (!isMountedRef.current) return;
+
       if (subResponse.ok) {
         const subData = await subResponse.json();
+        if (!isMountedRef.current) return;
         setSubscription(subData.subscription);
         if (subData.config?.provider) {
           setProvider(subData.config.provider);
@@ -70,20 +74,59 @@ export default function BillingPage() {
 
       if (invoicesResponse.ok) {
         const invoicesData = await invoicesResponse.json();
+        if (!isMountedRef.current) return;
         setInvoices(invoicesData.invoices);
       }
     } catch (error) {
+      if (!isMountedRef.current) return;
       console.error('Error fetching billing data:', error);
       toast.error(t('errorLoadingSubscription'));
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchBillingData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    isMountedRef.current = true;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const [subResponse, invoicesResponse] = await Promise.all([
+          fetch('/api/billing/subscriptions', { credentials: 'include' }),
+          fetch('/api/billing/invoices', { credentials: 'include' }),
+        ]);
+
+        if (cancelled) return;
+
+        if (subResponse.ok) {
+          const subData = await subResponse.json();
+          if (cancelled) return;
+          setSubscription(subData.subscription);
+          if (subData.config?.provider) {
+            setProvider(subData.config.provider);
+          }
+        }
+
+        if (invoicesResponse.ok) {
+          const invoicesData = await invoicesResponse.json();
+          if (cancelled) return;
+          setInvoices(invoicesData.invoices);
+        }
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Error fetching billing data:', error);
+        toast.error(t('errorLoadingSubscription'));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      isMountedRef.current = false;
+    };
+  }, [t]);
 
   const handleCancelSubscription = async () => {
     if (!subscription) return;
