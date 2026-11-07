@@ -20,7 +20,10 @@ import { useTranslations, useLocale } from "next-intl"
 import { Link, useRouter } from "@/i18n/navigation"
 
 const formSchema = z.object({
-  email: z.string().email("Please enter a valid email address"),
+  // Lenient check equivalent to zod v3 .email() (zod v4 .email() is stricter)
+  email: z
+    .string()
+    .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "Please enter a valid email address"),
   password: z
     .string()
     .min(8, "Password must be at least 8 characters")

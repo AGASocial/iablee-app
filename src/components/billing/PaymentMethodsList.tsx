@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { CreditCard, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -29,25 +29,30 @@ export default function PaymentMethodsList() {
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const isMountedRef = useRef(true);
 
   const fetchPaymentMethods = async () => {
     try {
       const response = await fetch('/api/billing/payment-methods', {
         credentials: 'include'
       });
+      if (!isMountedRef.current) return;
       if (!response.ok) throw new Error('Failed to fetch payment methods');
 
       const data = await response.json();
+      if (!isMountedRef.current) return;
       setPaymentMethods(data.paymentMethods || []);
     } catch (error) {
+      if (!isMountedRef.current) return;
       console.error('Error fetching payment methods:', error);
       toast.error(t('billingError'));
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) setLoading(false);
     }
   };
 
   useEffect(() => {
+    isMountedRef.current = true;
     let cancelled = false;
 
     void (async () => {
@@ -71,6 +76,7 @@ export default function PaymentMethodsList() {
 
     return () => {
       cancelled = true;
+      isMountedRef.current = false;
     };
   }, [t]);
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface AuthUser {
   id: string;
@@ -18,6 +18,7 @@ export function useAuth() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const isMountedRef = useRef(true);
 
   const refreshSession = useCallback(async () => {
     try {
@@ -26,6 +27,8 @@ export function useAuth() {
         credentials: 'include',
       });
 
+      if (!isMountedRef.current) return;
+
       if (!response.ok) {
         setUser(null);
         setError('Failed to get session');
@@ -33,18 +36,21 @@ export function useAuth() {
       }
 
       const data = (await response.json()) as SessionResponse;
+      if (!isMountedRef.current) return;
       setUser(data.authenticated ? data.user : null);
       setError(null);
     } catch (err) {
+      if (!isMountedRef.current) return;
       console.error('Error loading auth session:', err);
       setUser(null);
       setError('Failed to get session');
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    isMountedRef.current = true;
     let cancelled = false;
 
     void (async () => {
@@ -77,6 +83,7 @@ export function useAuth() {
     })();
 
     const onAuthChanged = () => {
+      if (!isMountedRef.current) return;
       setLoading(true);
       void refreshSession();
     };
@@ -84,6 +91,7 @@ export function useAuth() {
     window.addEventListener('auth-changed', onAuthChanged);
     return () => {
       cancelled = true;
+      isMountedRef.current = false;
       window.removeEventListener('auth-changed', onAuthChanged);
     };
   }, [refreshSession]);
