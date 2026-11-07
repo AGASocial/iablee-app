@@ -109,7 +109,7 @@ export default function WizardPage() {
     () => assetTypes.find((assetType) => assetType.key === assetData.assetType) ?? null,
     [assetTypes, assetData.assetType],
   );
-  const draftStorageKey = useMemo(() => (user?.id ? getWizardDraftStorageKey(user.id) : null), [user?.id]);
+  const draftStorageKey = user?.id ? getWizardDraftStorageKey(user.id) : null;
   const completionAttemptRef = useRef<{ key: string; fingerprint: string } | null>(null);
 
   const assetTypeErrors = validateAssetType(assetData);
@@ -546,13 +546,15 @@ export default function WizardPage() {
 
   useEffect(() => {
     if (!draftStorageKey || !user?.id || typeof window === "undefined") {
-      setHasHydratedDraft(true);
+      queueMicrotask(() => setHasHydratedDraft(true));
       return;
     }
 
     const existingDraft = parseWizardDraft(localStorage.getItem(draftStorageKey), user.id, assetTypes);
-    setDraftPrompt(existingDraft);
-    setHasHydratedDraft(true);
+    queueMicrotask(() => {
+      setDraftPrompt(existingDraft);
+      setHasHydratedDraft(true);
+    });
   }, [draftStorageKey, user?.id, assetTypes]);
 
   useEffect(() => {

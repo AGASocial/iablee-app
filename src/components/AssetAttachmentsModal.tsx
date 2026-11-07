@@ -64,11 +64,38 @@ export default function AssetAttachmentsModal({
     }
   }, [asset.id, t]);
 
+  const [prevOpen, setPrevOpen] = useState<boolean | null>(null);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (open) setLoading(true);
+  }
+
   useEffect(() => {
-    if (open) {
-      loadAttachments();
-    }
-  }, [open, loadAttachments]);
+    if (!open || !asset.id) return;
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const res = await fetch(`/api/assets/${asset.id}/attachments`);
+        if (cancelled) return;
+        if (!res.ok) throw new Error('Failed to load attachments');
+        const data: AssetAttachment[] = await res.json();
+        if (!cancelled) setAttachments(data);
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Error loading files:', error);
+        toast.error(t('errorLoadingFiles') || 'Error loading files');
+        setAttachments([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, asset.id, t]);
 
   const getProxyUrl = (attachmentId: string) => {
     return `/api/assets/attachments/${attachmentId}`;

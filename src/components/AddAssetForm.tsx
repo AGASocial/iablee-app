@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,7 +31,9 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const [syncedAsset, setSyncedAsset] = useState<typeof asset>(undefined);
+  if (asset !== syncedAsset) {
+    setSyncedAsset(asset);
     if (asset) {
       setForm({
         asset_name: asset.asset_name || "",
@@ -44,7 +46,7 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
         customFields: asset.custom_fields || {},
       });
     }
-  }, [asset]);
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;

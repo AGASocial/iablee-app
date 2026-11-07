@@ -52,7 +52,17 @@ export default function AddBeneficiaryModal({ open, onOpenChange, onSuccess, ben
         }
     }, [open]);
 
-    useEffect(() => {
+    const emptyForm = {
+        full_name: "",
+        email: "",
+        phone_number: "",
+        relationship_id: null as number | null,
+        notes: "",
+    };
+    const [syncedEditKey, setSyncedEditKey] = useState<string | null>(null);
+    const editKey = `${open}:${beneficiaryToEdit?.id ?? "new"}`;
+    if (editKey !== syncedEditKey) {
+        setSyncedEditKey(editKey);
         if (beneficiaryToEdit) {
             setFormData({
                 full_name: beneficiaryToEdit.full_name || "",
@@ -62,15 +72,9 @@ export default function AddBeneficiaryModal({ open, onOpenChange, onSuccess, ben
                 notes: beneficiaryToEdit.notes || "",
             });
         } else {
-            setFormData({
-                full_name: "",
-                email: "",
-                phone_number: "",
-                relationship_id: null,
-                notes: "",
-            });
+            setFormData(emptyForm);
         }
-    }, [beneficiaryToEdit, open]);
+    }
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

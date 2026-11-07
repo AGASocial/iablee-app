@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from 'next-intl';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,11 +16,11 @@ export function ProfileForm() {
     const { data: user, isLoading } = useUserProfile();
     const { invalidateProfile } = useInvalidateData();
 
-    useEffect(() => {
-        if (user) {
-            setFullName(user.full_name || '');
-        }
-    }, [user]);
+    const [syncedUser, setSyncedUser] = useState<typeof user>(undefined);
+    if (user !== syncedUser) {
+        setSyncedUser(user);
+        setFullName(user?.full_name || '');
+    }
 
     const handleUpdateProfile = async (e: React.FormEvent) => {
         e.preventDefault();
