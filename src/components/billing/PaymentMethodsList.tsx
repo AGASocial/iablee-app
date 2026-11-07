@@ -30,11 +30,6 @@ export default function PaymentMethodsList() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchPaymentMethods();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const fetchPaymentMethods = async () => {
     try {
       const response = await fetch('/api/billing/payment-methods', {
@@ -51,6 +46,33 @@ export default function PaymentMethodsList() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const response = await fetch('/api/billing/payment-methods', {
+          credentials: 'include'
+        });
+        if (cancelled) return;
+        if (!response.ok) throw new Error('Failed to fetch payment methods');
+
+        const data = await response.json();
+        if (!cancelled) setPaymentMethods(data.paymentMethods || []);
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Error fetching payment methods:', error);
+        toast.error(t('billingError'));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [t]);
 
   const handleDelete = async (paymentMethodId: string) => {
     if (!confirm(t('confirmDeletePaymentMethod'))) return;

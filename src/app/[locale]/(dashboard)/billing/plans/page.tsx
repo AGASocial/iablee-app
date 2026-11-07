@@ -43,40 +43,38 @@ export default function PlansPage() {
   const [currentSubscription, setCurrentSubscription] = useState<SubscriptionWithPlan | null>(null);
 
   useEffect(() => {
-    fetchPlans();
-    fetchCurrentSubscription();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    let cancelled = false;
 
-  const fetchCurrentSubscription = async () => {
-    try {
-      const response = await fetch('/api/billing/subscriptions', {
-        credentials: 'include'
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setCurrentSubscription(data.subscription);
+    void (async () => {
+      try {
+        const [plansResponse, subResponse] = await Promise.all([
+          fetch('/api/billing/plans', { credentials: 'include' }),
+          fetch('/api/billing/subscriptions', { credentials: 'include' }),
+        ]);
+
+        if (cancelled) return;
+
+        if (subResponse.ok) {
+          const subData = await subResponse.json();
+          if (!cancelled) setCurrentSubscription(subData.subscription);
+        }
+
+        if (!plansResponse.ok) throw new Error('Failed to fetch plans');
+        const plansData = await plansResponse.json();
+        if (!cancelled) setPlans(plansData.plans);
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Error fetching plans:', error);
+        toast.error(t('errorLoadingPlans'));
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    } catch (error) {
-      console.error('Error fetching current subscription:', error);
-    }
-  };
+    })();
 
-  const fetchPlans = async () => {
-    try {
-      const response = await fetch('/api/billing/plans', {
-        credentials: 'include'
-      });
-      if (!response.ok) throw new Error('Failed to fetch plans');
-      const data = await response.json();
-      setPlans(data.plans);
-    } catch (error) {
-      console.error('Error fetching plans:', error);
-      toast.error(t('errorLoadingPlans'));
-    } finally {
-      setLoading(false);
-    }
-  };
+    return () => {
+      cancelled = true;
+    };
+  }, [t]);
 
   const handleSubscribe = async (planId: string) => {
     setSubscribing(planId);

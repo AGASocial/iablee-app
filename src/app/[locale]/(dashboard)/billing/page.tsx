@@ -81,9 +81,44 @@ export default function BillingPage() {
   };
 
   useEffect(() => {
-    fetchBillingData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const [subResponse, invoicesResponse] = await Promise.all([
+          fetch('/api/billing/subscriptions', { credentials: 'include' }),
+          fetch('/api/billing/invoices', { credentials: 'include' }),
+        ]);
+
+        if (cancelled) return;
+
+        if (subResponse.ok) {
+          const subData = await subResponse.json();
+          if (cancelled) return;
+          setSubscription(subData.subscription);
+          if (subData.config?.provider) {
+            setProvider(subData.config.provider);
+          }
+        }
+
+        if (invoicesResponse.ok) {
+          const invoicesData = await invoicesResponse.json();
+          if (cancelled) return;
+          setInvoices(invoicesData.invoices);
+        }
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Error fetching billing data:', error);
+        toast.error(t('errorLoadingSubscription'));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [t]);
 
   const handleCancelSubscription = async () => {
     if (!subscription) return;

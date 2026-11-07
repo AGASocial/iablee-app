@@ -45,7 +45,36 @@ export function useAuth() {
   }, []);
 
   useEffect(() => {
-    refreshSession();
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const response = await fetch('/api/auth/session', {
+          method: 'GET',
+          credentials: 'include',
+        });
+
+        if (cancelled) return;
+
+        if (!response.ok) {
+          setUser(null);
+          setError('Failed to get session');
+          return;
+        }
+
+        const data = (await response.json()) as SessionResponse;
+        if (cancelled) return;
+        setUser(data.authenticated ? data.user : null);
+        setError(null);
+      } catch (err) {
+        if (cancelled) return;
+        console.error('Error loading auth session:', err);
+        setUser(null);
+        setError('Failed to get session');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
 
     const onAuthChanged = () => {
       setLoading(true);
@@ -53,7 +82,10 @@ export function useAuth() {
     };
 
     window.addEventListener('auth-changed', onAuthChanged);
-    return () => window.removeEventListener('auth-changed', onAuthChanged);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('auth-changed', onAuthChanged);
+    };
   }, [refreshSession]);
 
   const signOut = async () => {

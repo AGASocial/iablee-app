@@ -86,7 +86,6 @@ export default function AssetDetailsModal({
 }: AssetDetailsModalProps) {
     const t = useTranslations();
     const [attachments, setAttachments] = useState<AssetAttachment[]>([]);
-    const [loadingFiles, setLoadingFiles] = useState(false);
     const [updatingBeneficiary, setUpdatingBeneficiary] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
 
@@ -100,31 +99,39 @@ export default function AssetDetailsModal({
         return isRequired || isOptional || false;
     };
 
-    useEffect(() => {
-        if (asset && open) {
-            fetchAttachments();
-            setIsEditing(false);
-        } else {
+    const openAssetKey = `${open}:${asset?.id ?? "none"}`;
+    const [syncedOpenAssetKey, setSyncedOpenAssetKey] = useState<string | null>(null);
+    if (openAssetKey !== syncedOpenAssetKey) {
+        setSyncedOpenAssetKey(openAssetKey);
+        setIsEditing(false);
+        if (!(asset && open)) {
             setAttachments([]);
-            setIsEditing(false);
         }
-    }, [asset, open]);
+    }
 
-    const fetchAttachments = async () => {
-        if (!asset) return;
-        setLoadingFiles(true);
-        try {
-            const res = await fetch(`/api/assets/${asset.id}/attachments`);
-            if (res.ok) {
-                const data = await res.json();
-                setAttachments(data);
+    useEffect(() => {
+        if (!(asset && open)) return;
+
+        let cancelled = false;
+        const assetId = asset.id;
+
+        void (async () => {
+            try {
+                const res = await fetch(`/api/assets/${assetId}/attachments`);
+                if (cancelled) return;
+                if (res.ok) {
+                    const data = await res.json();
+                    if (!cancelled) setAttachments(data);
+                }
+            } catch (error) {
+                if (!cancelled) console.error("Failed to fetch attachments", error);
             }
-        } catch (error) {
-            console.error("Failed to fetch attachments", error);
-        } finally {
-            setLoadingFiles(false);
-        }
-    };
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [asset, open]);
 
     const handleBeneficiarySelect = async (beneficiaryId: string | null) => {
         if (onAssignBeneficiary) {

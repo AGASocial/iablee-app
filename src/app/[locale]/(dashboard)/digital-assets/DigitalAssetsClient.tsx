@@ -138,36 +138,36 @@ export default function DigitalAssetsClient() {
     await invalidateBilling();
   };
 
-  useEffect(() => {
-    const action = searchParams.get('action');
-    if (action === 'add') {
+  const actionParam = searchParams.get('action');
+  const assetIdParam = searchParams.get('assetId');
+  const [prevActionParam, setPrevActionParam] = useState<string | null>(null);
+  if (actionParam !== prevActionParam) {
+    setPrevActionParam(actionParam);
+    if (actionParam === 'add') {
       setModalOpen(true);
+    }
+  }
+
+  useEffect(() => {
+    if (actionParam === 'add') {
       const params = new URLSearchParams(searchParams);
       params.delete('action');
       router.replace(`${window.location.pathname}?${params.toString()}`, { scroll: false });
     }
-  }, [searchParams, router]);
+  }, [actionParam, searchParams, router]);
 
-  useEffect(() => {
-    const assetId = searchParams.get('assetId');
-    // ... existing existing existing
-    if (assetId && assets.length > 0 && !selectedAssetDetails) {
-      const assetToOpen = assets.find(a => a.id === assetId);
-      if (assetToOpen) {
-        setSelectedAssetDetails(assetToOpen);
-      }
+  // Open asset details from ?assetId= and keep selection synced with assets list
+  if (assetIdParam && assets.length > 0 && !selectedAssetDetails) {
+    const assetToOpen = assets.find(a => a.id === assetIdParam);
+    if (assetToOpen) {
+      setSelectedAssetDetails(assetToOpen);
     }
-  }, [searchParams, assets, selectedAssetDetails]);
-
-  // Sync selectedAssetDetails with assets list when it changes (e.g. after edit)
-  useEffect(() => {
-    if (selectedAssetDetails) {
-      const updatedAsset = assets.find(a => a.id === selectedAssetDetails.id);
-      if (updatedAsset && JSON.stringify(updatedAsset) !== JSON.stringify(selectedAssetDetails)) {
-        setSelectedAssetDetails(updatedAsset);
-      }
+  } else if (selectedAssetDetails) {
+    const updatedAsset = assets.find(a => a.id === selectedAssetDetails.id);
+    if (updatedAsset && JSON.stringify(updatedAsset) !== JSON.stringify(selectedAssetDetails)) {
+      setSelectedAssetDetails(updatedAsset);
     }
-  }, [assets, selectedAssetDetails]);
+  }
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [assetToDelete, setAssetToDelete] = useState<string | null>(null);
