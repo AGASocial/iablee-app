@@ -1,7 +1,8 @@
-import { sweepAllE2EUsers } from "./fixtures/supabase";
+import { cleanupRunOwnedUsersFromManifest, verifyNoRunOwnedUsersRemain } from "./fixtures/supabase";
 
 async function globalTeardown(): Promise<void> {
-  await sweepAllE2EUsers();
+  await cleanupRunOwnedUsersFromManifest();
+  await verifyNoRunOwnedUsersRemain();
 }
 
 export default globalTeardown;

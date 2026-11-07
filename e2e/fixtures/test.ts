@@ -19,8 +19,17 @@ export const test = base.extend<E2EFixtures>({
 
     await use(createUser);
 
+    const cleanupErrors: string[] = [];
     for (const userId of createdUserIds.reverse()) {
-      await cleanupUserData(userId);
+      try {
+        await cleanupUserData(userId);
+      } catch (error) {
+        cleanupErrors.push(`${userId}: ${(error as Error).message}`);
+      }
+    }
+
+    if (cleanupErrors.length > 0) {
+      throw new Error(`Fixture cleanup failed (${cleanupErrors.length}): ${cleanupErrors.join(" | ")}`);
     }
   },
 

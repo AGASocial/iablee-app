@@ -1,10 +1,19 @@
 import { defineConfig, devices } from "@playwright/test";
 import dotenv from "dotenv";
 import path from "node:path";
-import os from "node:os";
+import { randomUUID } from "node:crypto";
 
 dotenv.config({ path: ".env.local" });
 dotenv.config();
+
+const runId = process.env.PLAYWRIGHT_E2E_RUN_ID || `pw-${Date.now()}-${randomUUID().slice(0, 8)}`;
+const manifestPath =
+  process.env.PLAYWRIGHT_E2E_MANIFEST_PATH ||
+  path.join(process.cwd(), "test-results", `e2e-run-manifest-${runId}.json`);
+const customChromiumExecutablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+
+process.env.PLAYWRIGHT_E2E_RUN_ID = runId;
+process.env.PLAYWRIGHT_E2E_MANIFEST_PATH = manifestPath;
 
 /**
  * See https://playwright.dev/docs/test-configuration.
@@ -14,14 +23,14 @@ export default defineConfig({
   testMatch: "*.spec.ts",
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 1,
+  retries: 0,
   workers: 1,
   reporter: [["list"], ["html", { outputFolder: "playwright-report", open: "never" }]],
   globalTeardown: "./e2e/global-teardown.ts",
   use: {
     baseURL: process.env.PLAYWRIGHT_TEST_BASE_URL || "http://localhost:3000",
-    headless: false,
-    trace: "on-first-retry",
+    headless: process.env.PLAYWRIGHT_HEADFUL === "1" ? false : true,
+    trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
@@ -32,20 +41,13 @@ export default defineConfig({
       name: "chromium",
       use: {
         ...devices["Desktop Chrome"],
-        launchOptions: {
-          executablePath: path.join(
-            os.homedir(),
-            "Library",
-            "Caches",
-            "ms-playwright",
-            "chromium-1243",
-            "chrome-mac-arm64",
-            "Google Chrome for Testing.app",
-            "Contents",
-            "MacOS",
-            "Google Chrome for Testing",
-          ),
-        },
+        ...(customChromiumExecutablePath
+          ? {
+              launchOptions: {
+                executablePath: customChromiumExecutablePath,
+              },
+            }
+          : {}),
       },
     },
   ],

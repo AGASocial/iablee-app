@@ -38,6 +38,23 @@ test.describe("03 wizard", () => {
     await page.locator('[data-asset-type-option="true"]').first().click();
     await page.getByRole("button", { name: /^siguiente$/i }).click();
     await page.locator("#asset-name").fill("Activo borrador");
+    await expect
+      .poll(
+        async () =>
+          page.evaluate((userId) => {
+            const key = `wizard:draft:${userId}`;
+            const raw = window.localStorage.getItem(key);
+            if (!raw) return null;
+            try {
+              const parsed = JSON.parse(raw) as { asset?: { assetName?: string } };
+              return parsed.asset?.assetName ?? null;
+            } catch {
+              return null;
+            }
+          }, user.id),
+        { timeout: 6000 },
+      )
+      .toBe("Activo borrador");
 
     await page.reload();
     const continueButton = page.getByRole("button", { name: /^continuar$/i });
@@ -101,6 +118,7 @@ test.describe("03 wizard", () => {
     expect(secondBody.idempotent).toBe(true);
 
     const assetsResponse = await page.request.get("/api/assets");
+    expect(assetsResponse.status()).toBe(200);
     const assetsBody = (await assetsResponse.json()) as {
       data: Array<{ asset_name: string }>;
     };

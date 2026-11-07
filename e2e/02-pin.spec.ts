@@ -21,7 +21,10 @@ test.describe("02 pin", () => {
     const wrongPin = await page.request.post("/api/security/verify-pin", {
       data: { pin: "000000" },
     });
-    expect(wrongPin.status()).not.toBe(200);
+    expect(wrongPin.status()).toBe(401);
+    const wrongPinBody = (await wrongPin.json()) as { error?: string; remainingAttempts?: number };
+    expect(wrongPinBody.error).toBe("Invalid PIN");
+    expect(typeof wrongPinBody.remainingAttempts).toBe("number");
 
     const changePin = await page.request.post("/api/security/change-pin", {
       data: { currentPin: INITIAL_PIN, newPin: CHANGED_PIN },

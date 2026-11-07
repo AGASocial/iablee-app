@@ -20,6 +20,7 @@ test.describe("06 beneficiaries CRUD + assign to asset", () => {
     expect(verifyPin.status()).toBe(200);
 
     const assetTypesResponse = await page.request.get("/api/asset-types");
+    expect(assetTypesResponse.status()).toBe(200);
     const assetTypes = (await assetTypesResponse.json()) as Array<{ key: string }>;
     expect(assetTypes.length).toBeGreaterThan(0);
 
@@ -51,6 +52,7 @@ test.describe("06 beneficiaries CRUD + assign to asset", () => {
     await expect(page.getByText(updatedName)).toBeVisible();
 
     const beneficiariesResponse = await page.request.get("/api/beneficiaries");
+    expect(beneficiariesResponse.status()).toBe(200);
     const beneficiariesBody = (await beneficiariesResponse.json()) as {
       data: Array<{ id: string; full_name: string }>;
     };

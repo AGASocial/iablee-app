@@ -16,11 +16,13 @@ test.describe("01 auth", () => {
 
     const response = await page.request.post("/api/auth/logout");
     expect(response.status()).toBe(200);
+    const body = (await response.json()) as { success?: boolean };
+    expect(body.success).toBe(true);
     await page.goto("/en/dashboard");
     await expect(page).toHaveURL(/\/en\/auth\/login/);
   });
 
-  test("submits register UI flow without sending real email", async ({ page }) => {
+  test("submits register UI flow stub without sending real email", async ({ page }) => {
     await page.route("**/api/auth/register", async (route) => {
       await route.fulfill({
         status: 200,
@@ -36,5 +38,19 @@ test.describe("01 auth", () => {
     await page.getByRole("button", { name: /create account/i }).click();
 
     await expect(page).toHaveURL(/\/en\/auth\/login\?registered=true/);
+  });
+
+  test("validates register backend input without triggering outbound email", async ({ page }) => {
+    const response = await page.request.post("/api/auth/register", {
+      data: {
+        email: "",
+        password: "",
+        locale: "en",
+      },
+    });
+
+    expect(response.status()).toBe(400);
+    const body = (await response.json()) as { error?: string };
+    expect(body.error).toBe("Email and password are required");
   });
 });
