@@ -218,11 +218,11 @@ export default function BeneficiariesClient() {
             />
             <div className="mb-8 flex items-center justify-between">
                 <div>
-                    <h1 className="text-3xl font-bold text-foreground dark:text-slate-700 sm:text-4xl">{t('beneficiariesTitle')}</h1>
+                    <h1 className="text-3xl font-bold text-foreground sm:text-4xl">{t('beneficiariesTitle')}</h1>
                     {limitReached && limitInfo && (
-                        <p className="text-sm text-amber-600 dark:text-amber-400 mt-1">
+                        <p className="text-sm text-warning-foreground dark:text-amber-400 mt-1">
                             {t('beneficiaryLimitReachedDescription', { limit: limitInfo.limit ?? 0 })} —{' '}
-                            <button className="underline font-medium hover:text-amber-700" onClick={() => router.push('/billing/plans')}>
+                            <button className="underline font-medium hover:opacity-90" onClick={() => router.push('/billing/plans')}>
                                 {t('viewPlans')}
                             </button>
                         </p>
@@ -302,8 +302,8 @@ export default function BeneficiariesClient() {
                                         {b.email && (
                                             <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium border ${
                                                 b.email_verified
-                                                    ? 'bg-green-500/10 text-green-600 border-green-500/20'
-                                                    : 'bg-amber-500/10 text-amber-600 border-amber-500/20'
+                                                    ? 'bg-success/10 text-success border-success/20'
+                                                    : 'bg-warning text-warning-foreground border-border'
                                             }`}>
                                                 {b.email_verified ? (
                                                     <CheckCircle2 className="h-3 w-3" />
@@ -338,7 +338,7 @@ export default function BeneficiariesClient() {
                                     {b.email && b.email_verified && (
                                         <div className="flex justify-between items-center text-xs text-muted-foreground p-1">
                                             <span>{t('notifications')}</span>
-                                            <span className={b.notified ? 'text-green-600' : ''}>
+                                            <span className={b.notified ? 'text-success' : ''}>
                                                 {b.notified ? t('notified') : t('notNotified')}
                                             </span>
                                         </div>

@@ -18,6 +18,7 @@
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-icon: var(--sidebar-icon);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
 
@@ -100,26 +101,26 @@
   --primary: #0766EE;
   --primary-foreground: #FFFFFF;
 
-  --secondary: #E7EFFC;
+  --secondary: #EEF4FD;
   --secondary-foreground: #103065;
 
-  --muted: #E7EFFC;
+  --muted: #EEF4FD;
   --muted-foreground: #6E6A73;
 
-  --accent: #E7EFFC;
+  --accent: #EEF4FD;
   --accent-foreground: #103065;
 
   --destructive: #B42318;
   --destructive-foreground: #FFFFFF;
 
-  --border: #B1C9EF;
-  --input: #B1C9EF;
+  --border: #5E80B8;
+  --input: #5E80B8;
   --ring: #0766EE;
 
   --brand-navy: #103065;
   --brand-navy-foreground: #E7EFFC;
   --brand-chip: #CFDFF9;
-  --brand-tint: #E7EFFC;
+  --brand-tint: #EEF4FD;
   --brand-plum: #6B2E4A;
   --brand-plum-foreground: #FFFFFF;
 
@@ -141,9 +142,10 @@
   --sidebar-foreground: #E7EFFC;
   --sidebar-primary: #0766EE;
   --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-icon: #5BA3FF;
   --sidebar-accent: #E7EFFC;
   --sidebar-accent-foreground: #103065;
-  --sidebar-border: #0d2850;
+  --sidebar-border: rgb(231 239 252 / 0.40);
   --sidebar-ring: #0766EE;
 }
 
@@ -159,7 +161,7 @@
   --popover-foreground: #E7EFFC;
 
   --primary: #3B8BFF;
-  --primary-foreground: #FFFFFF;
+  --primary-foreground: #0B1A36;
 
   --secondary: #12264A;
   --secondary-foreground: #E7EFFC;
@@ -171,27 +173,27 @@
   --accent-foreground: #E7EFFC;
 
   --destructive: #F87171;
-  --destructive-foreground: #FFFFFF;
+  --destructive-foreground: #0B1A36;
 
-  --border: rgb(231 239 252 / 0.12);
-  --input: rgb(231 239 252 / 0.15);
+  --border: rgb(231 239 252 / 0.40);
+  --input: rgb(231 239 252 / 0.40);
   --ring: #3B8BFF;
 
   --brand-navy: #103065;
   --brand-navy-foreground: #E7EFFC;
   --brand-chip: #1a3260;
   --brand-tint: #12264A;
-  --brand-plum: #8B4560;
+  --brand-plum: #C47A96;
   --brand-plum-foreground: #FFFFFF;
 
-  --success: #2D9A62;
-  --success-foreground: #FFFFFF;
+  --success: #35A56A;
+  --success-foreground: #0B1A36;
 
   --warning: #3d2f1a;
   --warning-foreground: #F3E1C7;
 
-  --chart-1: #8B4560;
-  --chart-2: #2D9A62;
+  --chart-1: #C47A96;
+  --chart-2: #35A56A;
   --chart-3: #3B8BFF;
   --chart-4: #CFDFF9;
   --chart-5: #F3E1C7;
@@ -200,9 +202,10 @@
   --sidebar-foreground: #E7EFFC;
   --sidebar-primary: #3B8BFF;
   --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-icon: #3B8BFF;
   --sidebar-accent: #12264A;
   --sidebar-accent-foreground: #E7EFFC;
-  --sidebar-border: rgb(231 239 252 / 0.1);
+  --sidebar-border: rgb(231 239 252 / 0.40);
   --sidebar-ring: #3B8BFF;
 }
 
@@ -334,7 +337,8 @@
 
 /* Brand gradients & dashboard utilities */
 .btn-primary-gradient {
-  color: var(--primary-foreground);
+  /* Always white: fill is royal→navy in both themes (dark --primary-foreground is navy). */
+  color: #FFFFFF;
   background: linear-gradient(135deg, #0766EE 0%, #103065 100%);
 }
 
@@ -363,7 +367,7 @@
 }
 
 .badge-protected {
-  @apply bg-primary/10 text-primary border-primary/25;
+  @apply bg-primary/8 text-primary border-primary/25;
 }
 
 .icon-bg-success {

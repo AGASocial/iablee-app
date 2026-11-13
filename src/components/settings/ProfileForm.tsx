@@ -102,7 +102,7 @@ export function ProfileForm() {
                             <span className="font-medium">Google</span>
                         </div>
                         {isGoogleProvider ? (
-                            <span className="text-sm text-green-600 font-medium">Connected</span>
+                            <span className="text-sm text-success font-medium">Connected</span>
                         ) : (
                             <span className="text-sm text-muted-foreground">{t('settings.notConnected')}</span>
                         )}
@@ -114,7 +114,7 @@ export function ProfileForm() {
                             <span className="font-medium">Apple</span>
                         </div>
                         {isAppleProvider ? (
-                            <span className="text-sm text-green-600 font-medium">Connected</span>
+                            <span className="text-sm text-success font-medium">Connected</span>
                         ) : (
                             <span className="text-sm text-muted-foreground">{t('settings.notConnected')}</span>
                         )}

@@ -74,18 +74,10 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
               sidebarCollapsed ? "h-16 w-16" : "h-12 w-40"
             )}>
               <Image
-                src={sidebarCollapsed ? "/logo-lock.png" : "/logo-iablee.png"}
+                src={sidebarCollapsed ? "/logo-lock.png" : "/logo-iablee-dark.png"}
                 alt="iablee"
                 fill
-                className="object-contain dark:hidden"
-                priority
-                unoptimized
-              />
-              <Image
-                src={sidebarCollapsed ? "/logo-lock-dark.png" : "/logo-iablee-dark.png"}
-                alt="iablee"
-                fill
-                className="object-contain hidden dark:block"
+                className="object-contain"
                 priority
                 unoptimized
               />
@@ -118,19 +110,25 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
           </button>
 
           {/* User Profile / Footer Area */}
-          <div className="p-4 border-t border-border dark:border-white/5 bg-muted/20 dark:bg-black/20">
+          <div className="p-4 border-t border-sidebar-border bg-sidebar-foreground/5">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className={cn("w-full justify-start px-2", sidebarCollapsed ? "justify-center px-0" : "")}>
+                <Button
+                  variant="ghost"
+                  className={cn(
+                    "w-full justify-start px-2 text-sidebar-foreground hover:bg-sidebar-accent/10 hover:text-sidebar-foreground",
+                    sidebarCollapsed ? "justify-center px-0" : ""
+                  )}
+                >
                   <div className="flex items-center gap-2 w-full">
-                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                      <User className="h-4 w-4 text-primary" />
+                    <div className="h-8 w-8 rounded-full bg-sidebar-foreground/10 flex items-center justify-center shrink-0">
+                      <User className="h-4 w-4 text-sidebar-icon" />
                     </div>
                     <div className={cn("flex flex-col items-start overflow-hidden transition-all duration-300", sidebarCollapsed ? "w-0 opacity-0" : "flex-1 opacity-100")}>
-                      <span className="text-sm font-medium truncate w-full text-left">{t('profile')}</span>
-                      <span className="text-xs text-muted-foreground truncate w-full text-left">My Account</span>
+                      <span className="text-sm font-medium truncate w-full text-left text-sidebar-foreground">{t('profile')}</span>
+                      <span className="text-xs text-sidebar-foreground/80 truncate w-full text-left">My Account</span>
                     </div>
-                    {!sidebarCollapsed && <ChevronUp className="h-4 w-4 text-muted-foreground ml-auto" />}
+                    {!sidebarCollapsed && <ChevronUp className="h-4 w-4 text-sidebar-foreground/80 ml-auto" />}
                   </div>
                 </Button>
               </DropdownMenuTrigger>
@@ -178,24 +176,17 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
               <div className="flex items-center gap-3">
                 <div className="relative h-12 w-32 overflow-hidden rounded-lg">
                   <Image
-                    src="/logo-iablee.png"
-                    alt="iablee"
-                    fill
-                    className="object-contain dark:hidden"
-                    unoptimized
-                  />
-                  <Image
                     src="/logo-iablee-dark.png"
                     alt="iablee"
                     fill
-                    className="object-contain hidden dark:block"
+                    className="object-contain"
                     unoptimized
                   />
                 </div>
               </div>
               <button
                 onClick={() => setSidebarOpen(false)}
-                className="text-muted-foreground hover:text-foreground dark:text-white/70 dark:hover:text-white transition-colors"
+                className="text-sidebar-foreground/80 hover:text-sidebar-foreground transition-colors"
                 aria-label="Close sidebar"
               >
                 &times;
@@ -205,16 +196,16 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
               <Navigation closeSidebar={() => setSidebarOpen(false)} />
             </div>
             {/* Mobile Footer */}
-            <div className="p-4 border-t border-border dark:border-white/5 bg-muted/20 dark:bg-black/20">
+            <div className="p-4 border-t border-sidebar-border bg-sidebar-foreground/5">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="flex items-center gap-3 w-full rounded-lg hover:bg-muted dark:hover:bg-white/5 transition-all p-2 text-left">
-                    <div className="relative flex items-center justify-center shrink-0 rounded-full bg-primary/10 dark:bg-white/10 text-primary dark:text-white h-9 w-9">
+                  <button className="flex items-center gap-3 w-full rounded-lg hover:bg-sidebar-accent/10 hover:text-sidebar-foreground transition-all p-2 text-left text-sidebar-foreground">
+                    <div className="relative flex items-center justify-center shrink-0 rounded-full bg-sidebar-foreground/10 text-sidebar-icon h-9 w-9">
                       <User className="h-5 w-5" />
                     </div>
                     <div className="flex-1 overflow-hidden">
-                      <p className="text-sm font-medium truncate">{t('profile')}</p>
-                      <p className="text-xs text-muted-foreground truncate">{t('profileSettings')}</p>
+                      <p className="text-sm font-medium truncate text-sidebar-foreground">{t('profile')}</p>
+                      <p className="text-xs text-sidebar-foreground/80 truncate">{t('profileSettings')}</p>
                     </div>
                   </button>
                 </DropdownMenuTrigger>
@@ -250,7 +241,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              <div className="text-xs text-muted-foreground dark:text-white/40 text-center mt-4">
+              <div className="text-xs text-sidebar-foreground/80 text-center mt-4">
                 © 2026 iablee Inc.
               </div>
             </div>

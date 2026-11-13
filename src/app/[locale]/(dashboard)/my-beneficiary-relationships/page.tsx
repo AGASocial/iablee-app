@@ -184,7 +184,7 @@ export default function MyBeneficiaryRelationshipsPage() {
                     <User className="h-5 w-5 text-primary" />
                     <CardTitle className="text-lg">{relationship.holder_full_name}</CardTitle>
                   </div>
-                  <ShieldCheck className="h-5 w-5 text-green-600 dark:text-green-400" />
+                  <ShieldCheck className="h-5 w-5 text-success" />
                 </div>
               </CardHeader>
               <CardContent className="space-y-3 pt-4">
@@ -211,8 +211,8 @@ export default function MyBeneficiaryRelationshipsPage() {
 
                 <div className="pt-2 border-t">
                   <div className="flex items-center gap-2">
-                    <ShieldCheck className="h-4 w-4 text-green-600 dark:text-green-400" />
-                    <span className="text-xs text-green-600 dark:text-green-400 font-medium">
+                    <ShieldCheck className="h-4 w-4 text-success" />
+                    <span className="text-xs text-success font-medium">
                       {t("emailVerified")}
                     </span>
                   </div>
