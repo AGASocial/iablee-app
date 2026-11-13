@@ -30,6 +30,7 @@ import {
   PlanNotFoundError,
   PaymentGatewayError,
 } from './types';
+import { resolveWompiAmountInCents } from './wompi-pricing';
 
 export class BillingService {
   constructor(
@@ -185,8 +186,11 @@ export class BillingService {
       throw new BillingError('User not found', 'USER_NOT_FOUND');
     }
 
-    if (this.gateway.getName() === 'payu') {
-      throw new BillingError('PayU WebCheckout does not support stored payment methods', 'PAYMENT_METHOD_UNSUPPORTED');
+    if (this.gateway.getName() === 'payu' || this.gateway.getName() === 'wompi') {
+      throw new BillingError(
+        `${this.gateway.getName() === 'wompi' ? 'Wompi' : 'PayU'} Web Checkout does not support stored payment methods`,
+        'PAYMENT_METHOD_UNSUPPORTED'
+      );
     }
 
     // Get or create customer
@@ -361,6 +365,15 @@ export class BillingService {
       });
     }
 
+    if (providerName === 'wompi') {
+      return this.createWompiCheckout({
+        userId,
+        plan,
+        email: user.email,
+        name: user.full_name || undefined,
+      });
+    }
+
     // Get or create customer
     const customer = await this.getOrCreateCustomer(userId, user.email, user.full_name || undefined);
 
@@ -507,6 +520,95 @@ export class BillingService {
         sessionId: checkoutSession.sessionId,
         url: checkoutSession.url,
         formFields: checkoutSession.formFields,
+        formMethod: checkoutSession.formMethod || 'POST',
+      },
+    };
+  }
+
+  /**
+   * Create a Wompi Web Checkout session and persist pending records.
+   * Renew-by-checkout (same model as PayU): webhook invoice.paid activates the period.
+   */
+  private async createWompiCheckout(params: {
+    userId: string;
+    plan: PlanDefinition;
+    email: string;
+    name?: string;
+  }): Promise<CreateSubscriptionResponse> {
+    const createCheckoutSession = this.gateway.createCheckoutSession?.bind(this.gateway);
+
+    if (!createCheckoutSession) {
+      throw new BillingError('Wompi checkout session is not available', 'WOMPI_CHECKOUT_UNAVAILABLE');
+    }
+
+    const amountInCents = resolveWompiAmountInCents(
+      params.plan.id,
+      params.plan.providerPriceMap?.wompi
+    );
+
+    const referenceCode = `wompi_${params.userId}_${params.plan.id}_${Date.now()}`;
+    const checkoutSession = await createCheckoutSession({
+      plan: params.plan,
+      successUrl: process.env.WOMPI_REDIRECT_URL || '',
+      cancelUrl: process.env.WOMPI_REDIRECT_URL || '',
+      metadata: {
+        user_id: params.userId,
+        plan_id: params.plan.id,
+        reference_code: referenceCode,
+      },
+      customerData: {
+        email: params.email,
+        name: params.name,
+        userId: params.userId,
+      },
+    });
+
+    if (!checkoutSession.formFields) {
+      throw new BillingError('Wompi checkout session is missing form fields', 'WOMPI_CHECKOUT_MALFORMED');
+    }
+
+    const { data: subscription, error: subscriptionError } = await this.supabase
+      .from('billing_subscriptions')
+      .insert({
+        user_id: params.userId,
+        plan_id: params.plan.id,
+        status: 'incomplete',
+        provider: 'wompi',
+        provider_subscription_id: referenceCode,
+        provider_customer_id: params.userId,
+      })
+      .select()
+      .single();
+
+    if (subscriptionError || !subscription) {
+      throw new BillingError('Failed to create Wompi subscription placeholder', 'WOMPI_SUBSCRIPTION_FAILED');
+    }
+
+    const { error: invoiceError } = await this.supabase.from('billing_invoices').insert({
+      user_id: params.userId,
+      subscription_id: subscription.id,
+      provider: 'wompi',
+      provider_invoice_id: referenceCode,
+      amount_cents: amountInCents,
+      currency: 'COP',
+      status: 'open',
+      issued_at: new Date().toISOString(),
+    });
+
+    if (invoiceError) {
+      throw new BillingError('Failed to create Wompi invoice placeholder', 'WOMPI_INVOICE_FAILED');
+    }
+
+    return {
+      subscriptionId: subscription.id,
+      providerSubscriptionId: referenceCode,
+      status: 'incomplete',
+      checkoutSession: {
+        provider: 'wompi',
+        sessionId: checkoutSession.sessionId,
+        url: checkoutSession.url,
+        formFields: checkoutSession.formFields,
+        formMethod: checkoutSession.formMethod || 'GET',
       },
     };
   }

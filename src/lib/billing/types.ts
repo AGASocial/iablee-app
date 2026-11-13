@@ -221,6 +221,8 @@ export interface CheckoutSessionDetails {
   sessionId: string;
   url: string;
   formFields?: Record<string, string>;
+  /** Wompi Web Checkout uses GET; PayU uses POST. Defaults to POST when omitted. */
+  formMethod?: 'GET' | 'POST';
 }
 
 export interface UpdateSubscriptionRequest {
