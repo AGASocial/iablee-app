@@ -117,8 +117,10 @@ export class WompiWebhookNormalizer implements WebhookNormalizer {
   async verify(
     payload: string | object,
     headers: Record<string, string | string[] | undefined> = {},
-    _secret?: string
+    // Interface requires secret; Wompi uses constructor eventsSecret instead.
+    secret?: string
   ): Promise<WebhookVerificationResult> {
+    void secret;
     const event = this.parsePayload(payload);
     if (!event) {
       return { verified: false, error: 'Invalid Wompi webhook payload' };

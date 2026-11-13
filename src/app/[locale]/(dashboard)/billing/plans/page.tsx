@@ -88,7 +88,10 @@ export default function PlansPage() {
         return;
       }
 
-      if (PAYMENT_GATEWAY !== 'payu') {
+      const isHostedCheckout =
+        PAYMENT_GATEWAY === 'payu' || PAYMENT_GATEWAY === 'wompi';
+
+      if (!isHostedCheckout) {
         // Check if user has a payment method
         const pmResponse = await fetch('/api/billing/payment-methods', {
           credentials: 'include'
@@ -140,8 +143,11 @@ export default function PlansPage() {
         throw new Error(result.error || 'Failed to create subscription');
       }
 
-      if (PAYMENT_GATEWAY === 'payu' && result.checkoutSession) {
-        startPayuCheckout(result.checkoutSession);
+      if (
+        (PAYMENT_GATEWAY === 'payu' || PAYMENT_GATEWAY === 'wompi') &&
+        result.checkoutSession
+      ) {
+        startHostedCheckout(result.checkoutSession);
         return;
       }
 
@@ -155,14 +161,14 @@ export default function PlansPage() {
     }
   };
 
-  const startPayuCheckout = (session: CheckoutSessionDetails) => {
+  const startHostedCheckout = (session: CheckoutSessionDetails) => {
     if (!session.formFields || !session.url) {
       toast.error(t('billingError'));
       return;
     }
 
     const form = document.createElement('form');
-    form.method = 'POST';
+    form.method = session.formMethod || 'POST';
     form.action = session.url;
     form.style.display = 'none';
 
