@@ -309,8 +309,8 @@ export default function AssetAttachmentsModal({
         return (
           <div className="flex items-center justify-center p-8 text-center">
             <div>
-              <FileText className="w-16 h-16 mx-auto mb-4 text-gray-400" />
-              <p className="text-gray-600">{t('previewNotAvailable')}</p>
+              <FileText className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+              <p className="text-muted-foreground">{t('previewNotAvailable')}</p>
               <Button
                 onClick={() => handleDownload(file)}
                 className="mt-4"
@@ -325,8 +325,8 @@ export default function AssetAttachmentsModal({
         return (
           <div className="flex items-center justify-center p-8 text-center">
             <div>
-              <File className="w-16 h-16 mx-auto mb-4 text-gray-400" />
-              <p className="text-gray-600">{t('previewNotAvailable')}</p>
+              <File className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+              <p className="text-muted-foreground">{t('previewNotAvailable')}</p>
               <Button
                 onClick={() => handleDownload(file)}
                 className="mt-4"
@@ -374,7 +374,7 @@ export default function AssetAttachmentsModal({
                   </span>
                 </Button>
               </label>
-              <span className="text-sm text-gray-500 dark:text-gray-400">
+              <span className="text-sm text-muted-foreground">
                 {attachments.length} {t('filesAttached')}
               </span>
             </div>
@@ -384,13 +384,13 @@ export default function AssetAttachmentsModal({
           <div className="flex-1 overflow-hidden bg-white dark:bg-gray-800">
             {loading ? (
               <div className="flex items-center justify-center h-64 bg-white dark:bg-gray-800">
-                <div className="text-gray-500 dark:text-gray-400">{t('loading')}</div>
+                <div className="text-muted-foreground">{t('loading')}</div>
               </div>
             ) : attachments.length === 0 ? (
               <div className="flex items-center justify-center h-64 bg-white dark:bg-gray-800">
                 <div className="text-center">
-                  <File className="w-16 h-16 mx-auto mb-4 text-gray-400 dark:text-gray-500" />
-                  <p className="text-gray-600 dark:text-gray-400">{t('noFilesAttached')}</p>
+                  <File className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+                  <p className="text-muted-foreground">{t('noFilesAttached')}</p>
                 </div>
               </div>
             ) : previewFile ? (
@@ -424,17 +424,17 @@ export default function AssetAttachmentsModal({
                         className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-shadow bg-white dark:bg-gray-700"
                       >
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-                          <div className="flex-shrink-0 text-gray-500 dark:text-gray-400">
+                          <div className="flex-shrink-0 text-muted-foreground">
                             {getFileIcon(file.file_type.includes('/') ? file.file_type.split('/')[0] : file.file_type)}
                           </div>
                           <div className="flex-1 min-w-0">
                             <p
-                              className="text-sm font-medium text-gray-900 dark:text-white truncate"
+                              className="text-sm font-medium text-foreground truncate"
                               title={file.file_name}
                             >
                               {truncateFilename(file.file_name, isMobile ? 22 : 40)}
                             </p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 capitalize">
+                            <p className="text-xs text-muted-foreground capitalize">
                               {file.file_type} {file.file_size ? `• ${(file.file_size / 1024).toFixed(1)} KB` : ''}
                             </p>
                           </div>

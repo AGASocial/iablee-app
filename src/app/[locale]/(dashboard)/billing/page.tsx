@@ -191,13 +191,13 @@ export default function BillingPage() {
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
       case 'active':
-        return 'text-green-600';
+        return 'text-success';
       case 'past_due':
-        return 'text-yellow-600';
+        return 'text-warning-foreground';
       case 'canceled':
-        return 'text-red-600';
+        return 'text-destructive';
       default:
-        return 'text-gray-600';
+        return 'text-muted-foreground';
     }
   };
 
@@ -217,8 +217,8 @@ export default function BillingPage() {
   return (
     <div className="container mx-auto py-10 space-y-8 px-2">
       <div>
-        <h1 className="mb-2 text-3xl font-bold text-foreground dark:text-slate-700">{t('billingDashboard')}</h1>
-        <p className="text-sm font-medium text-slate-700 dark:text-slate-700">{t('manageBilling')}</p>
+        <h1 className="mb-2 text-3xl font-bold text-foreground">{t('billingDashboard')}</h1>
+        <p className="text-sm font-medium text-muted-foreground">{t('manageBilling')}</p>
       </div>
 
       {/* Subscription Details */}
@@ -267,9 +267,9 @@ export default function BillingPage() {
           </div>
 
           {subscription?.cancelAtPeriodEnd && (
-            <div className="flex items-center gap-2 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
-              <AlertCircle className="h-5 w-5 text-yellow-600" />
-              <p className="text-sm">{t('cancelSubscriptionDescription')}</p>
+            <div className="flex items-center gap-2 p-4 bg-warning rounded-lg">
+              <AlertCircle className="h-5 w-5 text-warning-foreground" />
+              <p className="text-sm text-warning-foreground">{t('cancelSubscriptionDescription')}</p>
             </div>
           )}
 
@@ -405,7 +405,7 @@ export default function BillingPage() {
                   </div>
                   <div className="flex items-center gap-4">
                     <span
-                      className={`text-sm font-semibold ${invoice.status === 'paid' ? 'text-green-600' : 'text-yellow-600'
+                      className={`text-sm font-semibold ${invoice.status === 'paid' ? 'text-success' : 'text-warning-foreground'
                         }`}
                     >
                       {t(`invoice${invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}`)}

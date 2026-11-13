@@ -213,7 +213,7 @@ export default function PlansPage() {
     <div className="container mx-auto py-10">
       <div className="mb-10 text-center">
         <h1 className="mb-4 text-4xl font-bold text-foreground dark:text-white">{t('pricing')}</h1>
-        <p className="mb-8 text-sm font-medium text-slate-700 dark:text-slate-200">
+        <p className="mb-8 text-sm font-medium text-muted-foreground">
           {t('choosePlan')}
         </p>
 
@@ -238,7 +238,7 @@ export default function PlansPage() {
             }`}
           >
             {t('yearly')}
-            <span className="ml-2 text-xs text-green-600 font-semibold">
+            <span className="ml-2 text-xs text-success font-semibold">
               {t('saveWithYearly')}
             </span>
           </button>
