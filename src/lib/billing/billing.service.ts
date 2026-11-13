@@ -30,6 +30,8 @@ import {
   PlanNotFoundError,
   PaymentGatewayError,
 } from './types';
+import { resolveWompiAmountInCents } from './wompi-pricing';
+import { persistByProviderId } from './persistence';
 
 export class BillingService {
   constructor(
@@ -185,8 +187,11 @@ export class BillingService {
       throw new BillingError('User not found', 'USER_NOT_FOUND');
     }
 
-    if (this.gateway.getName() === 'payu') {
-      throw new BillingError('PayU WebCheckout does not support stored payment methods', 'PAYMENT_METHOD_UNSUPPORTED');
+    if (this.gateway.getName() === 'payu' || this.gateway.getName() === 'wompi') {
+      throw new BillingError(
+        `${this.gateway.getName() === 'wompi' ? 'Wompi' : 'PayU'} Web Checkout does not support stored payment methods`,
+        'PAYMENT_METHOD_UNSUPPORTED'
+      );
     }
 
     // Get or create customer
@@ -361,6 +366,15 @@ export class BillingService {
       });
     }
 
+    if (providerName === 'wompi') {
+      return this.createWompiCheckout({
+        userId,
+        plan,
+        email: user.email,
+        name: user.full_name || undefined,
+      });
+    }
+
     // Get or create customer
     const customer = await this.getOrCreateCustomer(userId, user.email, user.full_name || undefined);
 
@@ -431,6 +445,60 @@ export class BillingService {
   }
 
   /**
+   * Reuse the user's existing hosted-gateway subscription row (renew/plan-change),
+   * or insert an incomplete placeholder for first-time checkout.
+   * Does NOT overwrite provider_subscription_id on renewals until invoice.paid.
+   */
+  private async resolveHostedCheckoutSubscription(params: {
+    userId: string;
+    planId: string;
+    provider: 'payu' | 'wompi';
+    referenceCode: string;
+  }): Promise<{ id: string; status: Subscription['status'] }> {
+    const { data: existing } = await this.supabase
+      .from('billing_subscriptions')
+      .select('id, status')
+      .eq('user_id', params.userId)
+      .eq('provider', params.provider)
+      .in('status', ['active', 'past_due', 'incomplete', 'trialing', 'unpaid'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (existing?.id) {
+      return {
+        id: existing.id as string,
+        status: existing.status as Subscription['status'],
+      };
+    }
+
+    const { data: subscription, error: subscriptionError } = await this.supabase
+      .from('billing_subscriptions')
+      .insert({
+        user_id: params.userId,
+        plan_id: params.planId,
+        status: 'incomplete',
+        provider: params.provider,
+        provider_subscription_id: params.referenceCode,
+        provider_customer_id: params.userId,
+      })
+      .select('id, status')
+      .single();
+
+    if (subscriptionError || !subscription) {
+      throw new BillingError(
+        `Failed to create ${params.provider} subscription placeholder`,
+        `${params.provider.toUpperCase()}_SUBSCRIPTION_FAILED`
+      );
+    }
+
+    return {
+      id: subscription.id as string,
+      status: subscription.status as Subscription['status'],
+    };
+  }
+
+  /**
    * Create a PayU checkout session and persist pending records
    */
   private async createPayuCheckout(params: {
@@ -466,22 +534,12 @@ export class BillingService {
       throw new BillingError('PayU checkout session is missing form fields', 'PAYU_CHECKOUT_MALFORMED');
     }
 
-    const { data: subscription, error: subscriptionError } = await this.supabase
-      .from('billing_subscriptions')
-      .insert({
-        user_id: params.userId,
-        plan_id: params.plan.id,
-        status: 'incomplete',
-        provider: 'payu',
-        provider_subscription_id: referenceCode,
-        provider_customer_id: params.userId,
-      })
-      .select()
-      .single();
-
-    if (subscriptionError || !subscription) {
-      throw new BillingError('Failed to create PayU subscription placeholder', 'PAYU_SUBSCRIPTION_FAILED');
-    }
+    const subscription = await this.resolveHostedCheckoutSubscription({
+      userId: params.userId,
+      planId: params.plan.id,
+      provider: 'payu',
+      referenceCode,
+    });
 
     const { error: invoiceError } = await this.supabase.from('billing_invoices').insert({
       user_id: params.userId,
@@ -501,12 +559,95 @@ export class BillingService {
     return {
       subscriptionId: subscription.id,
       providerSubscriptionId: referenceCode,
-      status: 'incomplete',
+      status: subscription.status === 'active' || subscription.status === 'past_due'
+        ? subscription.status
+        : 'incomplete',
       checkoutSession: {
         provider: 'payu',
         sessionId: checkoutSession.sessionId,
         url: checkoutSession.url,
         formFields: checkoutSession.formFields,
+        formMethod: checkoutSession.formMethod || 'POST',
+      },
+    };
+  }
+
+  /**
+   * Create a Wompi Web Checkout session and persist pending records.
+   * Renew-by-checkout (same model as PayU): webhook invoice.paid activates the period.
+   */
+  private async createWompiCheckout(params: {
+    userId: string;
+    plan: PlanDefinition;
+    email: string;
+    name?: string;
+  }): Promise<CreateSubscriptionResponse> {
+    const createCheckoutSession = this.gateway.createCheckoutSession?.bind(this.gateway);
+
+    if (!createCheckoutSession) {
+      throw new BillingError('Wompi checkout session is not available', 'WOMPI_CHECKOUT_UNAVAILABLE');
+    }
+
+    const amountInCents = resolveWompiAmountInCents(
+      params.plan.id,
+      params.plan.providerPriceMap?.wompi
+    );
+
+    const referenceCode = `wompi_${params.userId}_${params.plan.id}_${Date.now()}`;
+    const checkoutSession = await createCheckoutSession({
+      plan: params.plan,
+      successUrl: process.env.WOMPI_REDIRECT_URL || '',
+      cancelUrl: process.env.WOMPI_REDIRECT_URL || '',
+      metadata: {
+        user_id: params.userId,
+        plan_id: params.plan.id,
+        reference_code: referenceCode,
+      },
+      customerData: {
+        email: params.email,
+        name: params.name,
+        userId: params.userId,
+      },
+    });
+
+    if (!checkoutSession.formFields) {
+      throw new BillingError('Wompi checkout session is missing form fields', 'WOMPI_CHECKOUT_MALFORMED');
+    }
+
+    const subscription = await this.resolveHostedCheckoutSubscription({
+      userId: params.userId,
+      planId: params.plan.id,
+      provider: 'wompi',
+      referenceCode,
+    });
+
+    const { error: invoiceError } = await this.supabase.from('billing_invoices').insert({
+      user_id: params.userId,
+      subscription_id: subscription.id,
+      provider: 'wompi',
+      provider_invoice_id: referenceCode,
+      amount_cents: amountInCents,
+      currency: 'COP',
+      status: 'open',
+      issued_at: new Date().toISOString(),
+    });
+
+    if (invoiceError) {
+      throw new BillingError('Failed to create Wompi invoice placeholder', 'WOMPI_INVOICE_FAILED');
+    }
+
+    return {
+      subscriptionId: subscription.id,
+      providerSubscriptionId: referenceCode,
+      status: subscription.status === 'active' || subscription.status === 'past_due'
+        ? subscription.status
+        : 'incomplete',
+      checkoutSession: {
+        provider: 'wompi',
+        sessionId: checkoutSession.sessionId,
+        url: checkoutSession.url,
+        formFields: checkoutSession.formFields,
+        formMethod: checkoutSession.formMethod || 'GET',
       },
     };
   }
@@ -773,28 +914,65 @@ export class BillingService {
       userId = paymentMethod.user_id;
     }
 
-    // Upsert subscription
-    const upsertPayload: Record<string, unknown> = {
+    const provider = this.gateway.getName();
+    const payload: Record<string, unknown> = {
       user_id: userId,
-      provider_subscription_id: data.subscriptionId,
       status: data.status,
       current_period_start: data.currentPeriodStart,
       current_period_end: data.currentPeriodEnd,
       cancel_at_period_end: data.cancelAtPeriodEnd || false,
-      provider: this.gateway.getName(),
+      provider,
       provider_customer_id: data.customerId,
     };
 
     if (data.planId) {
-      upsertPayload.plan_id = data.planId;
+      payload.plan_id = data.planId;
     }
 
-    await this.supabase
+    // Prefer match on provider_subscription_id (Stripe / first checkout).
+    const { data: byProviderId } = await this.supabase
       .from('billing_subscriptions')
-      .upsert(
-        upsertPayload,
-        { onConflict: 'provider_subscription_id' }
-      );
+      .select('id')
+      .eq('provider_subscription_id', data.subscriptionId)
+      .maybeSingle();
+
+    if (byProviderId?.id) {
+      const { error } = await this.supabase
+        .from('billing_subscriptions')
+        .update({ ...payload, updated_at: new Date().toISOString() })
+        .eq('id', byProviderId.id);
+      if (error) throw error;
+      return;
+    }
+
+    // Hosted renewals may emit a new reference before invoice.paid — reuse the
+    // user's current row and do NOT overwrite provider_subscription_id yet.
+    const { data: byUserProvider } = await this.supabase
+      .from('billing_subscriptions')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('provider', provider)
+      .in('status', ['active', 'past_due', 'incomplete', 'trialing', 'unpaid'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (byUserProvider?.id) {
+      const { error } = await this.supabase
+        .from('billing_subscriptions')
+        .update({ ...payload, updated_at: new Date().toISOString() })
+        .eq('id', byUserProvider.id);
+      if (error) throw error;
+      return;
+    }
+
+    await persistByProviderId(
+      this.supabase,
+      'billing_subscriptions',
+      'provider_subscription_id',
+      data.subscriptionId,
+      payload
+    );
   }
 
   /**
@@ -808,6 +986,49 @@ export class BillingService {
         canceled_at: data.canceledAt || new Date().toISOString(),
       })
       .eq('provider_subscription_id', data.subscriptionId);
+  }
+
+  /**
+   * Resolve the local subscription row for a paid invoice.
+   * Renewal references are new, so fall back to open invoice link or user+provider.
+   */
+  private async resolveSubscriptionForPaidInvoice(
+    data: InvoiceEventData,
+    userId: string
+  ): Promise<string | undefined> {
+    const { data: existingInvoice } = await this.supabase
+      .from('billing_invoices')
+      .select('subscription_id')
+      .eq('provider_invoice_id', data.invoiceId)
+      .maybeSingle();
+
+    if (existingInvoice?.subscription_id) {
+      return existingInvoice.subscription_id as string;
+    }
+
+    if (data.subscriptionId) {
+      const { data: byProviderId } = await this.supabase
+        .from('billing_subscriptions')
+        .select('id')
+        .eq('provider_subscription_id', data.subscriptionId)
+        .maybeSingle();
+
+      if (byProviderId?.id) {
+        return byProviderId.id as string;
+      }
+    }
+
+    const { data: byUserProvider } = await this.supabase
+      .from('billing_subscriptions')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('provider', this.gateway.getName())
+      .in('status', ['active', 'past_due', 'incomplete', 'trialing', 'unpaid'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    return byUserProvider?.id as string | undefined;
   }
 
   /**
@@ -832,91 +1053,112 @@ export class BillingService {
       userId = paymentMethod.user_id;
     }
 
-    // Find subscription if provided
-    let subscriptionId: string | undefined;
-    if (data.subscriptionId) {
-      const { data: subscription } = await this.supabase
-        .from('billing_subscriptions')
-        .select('id')
-        .eq('provider_subscription_id', data.subscriptionId)
-        .maybeSingle();
-
-      subscriptionId = subscription?.id;
+    if (!userId) {
+      return;
     }
 
-    // Store invoice
-    await this.supabase.from('billing_invoices').upsert(
+    const subscriptionId = await this.resolveSubscriptionForPaidInvoice(data, userId);
+
+    await persistByProviderId(
+      this.supabase,
+      'billing_invoices',
+      'provider_invoice_id',
+      data.invoiceId,
       {
         user_id: userId,
         subscription_id: subscriptionId,
         provider: this.gateway.getName(),
-        provider_invoice_id: data.invoiceId,
         amount_cents: data.amountCents,
         currency: data.currency,
         status: 'paid',
         issued_at: data.issuedAt,
         paid_at: data.paidAt || new Date().toISOString(),
-      },
-      { onConflict: 'provider_invoice_id' }
+      }
     );
 
+    if (!subscriptionId && !data.subscriptionId) {
+      return;
+    }
+
+    const updates: Record<string, unknown> = {
+      status: 'active',
+      updated_at: new Date().toISOString(),
+    };
+
+    // Point provider_subscription_id at the paid reference so renewals activate
+    // the existing row even when the checkout reference is new.
     if (data.subscriptionId) {
-      const updates: Record<string, unknown> = {
-        status: 'active',
-        updated_at: new Date().toISOString(),
-      };
+      updates.provider_subscription_id = data.subscriptionId;
+    }
 
-      if (data.planId) {
-        updates.plan_id = data.planId;
+    if (data.planId) {
+      updates.plan_id = data.planId;
+    }
+
+    const paidAt = data.paidAt ? new Date(data.paidAt) : new Date();
+    updates.current_period_start = paidAt.toISOString();
+
+    let interval = 'month';
+    const planIdForInterval = data.planId;
+    if (planIdForInterval) {
+      const { data: plan } = await this.supabase
+        .from('billing_plans')
+        .select('interval')
+        .eq('id', planIdForInterval)
+        .single();
+      if (plan?.interval) {
+        interval = plan.interval;
       }
-
-      // Compute current_period_start and current_period_end based on the plan interval
-      const paidAt = data.paidAt ? new Date(data.paidAt) : new Date();
-      updates.current_period_start = paidAt.toISOString();
-
-      // Determine the plan interval to calculate period end
-      const planId = data.planId;
-      let interval = 'month'; // default to monthly
-      if (planId) {
+    } else if (subscriptionId) {
+      const { data: sub } = await this.supabase
+        .from('billing_subscriptions')
+        .select('plan_id')
+        .eq('id', subscriptionId)
+        .single();
+      if (sub?.plan_id) {
         const { data: plan } = await this.supabase
           .from('billing_plans')
           .select('interval')
-          .eq('id', planId)
+          .eq('id', sub.plan_id)
           .single();
         if (plan?.interval) {
           interval = plan.interval;
         }
-      } else {
-        // Try to get the interval from the existing subscription's plan
-        const { data: sub } = await this.supabase
-          .from('billing_subscriptions')
-          .select('plan_id')
-          .eq('provider_subscription_id', data.subscriptionId)
-          .single();
-        if (sub?.plan_id) {
-          const { data: plan } = await this.supabase
-            .from('billing_plans')
-            .select('interval')
-            .eq('id', sub.plan_id)
-            .single();
-          if (plan?.interval) {
-            interval = plan.interval;
-          }
-        }
       }
+    }
 
-      const periodEnd = new Date(paidAt);
-      if (interval === 'year') {
-        periodEnd.setFullYear(periodEnd.getFullYear() + 1);
-      } else {
-        periodEnd.setMonth(periodEnd.getMonth() + 1);
-      }
-      updates.current_period_end = periodEnd.toISOString();
+    const periodEnd = new Date(paidAt);
+    if (interval === 'year') {
+      periodEnd.setFullYear(periodEnd.getFullYear() + 1);
+    } else {
+      periodEnd.setMonth(periodEnd.getMonth() + 1);
+    }
+    updates.current_period_end = periodEnd.toISOString();
 
-      await this.supabase
+    if (subscriptionId) {
+      const { error } = await this.supabase
         .from('billing_subscriptions')
         .update(updates)
-        .eq('provider_subscription_id', data.subscriptionId);
+        .eq('id', subscriptionId);
+      if (error) throw error;
+      return;
+    }
+
+    // Fallback: first-time path where only provider_subscription_id is known
+    if (data.subscriptionId) {
+      await persistByProviderId(
+        this.supabase,
+        'billing_subscriptions',
+        'provider_subscription_id',
+        data.subscriptionId,
+        {
+          user_id: userId,
+          provider: this.gateway.getName(),
+          provider_customer_id: data.customerId,
+          ...updates,
+          ...(data.planId ? { plan_id: data.planId } : {}),
+        }
+      );
     }
   }
 

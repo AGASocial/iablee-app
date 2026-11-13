@@ -88,7 +88,10 @@ export default function PlansPage() {
         return;
       }
 
-      if (PAYMENT_GATEWAY !== 'payu') {
+      const isHostedCheckout =
+        PAYMENT_GATEWAY === 'payu' || PAYMENT_GATEWAY === 'wompi';
+
+      if (!isHostedCheckout) {
         // Check if user has a payment method
         const pmResponse = await fetch('/api/billing/payment-methods', {
           credentials: 'include'
@@ -113,9 +116,10 @@ export default function PlansPage() {
                                       currentSubscription.planId !== 'plan_free' &&
                                       currentSubscription.id !== 'free';
 
+      // Hosted gateways (PayU / Wompi) renew and change plans via a new Web Checkout
+      // (POST), not Stripe-oriented PATCH/updateSubscription.
       let response;
-      if (hasExistingSubscription) {
-        // Update existing subscription
+      if (hasExistingSubscription && !isHostedCheckout) {
         response = await fetch('/api/billing/subscriptions', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -126,7 +130,6 @@ export default function PlansPage() {
           }),
         });
       } else {
-        // Create new subscription
         response = await fetch('/api/billing/subscriptions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -140,8 +143,11 @@ export default function PlansPage() {
         throw new Error(result.error || 'Failed to create subscription');
       }
 
-      if (PAYMENT_GATEWAY === 'payu' && result.checkoutSession) {
-        startPayuCheckout(result.checkoutSession);
+      if (
+        (PAYMENT_GATEWAY === 'payu' || PAYMENT_GATEWAY === 'wompi') &&
+        result.checkoutSession
+      ) {
+        startHostedCheckout(result.checkoutSession);
         return;
       }
 
@@ -155,14 +161,14 @@ export default function PlansPage() {
     }
   };
 
-  const startPayuCheckout = (session: CheckoutSessionDetails) => {
+  const startHostedCheckout = (session: CheckoutSessionDetails) => {
     if (!session.formFields || !session.url) {
       toast.error(t('billingError'));
       return;
     }
 
     const form = document.createElement('form');
-    form.method = 'POST';
+    form.method = session.formMethod || 'POST';
     form.action = session.url;
     form.style.display = 'none';
 

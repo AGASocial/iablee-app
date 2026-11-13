@@ -5,12 +5,13 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { BillingService } from './billing.service';
-import { StripeAdapter, PayUAdapter } from './adapters';
+import { StripeAdapter, PayUAdapter, WompiAdapter } from './adapters';
 import type { PaymentGateway } from './gateway.interface';
 import { createAuthenticatedRouteClient } from '@/lib/supabase-server';
 
 /**
- * Get the configured payment gateway based on environment
+ * Get the configured payment gateway based on environment.
+ * Default remains payu — do not switch production to wompi without explicit ops change.
  */
 export function getPaymentGateway(): PaymentGateway {
   const gateway = process.env.PAYMENT_GATEWAY || 'payu';
@@ -46,6 +47,35 @@ export function getPaymentGateway(): PaymentGateway {
         confirmationUrl,
         environment: (process.env.PAYU_ENV as 'sandbox' | 'production') || 'sandbox',
         language: process.env.PAYU_LANGUAGE || 'es',
+      });
+    }
+    case 'wompi': {
+      const publicKey = process.env.WOMPI_PUBLIC_KEY;
+      const privateKey = process.env.WOMPI_PRIVATE_KEY;
+      const integritySecret = process.env.WOMPI_INTEGRITY_SECRET;
+      const eventsSecret = process.env.WOMPI_EVENTS_SECRET;
+      const appUrl =
+        process.env.NEXT_PUBLIC_APP_URL ||
+        process.env.APP_URL ||
+        'http://localhost:3000';
+      const redirectUrl =
+        process.env.WOMPI_REDIRECT_URL ||
+        `${appUrl.replace(/\/$/, '')}/es/payments/wompi/return`;
+
+      // eventsSecret is required for webhook route config; adapter itself needs keys above.
+      if (!publicKey || !privateKey || !integritySecret || !eventsSecret) {
+        throw new Error(
+          'WOMPI_PUBLIC_KEY, WOMPI_PRIVATE_KEY, WOMPI_INTEGRITY_SECRET, and WOMPI_EVENTS_SECRET are required when PAYMENT_GATEWAY=wompi'
+        );
+      }
+
+      return new WompiAdapter({
+        publicKey,
+        privateKey,
+        integritySecret,
+        redirectUrl,
+        environment: (process.env.WOMPI_ENV as 'sandbox' | 'production') || 'sandbox',
+        checkoutUrl: process.env.WOMPI_CHECKOUT_URL || 'https://checkout.wompi.co/p/',
       });
     }
     default:
