@@ -193,10 +193,11 @@ For OAuth (Google/Apple) and email links to work:
 
 ---
 
-## 7. Billing (Stripe / PayU)
+## 7. Billing (Stripe / PayU / Wompi)
 
 - **Plans:** Seeded by `20251029000001_seed_billing_plans.sql`. Update `billing_plans.provider_price_map` with real Stripe (or other) price IDs.
-- **Webhooks:** Configure in Stripe (or PayU) to point to `https://your-domain.com/api/webhooks/stripe` (or `/api/webhooks/payu`). See **docs/BILLING-SETUP.md** for events and secrets.
+- **Webhooks:** Configure in Stripe / PayU / Wompi to point to `https://your-domain.com/api/webhooks/{stripe|payu|wompi}`. Production Wompi events URL: `https://app.iablee.com/api/webhooks/wompi`. See **docs/BILLING-SETUP.md**.
+- **Wompi (KAN-139):** Optional. Default `PAYMENT_GATEWAY` remains `payu`. COP placeholder amounts live in `src/lib/billing/wompi-pricing.ts` and migration `20261113140000_wompi_cop_placeholder_prices.sql` (confirm official COP prices before go-live; do not invent production prices). Env placeholders: `.env.example`.
 
 ---
 
@@ -224,7 +225,7 @@ For OAuth (Google/Apple) and email links to work:
 - [ ] Set redirect URLs in Auth.
 - [ ] Set env vars (Supabase + optional billing + optional encryption).
 - [ ] Optional: add `handle_new_user` trigger for `public.users` sync.
-- [ ] Optional: configure Stripe/PayU and webhooks; update `provider_price_map`.
+- [ ] Optional: configure Stripe/PayU/Wompi and webhooks; update `provider_price_map` (Wompi COP placeholders in `20261113140000_wompi_cop_placeholder_prices.sql`).
 - [ ] Deploy Next.js app and test login, wizard, assets, and storage.
 
 <!-- vercel-autodeploy-verify: 2026-11-05T13:00 America/Chicago -->
