@@ -73,7 +73,7 @@ export default function Navigation({ closeSidebar, collapsed }: { closeSidebar?:
               )}
               title={collapsed ? t('setupWizard') : undefined}
             >
-              <Wand2 className="h-5 w-5 text-sidebar-primary group-hover:text-sidebar-primary/90 shrink-0" />
+              <Wand2 className="h-5 w-5 text-sidebar-icon group-hover:text-sidebar-icon/90 shrink-0" />
               <span className={cn(
                 "font-medium text-sm transition-all duration-300 overflow-hidden whitespace-nowrap",
                 collapsed ? "w-0 opacity-0" : "w-auto opacity-100"

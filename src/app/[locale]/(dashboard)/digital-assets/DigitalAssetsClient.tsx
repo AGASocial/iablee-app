@@ -281,11 +281,11 @@ export default function DigitalAssetsClient() {
         )}
         <div className="mb-8 flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-foreground dark:text-slate-700 sm:text-4xl">{t('digitalAssetsTitle')}</h1>
+            <h1 className="text-3xl font-bold text-foreground sm:text-4xl">{t('digitalAssetsTitle')}</h1>
             {limitReached && limitInfo && (
-              <p className="text-sm text-amber-600 dark:text-amber-400 mt-1">
+              <p className="text-sm text-warning-foreground dark:text-amber-400 mt-1">
                 {t('assetLimitReachedDescription', { limit: limitInfo.limit ?? 0 })} —{' '}
-                <button className="underline font-medium hover:text-amber-700" onClick={() => router.push('/billing/plans')}>
+                <button className="underline font-medium hover:opacity-90" onClick={() => router.push('/billing/plans')}>
                   {t('viewPlans')}
                 </button>
               </p>
@@ -440,7 +440,7 @@ export default function DigitalAssetsClient() {
             </DialogHeader>
             <div className="mt-4 space-y-2">
               {beneficiaries.length === 0 ? (
-                <div className="text-gray-400 dark:text-gray-400">{t('noBeneficiaries')}</div>
+                <div className="text-muted-foreground">{t('noBeneficiaries')}</div>
               ) : (
                 <div className="grid grid-cols-1 gap-2">
                   {beneficiaries.map(b => (

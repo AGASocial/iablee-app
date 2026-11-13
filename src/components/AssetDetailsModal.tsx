@@ -39,7 +39,7 @@ const typeStyles: Record<string, { gradient: string; iconBg: string; iconColor: 
     photo: {
         gradient: 'from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30',
         iconBg: 'bg-amber-100 dark:bg-amber-900/40',
-        iconColor: 'text-amber-600 dark:text-amber-400',
+        iconColor: 'text-amber-700 dark:text-amber-400',
         borderColor: 'border-amber-200 dark:border-amber-800',
     },
     video: {
