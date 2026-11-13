@@ -196,8 +196,9 @@ For OAuth (Google/Apple) and email links to work:
 ## 7. Billing (Stripe / PayU / Wompi)
 
 - **Plans:** Seeded by `20251029000001_seed_billing_plans.sql`. Update `billing_plans.provider_price_map` with real Stripe (or other) price IDs.
-- **Webhooks:** Configure in Stripe / PayU / Wompi to point to `https://your-domain.com/api/webhooks/{stripe|payu|wompi}`. Production Wompi events URL: `https://app.iablee.com/api/webhooks/wompi`. See **docs/BILLING-SETUP.md**.
-- **Wompi (KAN-139):** Optional. Default `PAYMENT_GATEWAY` remains `payu`. COP placeholder amounts live in `src/lib/billing/wompi-pricing.ts` and migration `20261113140000_wompi_cop_placeholder_prices.sql` (confirm official COP prices before go-live; do not invent production prices). Env placeholders: `.env.example`.
+- **Webhooks:** Configure in Stripe / PayU / Wompi to point to `https://your-domain.com/api/webhooks/{stripe|payu|wompi}`. See **docs/BILLING-SETUP.md**.
+- **Wompi events URLs (KAN-139):** Production: `https://app.iablee.com/api/webhooks/wompi`. Sandbox: use the current Vercel develop/preview host (`https://<vercel-develop-or-preview-host>/api/webhooks/wompi`). Never cross-wire sandbox ↔ production events URLs; Wompi requires a separate URL per environment.
+- **Wompi (KAN-139):** Optional. Default `PAYMENT_GATEWAY` remains `payu`. COP placeholder amounts live in `src/lib/billing/wompi-pricing.ts` and migration `20261113140000_wompi_cop_placeholder_prices.sql` (confirm official COP prices before go-live; do not invent production prices). Env placeholders: `.env.example`. Unique-index migration `20261113150000_billing_provider_id_unique.sql` is **not** applied until reviewed.
 
 ---
 

@@ -1,6 +1,3 @@
-# Callback URL
-http://localhost:3000/en/payments/payu/return?merchantId=508029&merchant_name=Test+PayU&merchant_address=Av+123+Calle+12&telephone=7512354&merchant_url=http%3A%2F%2Fpruebaslapv.xtrweb.com&transactionState=4&lapTransactionState=APPROVED&message=APPROVED&referenceCode=payu_48508890-08ea-40bc-8dc6-4a0860f6bc6a_1769218748365&reference_pol=2156386850&transactionId=cc22397e-6cd6-4c58-9157-a4ab28b7c490&description=Premium&trazabilityCode=102038074500&cus=102038074500&orderLanguage=es&extra1=48508890-08ea-40bc-8dc6-4a0860f6bc6a&extra2=plan_premium_month&extra3=&polTransactionState=4&signature=84bb03c751a39677aae937dd7220494a&polResponseCode=1&lapResponseCode=APPROVED&risk=&polPaymentMethod=1074&lapPaymentMethod=MASTERCARD&polPaymentMethodType=2&lapPaymentMethodType=CREDIT_CARD&installmentsNumber=1&TX_VALUE=19.99&TX_TAX=.00&currency=USD&lng=es&pseCycle=&buyerEmail=gaveho%40gmail.com&pseBank=&pseReference1=&pseReference2=&pseReference3=&authorizationCode=654321&authorizationCode=654321&khipuBank=&TX_ADMINISTRATIVE_FEE=.00&TX_TAX_ADMINISTRATIVE_FEE=.00&TX_TAX_ADMINISTRATIVE_FEE_RETURN_BASE=.00&processingDate=2026-01-23
-
 # Billing & Subscription System - Setup Guide
 
 This document provides a comprehensive guide for the newly implemented billing and subscription system.
@@ -104,8 +101,9 @@ WOMPI_EVENTS_SECRET=
 WOMPI_INTEGRITY_SECRET=
 NEXT_PUBLIC_WOMPI_PUBLIC_KEY=
 WOMPI_REDIRECT_URL=http://localhost:3000/es/payments/wompi/return
-# Production events URL to configure in Wompi Dashboard:
-# https://app.iablee.com/api/webhooks/wompi
+# Wompi events URLs (configure per commerce environment — never cross-wire):
+# Production: https://app.iablee.com/api/webhooks/wompi
+# Sandbox:    https://<vercel-develop-or-preview-host>/api/webhooks/wompi
 
 # Supabase Service Role Key (needed for server-side operations)
 SUPABASE_SERVICE_ROLE_KEY=
@@ -193,14 +191,18 @@ Wompi has **no native subscriptions**. iablee uses the same renew-by-checkout mo
 #### Env / Dashboard
 
 1. Create sandbox keys in the Wompi Commerce Dashboard (`pub_test_`, `prv_test_`, `test_events_`, `test_integrity_`).
-2. Set events URL (sandbox vs production separately):
-   - Local: `https://<tunnel>/api/webhooks/wompi` or similar
-   - Production: `https://app.iablee.com/api/webhooks/wompi`
+2. **Events URL — one per Wompi environment (required isolation):**
+   - **Production commerce:** `https://app.iablee.com/api/webhooks/wompi`
+   - **Sandbox commerce:** the current Vercel develop/preview deployment webhook, e.g. `https://<vercel-develop-or-preview-host>/api/webhooks/wompi` (use the live develop/preview URL from the Vercel dashboard; do not invent a hostname).
+   - Local testing: `https://<tunnel>/api/webhooks/wompi` or similar.
+   - **Never** point sandbox commerce at the production events URL, and **never** point production commerce at a sandbox/preview URL. Wompi requires a separate events URL per environment.
+   - Commerce may be awaiting approval while production is already enabled; still keep sandbox and production isolated.
 3. Fill `WOMPI_*` vars from `.env.example`. Keep `PAYMENT_GATEWAY=payu` in production until go-live.
 4. **COP pricing**: plans are USD in `billing_plans.amount_cents`. Wompi charges COP only. Amounts come from:
    - `src/lib/billing/wompi-pricing.ts` PLACEHOLDER map, or
    - numeric `provider_price_map.wompi` (amount-in-cents string), via migration `supabase/migrations/20261113140000_wompi_cop_placeholder_prices.sql`
    - **TODO (Gabriel):** confirm official COP prices before go-live. Do not invent production prices. Migration is **not** auto-applied.
+5. **Provider ID uniqueness (do not apply until reviewed):** migration `supabase/migrations/20261113150000_billing_provider_id_unique.sql` adds UNIQUE indexes on `billing_invoices.provider_invoice_id` and `billing_subscriptions.provider_subscription_id`. Application code uses select-then-update/insert so paid webhooks work before this lands. Next `supabase db push` would apply it.
 
 #### Recurring follow-up (not implemented)
 
