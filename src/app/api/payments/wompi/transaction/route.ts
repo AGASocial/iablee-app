@@ -1,15 +1,25 @@
 /**
  * GET /api/payments/wompi/transaction?id=...
  * Server-side transaction status lookup for the return page (informational only).
+ * Requires an authenticated session and ownership of the Wompi reference.
  * Does NOT activate subscriptions — webhooks are the source of truth.
  */
 
 import { NextRequest } from 'next/server';
-import { WompiAdapter } from '@/lib/billing/adapters';
-import { errorResponse, successResponse } from '@/lib/billing/server';
+import { WompiAdapter, parseWompiReference } from '@/lib/billing/adapters';
+import {
+  errorResponse,
+  getAuthenticatedUserId,
+  successResponse,
+} from '@/lib/billing/server';
 
 export async function GET(request: NextRequest) {
   try {
+    const userId = await getAuthenticatedUserId();
+    if (!userId) {
+      return errorResponse('Unauthorized', 401);
+    }
+
     const transactionId = request.nextUrl.searchParams.get('id')?.trim();
     if (!transactionId) {
       return errorResponse('Missing transaction id', 400);
@@ -35,6 +45,15 @@ export async function GET(request: NextRequest) {
     });
 
     const transaction = await adapter.getTransaction(transactionId);
+    const parsed = parseWompiReference(transaction.reference || '');
+
+    if (!parsed) {
+      return errorResponse('Transaction not found', 404);
+    }
+
+    if (parsed.userId !== userId) {
+      return errorResponse('Forbidden', 403);
+    }
 
     return successResponse({
       id: transaction.id,

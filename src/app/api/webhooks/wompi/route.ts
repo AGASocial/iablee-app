@@ -1,7 +1,8 @@
 /**
  * POST /api/webhooks/wompi
  * Wompi events webhook (transaction.updated).
- * Respond 200 so Wompi does not retry endlessly; 401 on bad checksum.
+ * 401 on bad signature; 200 for ignored/unsupported events;
+ * 5xx after a verified event if DB processing fails (so Wompi retries).
  */
 
 import { NextRequest } from 'next/server';
@@ -58,8 +59,16 @@ export async function POST(request: NextRequest) {
       return successResponse({ received: true, processed: false });
     }
 
-    const billingService = await getBillingService();
-    await billingService.handleWebhookEvent(normalizedEvent);
+    try {
+      const billingService = await getBillingService();
+      await billingService.handleWebhookEvent(normalizedEvent);
+    } catch (processingError) {
+      console.error(
+        'Wompi webhook processing failed after verification:',
+        processingError instanceof Error ? processingError.message : 'Unknown error'
+      );
+      return errorResponse('Webhook processing failed', 500);
+    }
 
     return successResponse({ received: true, processed: true });
   } catch (error) {
@@ -67,11 +76,6 @@ export async function POST(request: NextRequest) {
       'Error processing Wompi webhook:',
       error instanceof Error ? error.message : 'Unknown error'
     );
-    // Acknowledge to avoid aggressive retries on our internal errors after verify
-    return successResponse({
-      received: true,
-      processed: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
+    return errorResponse('Webhook handler error', 500);
   }
 }

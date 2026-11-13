@@ -116,9 +116,10 @@ export default function PlansPage() {
                                       currentSubscription.planId !== 'plan_free' &&
                                       currentSubscription.id !== 'free';
 
+      // Hosted gateways (PayU / Wompi) renew and change plans via a new Web Checkout
+      // (POST), not Stripe-oriented PATCH/updateSubscription.
       let response;
-      if (hasExistingSubscription) {
-        // Update existing subscription
+      if (hasExistingSubscription && !isHostedCheckout) {
         response = await fetch('/api/billing/subscriptions', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -129,7 +130,6 @@ export default function PlansPage() {
           }),
         });
       } else {
-        // Create new subscription
         response = await fetch('/api/billing/subscriptions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
