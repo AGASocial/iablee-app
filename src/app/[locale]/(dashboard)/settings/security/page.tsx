@@ -112,8 +112,8 @@ export default function SecuritySettingsPage() {
     return (
         <div className="space-y-6">
             <div>
-                <h2 className="text-xl font-semibold text-foreground dark:text-white">{t('settings.security')}</h2>
-                <p className="mt-1 text-sm font-medium text-muted-foreground">{t('changePinDescription')}</p>
+                <h2 className="page-title text-xl font-semibold">{t('settings.security')}</h2>
+                <p className="page-subtitle">{t('changePinDescription')}</p>
             </div>
 
             {/* Change Password Section */}

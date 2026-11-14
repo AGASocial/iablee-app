@@ -53,7 +53,7 @@ export default function DeleteConfirmationModal({
                             variant="destructive"
                             onClick={onConfirm}
                             disabled={loading}
-                            className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white"
+                            className="w-full sm:w-auto bg-destructive text-destructive-foreground hover:bg-destructive/90"
                         >
                             {loading ? (t('deleting') || 'Deleting...') : (t('delete') || 'Delete')}
                         </Button>

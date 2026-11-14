@@ -218,8 +218,8 @@ export default function PlansPage() {
   return (
     <div className="container mx-auto py-10">
       <div className="mb-10 text-center">
-        <h1 className="mb-4 text-4xl font-bold text-foreground dark:text-white">{t('pricing')}</h1>
-        <p className="mb-8 text-sm font-medium text-muted-foreground">
+        <h1 className="page-title mb-4 text-4xl font-bold">{t('pricing')}</h1>
+        <p className="page-subtitle mb-8">
           {t('choosePlan')}
         </p>
 

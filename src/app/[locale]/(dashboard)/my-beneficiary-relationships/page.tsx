@@ -158,8 +158,8 @@ export default function MyBeneficiaryRelationshipsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">{t("beneficiaryRelationshipsTitle")}</h1>
-        <p className="mt-2 text-muted-foreground">
+        <h1 className="page-title text-3xl font-bold">{t("beneficiaryRelationshipsTitle")}</h1>
+        <p className="page-subtitle mt-2">
           {t("beneficiaryRelationshipsDescription")}
         </p>
       </div>
@@ -228,13 +228,13 @@ export default function MyBeneficiaryRelationshipsPage() {
         </div>
       )}
 
-      <Card className="bg-muted/30 border-dashed">
+      <Card className="info-panel border-solid">
         <CardContent className="py-6">
           <div className="flex gap-4">
             <ShieldCheck className="h-6 w-6 text-primary shrink-0 mt-0.5" />
             <div className="space-y-1">
-              <p className="text-sm font-medium">{t("beneficiaryRelationshipsInfoTitle")}</p>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm font-medium text-card-foreground">{t("beneficiaryRelationshipsInfoTitle")}</p>
+              <p className="info-panel-desc">
                 {t("beneficiaryRelationshipsInfoDescription")}
               </p>
             </div>

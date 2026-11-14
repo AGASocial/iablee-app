@@ -49,6 +49,7 @@
   "beneficiaryUpdatedSuccess": "Beneficiary updated successfully",
   "beneficiaryDeleted": "Beneficiary deleted successfully",
   "profile": "Profile",
+  "myAccount": "My Account",
   "profileSettings": "Profile Settings",
   "createSecurityPin": "Create Security PIN",
   "enterSecurityPin": "Enter Security PIN",

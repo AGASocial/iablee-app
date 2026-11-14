@@ -218,7 +218,7 @@ export default function BeneficiariesClient() {
             />
             <div className="mb-8 flex items-center justify-between">
                 <div>
-                    <h1 className="text-3xl font-bold text-foreground sm:text-4xl">{t('beneficiariesTitle')}</h1>
+                    <h1 className="page-title text-3xl font-bold sm:text-4xl">{t('beneficiariesTitle')}</h1>
                     {limitReached && limitInfo && (
                         <p className="text-sm text-warning-foreground dark:text-amber-400 mt-1">
                             {t('beneficiaryLimitReachedDescription', { limit: limitInfo.limit ?? 0 })} —{' '}
@@ -337,8 +337,8 @@ export default function BeneficiariesClient() {
                                     )}
                                     {b.email && b.email_verified && (
                                         <div className="flex justify-between items-center text-xs text-muted-foreground p-1">
-                                            <span>{t('notifications')}</span>
-                                            <span className={b.notified ? 'text-success' : ''}>
+                                            <span className="font-medium text-muted-foreground">{t('notifications')}</span>
+                                            <span className={b.notified ? 'text-success font-medium' : 'text-foreground font-medium'}>
                                                 {b.notified ? t('notified') : t('notNotified')}
                                             </span>
                                         </div>
@@ -361,7 +361,7 @@ export default function BeneficiariesClient() {
                 selectedBeneficiary && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-2 sm:hidden">
                         <div className="bg-white dark:bg-gray-900 rounded-lg shadow-lg p-6 w-full max-w-sm border border-gray-200 dark:border-gray-700">
-                            <h3 className="text-lg font-bold mb-4 text-gray-900 dark:text-white">{selectedBeneficiary.full_name}</h3>
+                            <h3 className="text-lg font-bold mb-4 text-foreground">{selectedBeneficiary.full_name}</h3>
                             <div className="space-y-2">
                                 <div><span className="font-semibold">{t('email')}:</span> {selectedBeneficiary.email}</div>
                                 <div><span className="font-semibold">{t('phoneNumber')}:</span> {selectedBeneficiary.phone_number}</div>

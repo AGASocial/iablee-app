@@ -102,8 +102,19 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(redirectUrl);
   }
 
+  // Locale home (and bare `/`) are public marketing — LandingPage for signed-out users.
+  const isPublicLanding =
+    pathname === '/' ||
+    pathname === `/${locale}` ||
+    pathname === `/${locale}/`;
+
   // Protected routes check
-  if (!user && !pathname.includes('/auth/') && !pathname.includes('/verify-beneficiary-email')) {
+  if (
+    !user &&
+    !isPublicLanding &&
+    !pathname.includes('/auth/') &&
+    !pathname.includes('/verify-beneficiary-email')
+  ) {
     // If we are on a protected route and not logged in, redirect to login
     // However, we need to respect internationalized paths.
     // The intlMiddleware handles the locale part, but if we need to redirect...

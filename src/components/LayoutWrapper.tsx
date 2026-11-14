@@ -126,7 +126,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
                     </div>
                     <div className={cn("flex flex-col items-start overflow-hidden transition-all duration-300", sidebarCollapsed ? "w-0 opacity-0" : "flex-1 opacity-100")}>
                       <span className="text-sm font-medium truncate w-full text-left text-sidebar-foreground">{t('profile')}</span>
-                      <span className="text-xs text-sidebar-foreground/80 truncate w-full text-left">My Account</span>
+                      <span className="text-xs text-sidebar-foreground/80 truncate w-full text-left">{t('myAccount')}</span>
                     </div>
                     {!sidebarCollapsed && <ChevronUp className="h-4 w-4 text-sidebar-foreground/80 ml-auto" />}
                   </div>
@@ -251,7 +251,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
 
       {/* Main Content */}
       <main className={cn(
-        "flex-1 flex flex-col transition-all duration-300 bg-main-background dark:bg-main-background-dark",
+        "flex-1 flex flex-col transition-all duration-300 bg-main-background",
         sidebarCollapsed ? "md:pl-20" : "md:pl-72"
       )}>
         <Navbar onMenuClick={() => setSidebarOpen(true)} />

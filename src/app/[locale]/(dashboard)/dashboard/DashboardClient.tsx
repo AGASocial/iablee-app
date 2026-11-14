@@ -98,10 +98,10 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
     <div className="flex-1 space-y-8 p-4 sm:p-8 pt-6">
       <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground drop-shadow-[0_1px_1px_rgba(0,0,0,0.18)] sm:text-3xl">
+          <h2 className="page-title text-2xl font-bold sm:text-3xl">
             {t('dashboard') || 'Dashboard'}
           </h2>
-          <p className="mt-1 text-sm font-medium text-muted-foreground">
+          <p className="page-subtitle">
             {t('overviewDigitalAssets')}
           </p>
         </div>
@@ -220,7 +220,7 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
                 {assets.map((asset) => (
                   <div key={asset.id} className="group flex items-center justify-between rounded-xl border border-border/40 bg-background/70 p-4 transition-all hover:scale-[1.01] hover:border-primary/25 hover:bg-background/85 hover:shadow-lg dark:bg-background/65 dark:hover:bg-background/80">
                     <div className="flex items-center space-x-4">
-                      <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-colors">
+                      <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
                         <Key className="h-5 w-5" />
                       </div>
                       <div>
