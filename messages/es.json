@@ -50,6 +50,7 @@
   "beneficiaryUpdatedSuccess": "Beneficiario actualizado exitosamente",
   "beneficiaryDeleted": "Beficiario eliminado exitosamente",
   "profile": "Perfil",
+  "myAccount": "Mi cuenta",
   "removeBeneficiary": "Remover Beneficiario",
   "profileSettings": "Configuración del Perfil",
   "createSecurityPin": "Crear PIN de Seguridad",

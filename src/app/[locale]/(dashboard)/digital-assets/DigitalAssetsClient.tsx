@@ -281,7 +281,7 @@ export default function DigitalAssetsClient() {
         )}
         <div className="mb-8 flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-foreground sm:text-4xl">{t('digitalAssetsTitle')}</h1>
+            <h1 className="page-title text-3xl font-bold sm:text-4xl">{t('digitalAssetsTitle')}</h1>
             {limitReached && limitInfo && (
               <p className="text-sm text-warning-foreground dark:text-amber-400 mt-1">
                 {t('assetLimitReachedDescription', { limit: limitInfo.limit ?? 0 })} —{' '}
@@ -353,7 +353,7 @@ export default function DigitalAssetsClient() {
                 >
                   {/* Card Header */}
                   <div className="flex items-start justify-between mb-4">
-                    <div className="p-3 rounded-xl bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white transition-colors duration-300 shadow-inner">
+                    <div className="p-3 rounded-xl bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors duration-300 shadow-inner">
                       <Icon className="w-6 h-6" />
                     </div>
                     {/* Status Pill - could be dynamic based on status if that field exists reliably */}
@@ -435,7 +435,7 @@ export default function DigitalAssetsClient() {
         <Dialog open={assignModalOpen} onOpenChange={(open) => { setAssignModalOpen(open); if (!open) { setSelectedAsset(null); setSelectedBeneficiaryId(null); } }}>
           <DialogContent className="max-w-lg w-full bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-700 p-4 sm:p-8">
             <DialogHeader>
-              <DialogTitle className="text-gray-900 dark:text-white">{t('assignBeneficiary')}</DialogTitle>
+              <DialogTitle className="text-foreground">{t('assignBeneficiary')}</DialogTitle>
               <DialogClose asChild />
             </DialogHeader>
             <div className="mt-4 space-y-2">
@@ -448,13 +448,13 @@ export default function DigitalAssetsClient() {
                       key={b.id}
                       className={`flex flex-row items-center justify-between p-4 border rounded-lg transition text-left w-full 
                         ${selectedBeneficiaryId === b.id
-                          ? 'bg-blue-100 border-blue-500 text-gray-900 dark:bg-blue-900 dark:text-white dark:border-blue-400'
+                          ? 'bg-primary/10 border-primary text-foreground dark:bg-primary/20 dark:border-primary'
                           : 'bg-gray-50 border-gray-200 text-gray-900 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700 dark:hover:bg-gray-700'}
                       `}
                       onClick={() => setSelectedBeneficiaryId(b.id)}
                     >
                       <div>
-                        <span className="font-medium text-gray-900 dark:text-white">{b.full_name}</span>
+                        <span className="font-medium text-foreground">{b.full_name}</span>
                         <span className="block text-sm text-gray-500 dark:text-gray-300">{b.email}</span>
                       </div>
                       {selectedBeneficiaryId === b.id && <span className="ml-4 text-xs text-blue-600 dark:text-blue-300">{t('selected')}</span>}

@@ -11,8 +11,8 @@ export default function SettingsLayout({
     return (
         <div className="space-y-6 pb-16 p-4 rounded-lg glass bg-white-50 border border-muted/50">
             <div className="space-y-0.5">
-                <h1 className="text-2xl font-bold tracking-tight">{t('settings.title')}</h1>
-                <p className="text-muted-foreground">
+                <h1 className="page-title text-2xl font-bold">{t('settings.title')}</h1>
+                <p className="page-subtitle">
                     {t('manageAccountSettings')}
                 </p>
             </div>

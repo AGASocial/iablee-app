@@ -232,7 +232,7 @@ export default function AddBeneficiaryModal({ open, onOpenChange, onSuccess, ben
                         <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
                             {t('cancel')}
                         </Button>
-                        <Button type="submit" disabled={loading} className="bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20">
+                        <Button type="submit" disabled={loading} className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/20">
                             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             {t('save')}
                         </Button>

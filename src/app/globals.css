@@ -105,7 +105,8 @@
   --secondary-foreground: #103065;
 
   --muted: #EEF4FD;
-  --muted-foreground: #6E6A73;
+  /* Darkened for WCAG AA on background.png (was #6E6A73, failed ~2.4:1 on light blues). */
+  --muted-foreground: #3F3C45;
 
   --accent: #EEF4FD;
   --accent-foreground: #103065;
@@ -167,7 +168,8 @@
   --secondary-foreground: #E7EFFC;
 
   --muted: #12264A;
-  --muted-foreground: rgb(231 239 252 / 0.65);
+  /* Opaque muted text (alpha-blended grey washed out over photo / glass). */
+  --muted-foreground: #A8B8D4;
 
   --accent: #1a3260;
   --accent-foreground: #E7EFFC;
@@ -223,6 +225,13 @@
     background-repeat: no-repeat;
   }
 
+  /* html.dark is set by next-themes — swap the photo so light text stays AA */
+  :where(.dark) body {
+    background-image: url("/background-dark.png");
+    background-color: rgb(11 26 54 / 0.82);
+    background-blend-mode: multiply;
+  }
+
   /* Typography enhancements */
   h1,
   h2,
@@ -233,13 +242,13 @@
     @apply font-heading tracking-tight text-foreground;
   }
 
-  /* Glassmorphism helpers */
+  /* Glassmorphism helpers — keep surfaces opaque enough for AA text over photo */
   .glass {
-    @apply bg-background/60 backdrop-blur-lg border border-white/10 dark:border-white/5;
+    @apply bg-card/95 backdrop-blur-lg border border-border/40 shadow-sm;
   }
 
   .glass-dark {
-    @apply bg-red-900 backdrop-blur-lg border border-white/10 dark:border-white/5;
+    @apply bg-card/95 backdrop-blur-lg border border-border/40 shadow-sm;
   }
 
   .glass-card {
@@ -247,7 +256,34 @@
   }
 
   .glass-panel {
-    @apply bg-background/40 backdrop-blur-xl border border-white/10 dark:border-white/5 shadow-xl;
+    @apply bg-card/95 backdrop-blur-xl border border-border/40 shadow-xl;
+  }
+
+  /* Page headers over the wavy photo background */
+  .page-title {
+    @apply font-heading tracking-tight text-brand-navy;
+  }
+
+  .page-subtitle {
+    @apply mt-1 text-sm font-medium text-muted-foreground sm:text-base;
+  }
+
+  :where(.dark) .page-title {
+    color: var(--foreground);
+    text-shadow: 0 1px 2px rgb(0 0 0 / 0.55);
+  }
+
+  :where(.dark) .page-subtitle {
+    color: var(--muted-foreground);
+    text-shadow: 0 1px 2px rgb(0 0 0 / 0.45);
+  }
+
+  .info-panel {
+    @apply bg-card text-card-foreground border border-border shadow-sm;
+  }
+
+  .info-panel-desc {
+    @apply text-sm text-muted-foreground;
   }
 
   /* Custom Scrollbar */
@@ -324,11 +360,13 @@
   background-repeat: no-repeat;
 }
 
+/* Prefer descendant selector over `dark:bg-main-background-dark` (not a real TW color). */
+:where(.dark) .bg-main-background,
 .bg-main-background-dark {
   background-image: url("/background-dark.png") !important;
   background-color: rgb(11 26 54 / 0.82);
   background-blend-mode: multiply;
-  filter: brightness(0.58) contrast(1.08) saturate(0.9);
+  /* Avoid filter here — it darkens child text and tanks contrast in screenshots. */
   background-attachment: fixed;
   background-size: cover;
   background-position: center;
@@ -337,9 +375,26 @@
 
 /* Brand gradients & dashboard utilities */
 .btn-primary-gradient {
-  /* Always white: fill is royal→navy in both themes (dark --primary-foreground is navy). */
+  /* Gradient fill is royal→navy in both themes; pair with light text for AA. */
   color: #FFFFFF;
   background: linear-gradient(135deg, #0766EE 0%, #103065 100%);
+}
+
+/* Disabled primary: solid pair (opacity-50 on primary fails AA over the photo). */
+.btn-primary-disabled,
+button:disabled.bg-primary,
+button[disabled].bg-primary {
+  background-color: var(--brand-chip) !important;
+  color: var(--brand-navy) !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
+}
+
+.dark .btn-primary-disabled,
+.dark button:disabled.bg-primary,
+.dark button[disabled].bg-primary {
+  background-color: var(--secondary) !important;
+  color: var(--muted-foreground) !important;
 }
 
 .btn-primary-gradient:hover {

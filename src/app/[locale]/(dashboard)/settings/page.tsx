@@ -9,8 +9,8 @@ export default function SettingsPage() {
     return (
         <div className="space-y-6">
             <div>
-                <h2 className="text-xl font-semibold text-foreground dark:text-white">{t('settings.profile')}</h2>
-                <p className="mt-1 text-sm font-medium text-muted-foreground">
+                <h2 className="page-title text-xl font-semibold">{t('settings.profile')}</h2>
+                <p className="page-subtitle">
                     {t('manageAccountSettings')}
                 </p>
             </div>
