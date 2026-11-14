@@ -4,7 +4,7 @@ import type { E2EUser } from "./supabase";
 export async function loginViaUi(page: Page, user: E2EUser, locale: "en" | "es" = "en"): Promise<void> {
   await page.goto(`/${locale}/auth/login`);
   await page.getByLabel(/email/i).fill(user.email);
-  await page.getByLabel(/password|contraseña/i).fill(user.password);
+  await page.locator('input[type="password"]').fill(user.password);
   await page.locator('form button[type="submit"]').click();
   await page.waitForURL(new RegExp(`/${locale}/(wizard|dashboard)`), { timeout: 20000 });
 }

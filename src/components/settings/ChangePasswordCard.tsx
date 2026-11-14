@@ -3,7 +3,8 @@
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
+import { PasswordStrengthChecklist } from '@/components/ui/password-strength-checklist';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
@@ -15,6 +16,7 @@ import {
     CardTitle,
 } from "@/components/ui/card";
 import { useUserProfile } from '@/hooks/useDataQueries';
+import { isPasswordValid } from '@/lib/password-policy';
 
 export function ChangePasswordCard() {
     const t = useTranslations();
@@ -28,6 +30,11 @@ export function ChangePasswordCard() {
         e.preventDefault();
         if (newPassword !== confirmPassword) {
             toast.error(t('settings.passwordsDoNotMatch'));
+            return;
+        }
+
+        if (!isPasswordValid(newPassword, { email: user?.email })) {
+            toast.error(t('passwordPolicy.tooWeak'));
             return;
         }
 
@@ -78,20 +85,24 @@ export function ChangePasswordCard() {
                     <form onSubmit={handleChangePassword} className="space-y-4">
                         <div className="space-y-2">
                             <Label htmlFor="newPassword">{t('settings.newPassword')}</Label>
-                            <Input
+                            <PasswordInput
                                 id="newPassword"
-                                type="password"
                                 value={newPassword}
                                 onChange={(e) => setNewPassword(e.target.value)}
+                                autoComplete="new-password"
+                            />
+                            <PasswordStrengthChecklist
+                                password={newPassword}
+                                email={user.email}
                             />
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="confirmPassword">{t('settings.confirmNewPassword')}</Label>
-                            <Input
+                            <PasswordInput
                                 id="confirmPassword"
-                                type="password"
                                 value={confirmPassword}
                                 onChange={(e) => setConfirmPassword(e.target.value)}
+                                autoComplete="new-password"
                             />
                         </div>
                         <div className="flex gap-2">

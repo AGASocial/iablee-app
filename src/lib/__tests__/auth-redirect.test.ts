@@ -93,7 +93,7 @@ describe('auth redirect origin', () => {
       headers: { ...HOST_HEADERS, 'content-type': 'application/json' },
       body: JSON.stringify({
         email: 'a@example.com',
-        password: 'secret-secret',
+        password: 'Password123!',
         locale: 'https://evil.example',
       }),
     }));

@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -170,14 +171,14 @@ export function AssetDetailsStep({
             <Label htmlFor="asset-password" className="text-sm text-foreground">
               {translate("password")}
             </Label>
-            <Input
+            <PasswordInput
               id="asset-password"
               value={data.password}
               onChange={(event) => onChange("password", event.target.value)}
-              type="password"
               placeholder={translate("wizard-password-placeholder")}
               aria-invalid={Boolean(errors.password)}
               aria-describedby={errors.password ? "asset-password-error" : undefined}
+              autoComplete="off"
             />
             {errors.password ? (
               <p id="asset-password-error" className="mt-1 text-sm text-destructive">

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAuthenticatedRouteClient } from "@/lib/supabase-server";
+import { getPasswordPolicyError } from "@/lib/password-policy";
 
 export async function POST(req: NextRequest) {
     try {
@@ -12,8 +13,13 @@ export async function POST(req: NextRequest) {
         const body = await req.json();
         const { newPassword } = body;
 
-        if (!newPassword || newPassword.length < 6) {
-            return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400 });
+        if (!newPassword || typeof newPassword !== "string") {
+            return NextResponse.json({ error: "Password is required" }, { status: 400 });
+        }
+
+        const policyError = getPasswordPolicyError(newPassword, { email: user.email });
+        if (policyError) {
+            return NextResponse.json({ error: policyError }, { status: 400 });
         }
 
         const { error } = await supabase.auth.updateUser({

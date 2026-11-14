@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useForm } from "react-hook-form"
+import { useForm, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { Button } from "@/components/ui/button"
@@ -14,25 +14,31 @@ import {
   FormMessage,
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
+import { PasswordInput } from "@/components/ui/password-input"
+import { PasswordStrengthChecklist } from "@/components/ui/password-strength-checklist"
 import { toast } from "sonner"
 import Image from "next/image"
 import { useTranslations, useLocale } from "next-intl"
 import { Link, useRouter } from "@/i18n/navigation"
+import { strongPasswordSuperRefine } from "@/lib/password-policy"
 
-const formSchema = z.object({
-  // Lenient check equivalent to zod v3 .email() (zod v4 .email() is stricter)
-  email: z
-    .string()
-    .trim()
-    .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "Please enter a valid email address"),
+const emailSchema = z
+  .string()
+  .trim()
+  .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "Please enter a valid email address")
+
+const loginSchema = z.object({
+  email: emailSchema,
+  // Login stays lenient so existing weaker passwords still work.
   password: z
     .string()
+    .min(1, "Password is required")
     .min(8, "Password must be at least 8 characters")
     .max(100, "Password must be less than 100 characters"),
   fullName: z.string().optional(),
 })
 
-type FormData = z.infer<typeof formSchema>
+type FormData = z.infer<typeof loginSchema>
 
 interface AuthFormProps {
   type: "login" | "register"
@@ -43,14 +49,35 @@ export function AuthForm({ type }: AuthFormProps) {
   const [isLoading, setIsLoading] = React.useState(false)
   const t = useTranslations()
   const locale = useLocale()
+  const schema = React.useMemo(
+    () =>
+      type === "register"
+        ? z
+            .object({
+              email: emailSchema,
+              password: z.string().min(1, t("passwordPolicy.tooWeak")),
+              fullName: z.string().optional(),
+            })
+            .superRefine(
+              strongPasswordSuperRefine({
+                emailKey: "email",
+                message: t("passwordPolicy.tooWeak"),
+              }),
+            )
+        : loginSchema,
+    [t, type],
+  )
   const form = useForm<FormData>({
-    resolver: zodResolver(formSchema),
+    resolver: zodResolver(schema),
     defaultValues: {
       email: "",
       password: "",
       fullName: "",
     },
   })
+
+  const watchedPassword = useWatch({ control: form.control, name: "password" }) ?? ""
+  const watchedEmail = useWatch({ control: form.control, name: "email" }) ?? ""
 
   async function onSubmit(data: FormData) {
     setIsLoading(true)
@@ -266,14 +293,20 @@ export function AuthForm({ type }: AuthFormProps) {
                   )}
                 </div>
                 <FormControl>
-                  <Input
+                  <PasswordInput
                     placeholder="••••••••"
-                    type="password"
                     autoComplete={type === "login" ? "current-password" : "new-password"}
                     className="bg-background/80 dark:bg-background/70"
                     {...field}
                   />
                 </FormControl>
+                {type === "register" && (
+                  <PasswordStrengthChecklist
+                    password={watchedPassword}
+                    email={watchedEmail}
+                    className="pt-1"
+                  />
+                )}
                 <FormMessage />
               </FormItem>
             )}
@@ -319,4 +352,4 @@ export function AuthForm({ type }: AuthFormProps) {
       </p>
     </div>
   )
-} 
+}
