@@ -42,7 +42,7 @@ export function ProfileForm() {
             await invalidateProfile();
             toast.success(t('settings.profileUpdatedSuccess'));
         } catch (error: unknown) {
-            const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
+            const errorMessage = error instanceof Error ? error.message : t('settings.unknownError');
             toast.error(errorMessage);
         } finally {
             setLoading(false);
@@ -72,7 +72,7 @@ export function ProfileForm() {
                             className="bg-muted"
                         />
                         <p className="text-xs text-muted-foreground">
-                            Emails cannot be changed directly.
+                            {t('settings.emailCannotBeChanged')}
                         </p>
                     </div>
 
@@ -82,7 +82,7 @@ export function ProfileForm() {
                             id="fullName"
                             value={fullName}
                             onChange={(e) => setFullName(e.target.value)}
-                            placeholder="John Doe"
+                            placeholder={t('settings.fullNamePlaceholder')}
                             className="bg-card text-foreground"
                         />
                     </div>
@@ -100,10 +100,10 @@ export function ProfileForm() {
                     <div className="flex items-center justify-between p-3 border rounded-md">
                         <div className="flex items-center gap-3">
                             <Chrome className="h-5 w-5" />
-                            <span className="font-medium">Google</span>
+                            <span className="font-medium">{t('settings.providerGoogle')}</span>
                         </div>
                         {isGoogleProvider ? (
-                            <span className="text-sm text-success font-medium">Connected</span>
+                            <span className="text-sm text-success font-medium">{t('settings.connected')}</span>
                         ) : (
                             <span className="text-sm text-muted-foreground">{t('settings.notConnected')}</span>
                         )}
@@ -112,10 +112,10 @@ export function ProfileForm() {
                     <div className="flex items-center justify-between p-3 border rounded-md">
                         <div className="flex items-center gap-3">
                             <Apple className="h-5 w-5" />
-                            <span className="font-medium">Apple</span>
+                            <span className="font-medium">{t('settings.providerApple')}</span>
                         </div>
                         {isAppleProvider ? (
-                            <span className="text-sm text-success font-medium">Connected</span>
+                            <span className="text-sm text-success font-medium">{t('settings.connected')}</span>
                         ) : (
                             <span className="text-sm text-muted-foreground">{t('settings.notConnected')}</span>
                         )}
