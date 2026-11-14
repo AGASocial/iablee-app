@@ -1,11 +1,12 @@
--- Wompi COP amount-in-cents placeholders for provider_price_map.wompi
+-- Wompi COP amount-in-cents for provider_price_map.wompi
 -- KAN-139
 --
--- DO NOT treat these as official production prices.
--- TODO(Gabriel): Confirm official COP prices with finance / Wompi go-live checklist
--- before applying in production. Values must match src/lib/billing/wompi-pricing.ts.
+-- Official COP prices confirmed 2026-11-13 (KAN-139).
+-- Values must match src/lib/billing/wompi-pricing.ts (WOMPI_PLAN_AMOUNT_COP_CENTS).
+-- Filename retained (…_placeholder_…) to avoid migration history/apply confusion.
 --
 -- amount-in-cents: 4000000 = 40,000.00 COP
+-- Previously unapplied while prices were pending confirmation; ready to apply when deploying Wompi.
 -- This migration is intentionally NOT applied by the agent; run manually when ready.
 
 UPDATE public.billing_plans

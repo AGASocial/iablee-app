@@ -198,10 +198,10 @@ Wompi has **no native subscriptions**. iablee uses the same renew-by-checkout mo
    - **Never** point sandbox commerce at the production events URL, and **never** point production commerce at a sandbox/preview URL. Wompi requires a separate events URL per environment.
    - Commerce may be awaiting approval while production is already enabled; still keep sandbox and production isolated.
 3. Fill `WOMPI_*` vars from `.env.example`. Keep `PAYMENT_GATEWAY=payu` in production until go-live.
-4. **COP pricing**: plans are USD in `billing_plans.amount_cents`. Wompi charges COP only. Amounts come from:
-   - `src/lib/billing/wompi-pricing.ts` PLACEHOLDER map, or
-   - numeric `provider_price_map.wompi` (amount-in-cents string), via migration `supabase/migrations/20261113140000_wompi_cop_placeholder_prices.sql`
-   - **TODO (Gabriel):** confirm official COP prices before go-live. Do not invent production prices. Migration is **not** auto-applied.
+4. **COP pricing**: plans are USD in `billing_plans.amount_cents`. Wompi charges COP only. Official COP amounts (confirmed 2026-11-13, KAN-139) come from:
+   - `src/lib/billing/wompi-pricing.ts` (`WOMPI_PLAN_AMOUNT_COP_CENTS`), or
+   - numeric `provider_price_map.wompi` (amount-in-cents string), via migration `supabase/migrations/20261113140000_wompi_cop_placeholder_prices.sql` (filename kept for history; prices are official)
+   - Necessary monthly/yearly: `4000000` / `40000000`; Premium monthly/yearly: `8000000` / `80000000`. Migration is **not** auto-applied — run when deploying Wompi.
 5. **Provider ID uniqueness (do not apply until reviewed):** migration `supabase/migrations/20261113150000_billing_provider_id_unique.sql` adds UNIQUE indexes on `billing_invoices.provider_invoice_id` and `billing_subscriptions.provider_subscription_id`. Application code uses select-then-update/insert so paid webhooks work before this lands. Next `supabase db push` would apply it.
 
 #### Recurring follow-up (not implemented)
@@ -315,7 +315,7 @@ src/
 │       ├── billing.service.ts                # BillingService orchestration
 │       ├── server.ts                         # Server-side utilities
 │       ├── index.ts                          # Public exports
-│       ├── wompi-pricing.ts                  # PLACEHOLDER COP amounts (KAN-139)
+│       ├── wompi-pricing.ts                  # Official COP amounts (KAN-139)
 │       └── adapters/
 │           ├── stripe.adapter.ts
 │           ├── stripe-webhook.normalizer.ts
@@ -340,7 +340,7 @@ supabase/
 └── migrations/
     ├── 20251029000000_create_billing_tables.sql
     ├── 20251029000001_seed_billing_plans.sql
-    └── 20261113140000_wompi_cop_placeholder_prices.sql  # NOT applied by default
+    └── 20261113140000_wompi_cop_placeholder_prices.sql  # Official COP; apply when deploying Wompi
 ```
 
 ## Security Considerations
