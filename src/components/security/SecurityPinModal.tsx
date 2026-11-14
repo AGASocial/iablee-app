@@ -249,7 +249,7 @@ export default function SecurityPinModal({ isOpen, mode, onSuccess, onCancel, fo
                             {showForgotLink && step === "enter" && (
                                 <Button
                                     variant="link"
-                                    className="text-sm text-primary h-auto p-0"
+                                    className="h-auto p-0 text-sm text-link"
                                     onClick={() => setStep("reset-request")}
                                 >
                                     {t("forgotPin") || "Forgot your PIN?"}

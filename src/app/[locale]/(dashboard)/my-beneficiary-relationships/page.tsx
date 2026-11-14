@@ -157,7 +157,7 @@ export default function MyBeneficiaryRelationshipsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="page-header">
         <h1 className="page-title text-3xl font-bold">{t("beneficiaryRelationshipsTitle")}</h1>
         <p className="page-subtitle mt-2">
           {t("beneficiaryRelationshipsDescription")}

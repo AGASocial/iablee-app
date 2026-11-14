@@ -336,7 +336,7 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
       {error && <div className="text-destructive text-sm font-medium">{error}</div>}
       <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-border/50">
         <Button type="button" variant="ghost" onClick={onCancel}>{t('cancel')}</Button>
-        <Button type="submit" disabled={loading} className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20">
+        <Button type="submit" disabled={loading} className="bg-primary hover:bg-[color:var(--btn-gradient-hover-from)] shadow-lg shadow-primary/20">
           {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           {loading ? t('saving') : t('save')}
         </Button>

@@ -84,10 +84,13 @@ export function AssetTypeStep({
                   onClick={() => onSelect(assetType.key)}
                   data-asset-type-option="true"
                   className={cn(
-                    "rounded-xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    selected ? "border-primary bg-brand-tint" : "border-border bg-card hover:border-primary/40",
+                    "rounded-xl border p-4 text-left transition focus-visible:outline-none",
+                    selected
+                      ? "border-selected-option-border bg-selected-option-bg"
+                      : "border-border bg-card hover:border-selected-option-border/40",
                   )}
                   aria-pressed={selected}
+                  data-selected-option={selected ? "true" : undefined}
                 >
                   <Icon className="mb-2 h-5 w-5 text-primary" aria-hidden="true" />
                   <p className="text-sm font-medium text-foreground">{translate(assetType.label)}</p>

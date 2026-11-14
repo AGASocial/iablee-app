@@ -35,7 +35,7 @@ export default function LoginPage() {
       <div className="relative lg:relative z-30 flex items-center justify-center min-h-screen lg:min-h-0 p-4 sm:p-6 lg:p-8">
         <div className="mx-auto flex w-full max-w-[420px] flex-col justify-center space-y-6">
           {/* Mobile: Card with backdrop blur for better readability */}
-          <div className="rounded-2xl border border-white/45 bg-white/70 p-6 shadow-2xl shadow-black/15 backdrop-blur-xl sm:p-8 dark:border-white/15 dark:bg-card/80 dark:shadow-black/45 lg:border-white/25 lg:bg-white/60 lg:p-8 lg:dark:bg-card/75">
+          <div className="rounded-2xl border border-border bg-card p-6 shadow-2xl shadow-black/15 backdrop-blur-xl sm:p-8 lg:p-8">
             <Suspense fallback={null}>
               <LoginRegisteredToast />
             </Suspense>

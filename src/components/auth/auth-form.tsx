@@ -191,52 +191,56 @@ export function AuthForm({ type }: AuthFormProps) {
         </p>
       </div>
 
-      <Button
-        type="button"
-        variant="outline"
-        className="mx-auto flex w-full max-w-[300px] items-center justify-center gap-2 border-border/70 bg-background/70 text-foreground hover:bg-accent/80 dark:border-white/15 dark:bg-background/80"
-        onClick={handleGoogleSignIn}
-        disabled={isLoading}
-      >
-        {isLoading ? (
-          <div className="h-4 w-4 animate-spin rounded-full border-2 border-foreground border-t-transparent" />
-        ) : (
-          <Image src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" width={20} height={20} className="w-5 h-5" />
-        )}
-        {t("signInWithGoogle") || "Sign in with Google"}
-      </Button>
+      {/* Opaque OAuth strip — ui-border ≈4px samples must hit --card, not photo wash. */}
+      <div className="mx-auto w-full max-w-[300px] space-y-3 rounded-md bg-card p-4">
+        <Button
+          type="button"
+          variant="outline"
+          data-border-on-photo="true"
+          className="border-on-photo flex w-full items-center justify-center gap-2 border-border bg-card text-foreground hover:bg-accent dark:bg-card"
+          onClick={handleGoogleSignIn}
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-foreground border-t-transparent" />
+          ) : (
+            <Image src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" width={20} height={20} className="w-5 h-5" />
+          )}
+          {t("signInWithGoogle") || "Sign in with Google"}
+        </Button>
 
-      <button
-        type="button"
-        className="w-full max-w-[300px] mx-auto relative"
-        onClick={handleAppleSignIn}
-        disabled={isLoading}
-      >
-        <Image
-          src={appleButtonUrl}
-          alt={t("signInWithApple") || "Sign in with Apple"}
-          width={300}
-          height={44}
-          className={`w-full h-auto ${isLoading ? 'opacity-50' : ''}`}
-        />
-        {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-          </div>
-        )}
-      </button>
+        <button
+          type="button"
+          className="relative w-full"
+          onClick={handleAppleSignIn}
+          disabled={isLoading}
+        >
+          <Image
+            src={appleButtonUrl}
+            alt={t("signInWithApple") || "Sign in with Apple"}
+            width={300}
+            height={44}
+            className={`h-auto w-full ${isLoading ? "opacity-50" : ""}`}
+          />
+          {isLoading && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+            </div>
+          )}
+        </button>
+      </div>
 
       <div className="relative my-4">
         <div className="absolute inset-0 flex items-center">
           <span className="w-full border-t border-border/80" />
         </div>
         <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-background/80 px-2 text-muted-foreground backdrop-blur-sm">{t("or")}</span>
+          <span className="bg-card px-2 text-muted-foreground backdrop-blur-sm">{t("or")}</span>
         </div>
       </div>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <form method="post" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           {type === "register" && (
             <FormField
               control={form.control}
@@ -248,7 +252,7 @@ export function AuthForm({ type }: AuthFormProps) {
                     <Input
                       placeholder="John Doe"
                       autoComplete="name"
-                      className="bg-background/80 dark:bg-background/70"
+                      className="bg-card"
                       {...field}
                     />
                   </FormControl>
@@ -268,7 +272,7 @@ export function AuthForm({ type }: AuthFormProps) {
                     placeholder="name@example.com"
                     type="email"
                     autoComplete="email"
-                    className="bg-background/80 dark:bg-background/70"
+                    className="bg-card"
                     {...field}
                   />
                 </FormControl>
@@ -286,7 +290,7 @@ export function AuthForm({ type }: AuthFormProps) {
                   {type === "login" && (
                     <Link
                       href="/auth/forgot-password"
-                      className="text-xs text-muted-foreground underline-offset-4 hover:text-primary hover:underline"
+                      className="text-xs text-muted-foreground underline-offset-4 hover:text-link hover:underline"
                     >
                       {t("forgotPassword")}
                     </Link>
@@ -296,7 +300,7 @@ export function AuthForm({ type }: AuthFormProps) {
                   <PasswordInput
                     placeholder="••••••••"
                     autoComplete={type === "login" ? "current-password" : "new-password"}
-                    className="bg-background/80 dark:bg-background/70"
+                    className="bg-card"
                     {...field}
                   />
                 </FormControl>
@@ -330,7 +334,7 @@ export function AuthForm({ type }: AuthFormProps) {
         {type === "login" ? (
           <>
             {t("dontHaveAnAccount")}
-            <Link href="/auth/register" className="underline underline-offset-4 hover:text-primary">
+            <Link href="/auth/register" className="text-link underline underline-offset-4 hover:text-link">
               {t("signUp")}
             </Link>
 
@@ -338,7 +342,7 @@ export function AuthForm({ type }: AuthFormProps) {
         ) : (
           <>
             {t("alreadyHaveAnAccount")}
-            <Link href="/auth/login" className="underline underline-offset-4 hover:text-primary">
+            <Link href="/auth/login" className="text-link underline underline-offset-4 hover:text-link">
               {t("signIn")}
             </Link>
           </>

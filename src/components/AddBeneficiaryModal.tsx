@@ -149,7 +149,7 @@ export default function AddBeneficiaryModal({ open, onOpenChange, onSuccess, ben
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[500px] glass-panel border-white/10 dark:border-white/5">
                 <DialogHeader>
-                    <DialogTitle className="text-xl font-heading font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-600">
+                    <DialogTitle className="text-xl font-heading font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary">
                         {beneficiaryToEdit ? t('editBeneficiary') : t('addBeneficiary')}
                     </DialogTitle>
                 </DialogHeader>
@@ -232,7 +232,7 @@ export default function AddBeneficiaryModal({ open, onOpenChange, onSuccess, ben
                         <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
                             {t('cancel')}
                         </Button>
-                        <Button type="submit" disabled={loading} className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/20">
+                        <Button type="submit" disabled={loading} className="bg-primary hover:bg-[color:var(--btn-gradient-hover-from)] text-primary-foreground shadow-lg shadow-primary/20">
                             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             {t('save')}
                         </Button>

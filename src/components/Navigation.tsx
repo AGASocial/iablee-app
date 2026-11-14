@@ -29,10 +29,10 @@ export default function Navigation({ closeSidebar, collapsed }: { closeSidebar?:
                 href={item.href}
                 onClick={closeSidebar}
                 className={cn(
-                  "group flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-300 relative overflow-hidden",
+                  "group flex items-center gap-3 px-3 py-2.5 rounded-lg transition-[background-color,transform] duration-300 relative overflow-hidden",
                   isActive
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground font-semibold shadow-sm"
-                    : "text-sidebar-foreground/75 hover:text-sidebar-foreground hover:bg-sidebar-accent/10",
+                    ? "bg-sidebar-item-active-bg text-sidebar-item-active-fg font-semibold shadow-sm"
+                    : "text-sidebar-item-fg hover:bg-sidebar-accent/10",
                   collapsed && "justify-center px-2"
                 )}
                 title={collapsed ? item.label : undefined}
@@ -42,12 +42,13 @@ export default function Navigation({ closeSidebar, collapsed }: { closeSidebar?:
                 )}
                 <item.icon className={cn(
                   "h-5 w-5 transition-transform duration-300 shrink-0",
-                  isActive ? "text-sidebar-accent-foreground scale-110" : "text-sidebar-foreground/70 group-hover:text-sidebar-foreground group-hover:scale-110"
+                  isActive ? "text-sidebar-item-active-fg scale-110" : "text-sidebar-icon group-hover:text-sidebar-item-fg group-hover:scale-110"
                 )} />
                 <span className={cn(
-                  "text-sm transition-all duration-300 overflow-hidden whitespace-nowrap",
+                  /* width/opacity only — do not transition `color` (contrast mid-frames). */
+                  "text-sm transition-[width,opacity] duration-300 overflow-hidden whitespace-nowrap",
                   collapsed ? "w-0 opacity-0" : "w-auto opacity-100",
-                  isActive ? "font-semibold" : "font-medium"
+                  isActive ? "font-semibold text-sidebar-item-active-fg" : "font-medium text-sidebar-item-fg"
                 )}>
                   {item.label}
                 </span>
@@ -68,14 +69,14 @@ export default function Navigation({ closeSidebar, collapsed }: { closeSidebar?:
               href="/wizard"
               onClick={closeSidebar}
               className={cn(
-                "group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-foreground/75 hover:text-sidebar-foreground hover:bg-sidebar-accent/10 transition-all",
+                "group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-item-fg hover:bg-sidebar-accent/10 transition-[background-color] duration-300",
                 collapsed && "justify-center px-2"
               )}
               title={collapsed ? t('setupWizard') : undefined}
             >
-              <Wand2 className="h-5 w-5 text-sidebar-icon group-hover:text-sidebar-icon/90 shrink-0" />
+              <Wand2 className="h-5 w-5 text-sidebar-icon group-hover:text-sidebar-item-fg shrink-0" />
               <span className={cn(
-                "font-medium text-sm transition-all duration-300 overflow-hidden whitespace-nowrap",
+                "font-medium text-sm text-sidebar-item-fg transition-[width,opacity] duration-300 overflow-hidden whitespace-nowrap",
                 collapsed ? "w-0 opacity-0" : "w-auto opacity-100"
               )}>
                 {t('setupWizard')}
