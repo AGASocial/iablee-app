@@ -280,7 +280,7 @@ export default function BeneficiariesClient() {
                                 className={`group glass-card p-5 rounded-2xl relative flex flex-col justify-between transition-all duration-300 hover:scale-[1.02] hover:-translate-y-1 hover:shadow-xl hover:border-primary/20 animate-fade-in-up ${delayClass}`}
                             >
                                 <div className="absolute top-4 right-4 z-10 flex gap-1 opacity-100 transition-opacity duration-200 sm:opacity-0 sm:group-hover:opacity-100">
-                                    <Button variant="ghost" size="icon" className="h-8 w-8 bg-background/50 backdrop-blur-md hover:text-blue-500 rounded-full" onClick={() => handleEditBeneficiary(b)} title={t('edit')}>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 bg-background/50 backdrop-blur-md hover:text-primary rounded-full" onClick={() => handleEditBeneficiary(b)} title={t('edit')}>
                                         <Pencil className="w-3.5 h-3.5" />
                                     </Button>
                                     <Button variant="ghost" size="icon" className="h-8 w-8 bg-background/50 backdrop-blur-md hover:text-destructive rounded-full" onClick={() => handleDeleteBeneficiary(b.id)} title={t('delete')}>
@@ -361,7 +361,7 @@ export default function BeneficiariesClient() {
             {
                 selectedBeneficiary && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-2 sm:hidden">
-                        <div className="bg-white dark:bg-gray-900 rounded-lg shadow-lg p-6 w-full max-w-sm border border-gray-200 dark:border-gray-700">
+                        <div className="bg-card rounded-lg shadow-lg p-6 w-full max-w-sm border border-border">
                             <h3 className="text-lg font-bold mb-4 text-foreground">{selectedBeneficiary.full_name}</h3>
                             <div className="space-y-2">
                                 <div><span className="font-semibold">{t('email')}:</span> {selectedBeneficiary.email}</div>

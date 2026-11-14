@@ -265,6 +265,10 @@ export async function captureState(
     focusSelector?: string;
     borders?: boolean;
     screenshot?: boolean;
+    /** Keep Sonner toasts visible (blocked-checkout / toast-* states). */
+    preserveToasts?: boolean;
+    /** Actual URL after an interactive action (recorded on each check row). */
+    finalUrl?: string;
   },
 ): Promise<void> {
   const ctxFull = {
@@ -274,6 +278,7 @@ export async function captureState(
     theme: ctx.theme,
     viewport: ctx.viewport,
   };
+  const finalUrl = options?.finalUrl;
 
   const recordSkipped = async (reason: string) => {
     // Skips are failures for after-phase integrity (timeouts must not greenwash).
@@ -289,6 +294,7 @@ export async function captureState(
       method: "skipped",
       info: false,
       failureSummary: reason.slice(0, 200),
+      finalUrl,
     };
     if (Array.isArray(checks)) {
       checks.push(skipped);
@@ -297,14 +303,18 @@ export async function captureState(
     }
   };
 
-  const keepToasts = /toast/i.test(state);
+  const keepToasts =
+    options?.preserveToasts === true ||
+    /toast/i.test(state) ||
+    state === "plans-checkout-attempt-blocked";
 
   try {
     await withTimeout(
       (async () => {
         await ensureOnLocalhost(page);
         // Strip Next.js overlays. Dismiss Sonner via API (never remove toast DOM —
-        // that breaks React's Toaster insertBefore). Keep toasts for toast-* states.
+        // that breaks React's Toaster insertBefore). Keep toasts for toast-* /
+        // blocked-checkout states.
         await page
           .evaluate((preserveToasts) => {
             if (!preserveToasts) {
@@ -324,10 +334,13 @@ export async function captureState(
           }, keepToasts)
           .catch(() => undefined);
         const found = await auditPageState(page, ctxFull, options);
+        const withUrl = finalUrl
+          ? found.map((c) => ({ ...c, finalUrl }))
+          : found;
         if (Array.isArray(checks)) {
-          checks.push(...found);
+          checks.push(...withUrl);
         } else {
-          await appendChecks(checks, found);
+          await appendChecks(checks, withUrl);
         }
 
         if (options?.screenshot !== false) {
@@ -441,8 +454,9 @@ export async function mockWompiTransaction(page: Page, status: string) {
 export async function blockHostedCheckout(page: Page) {
   await page.route("**/api/billing/subscriptions**", async (route) => {
     if (route.request().method() === "POST" || route.request().method() === "PATCH") {
+      // Non-OK so the plans UI stays local and surfaces toast.error (not a fake success → /billing).
       await route.fulfill({
-        status: 200,
+        status: 400,
         contentType: "application/json",
         body: JSON.stringify({
           error: "e2e-blocked-checkout",
@@ -472,48 +486,47 @@ export async function auditWizardSteps(
   await captureState(page, checks, screenshots, phaseDir, ctx, `/${locale}/wizard`, "wizard-landing");
 
   const start = page.getByRole("button", { name: /^(start|empezar)$/i });
-  if (await start.isVisible().catch(() => false)) {
-    await start.click();
-    await page.waitForTimeout(300);
-    await captureState(page, checks, screenshots, phaseDir, ctx, `/${locale}/wizard`, "wizard-step-type");
+  await expect(start, "wizard Start CTA").toBeVisible({ timeout: 10_000 });
+  await start.click();
+  await page.waitForTimeout(300);
+  await captureState(page, checks, screenshots, phaseDir, ctx, `/${locale}/wizard`, "wizard-step-type");
 
-    const typeOpt = page.locator('[data-asset-type-option="true"]').first();
-    if (await typeOpt.isVisible().catch(() => false)) {
-      await typeOpt.click();
-      const next = page.getByRole("button", { name: /^(next|siguiente)$/i });
-      await next.click();
-      await page.waitForTimeout(300);
-      await captureState(page, checks, screenshots, phaseDir, ctx, `/${locale}/wizard`, "wizard-step-asset");
+  const typeOpt = page.locator('[data-asset-type-option="true"]').first();
+  await expect(typeOpt, "wizard asset-type option").toBeVisible({ timeout: 10_000 });
+  await typeOpt.click();
+  const next = page.getByRole("button", { name: /^(next|siguiente)$/i });
+  await expect(next, "wizard Next CTA").toBeVisible({ timeout: 8_000 });
+  await next.click();
+  await page.waitForTimeout(300);
+  await captureState(page, checks, screenshots, phaseDir, ctx, `/${locale}/wizard`, "wizard-step-asset");
 
-      const name = page.locator("#asset-name");
-      if (await name.isVisible().catch(() => false)) {
-        await name.fill("Contrast Wizard Asset");
-        const desc = page.locator("#asset-description");
-        if (await desc.isVisible().catch(() => false)) {
-          await desc.fill("Wizard contrast description");
-        }
-        const more = page.getByRole("button", { name: /more options|más opciones/i });
-        if (await more.isVisible().catch(() => false)) {
-          await more.click();
-          const msg = page.getByRole("textbox", { name: /write here|escribe aquí|escribe aqui/i });
-          if (await msg.isVisible().catch(() => false)) {
-            await msg.fill("Required wizard message for contrast audit");
-          }
-        }
-        await next.click();
-        await page.waitForTimeout(300);
-        await captureState(
-          page,
-          checks,
-          screenshots,
-          phaseDir,
-          ctx,
-          `/${locale}/wizard`,
-          "wizard-step-beneficiary",
-        );
-      }
+  const name = page.locator("#asset-name");
+  await expect(name, "wizard asset-name field").toBeVisible({ timeout: 10_000 });
+  await name.fill("Contrast Wizard Asset");
+  const desc = page.locator("#asset-description");
+  if (await desc.isVisible().catch(() => false)) {
+    await desc.fill("Wizard contrast description");
+  }
+  const more = page.getByRole("button", { name: /more options|más opciones/i });
+  if (await more.isVisible().catch(() => false)) {
+    await more.click();
+    const msg = page.getByRole("textbox", { name: /write here|escribe aquí|escribe aqui/i });
+    if (await msg.isVisible().catch(() => false)) {
+      await msg.fill("Required wizard message for contrast audit");
     }
   }
+  await expect(next, "wizard Next after asset").toBeVisible({ timeout: 8_000 });
+  await next.click();
+  await page.waitForTimeout(300);
+  await captureState(
+    page,
+    checks,
+    screenshots,
+    phaseDir,
+    ctx,
+    `/${locale}/wizard`,
+    "wizard-step-beneficiary",
+  );
   await dismissOverlays(page);
 }
 
@@ -885,31 +898,43 @@ export async function auditInteractiveAuthenticated(
   );
   const subscribe = page.getByRole("button", { name: /subscribe|suscribir/i }).first();
   await expect(subscribe, "subscribe / checkout CTA").toBeVisible({ timeout: 8_000 });
+  // Payment hosts already aborted via installAuditGuards + blockHostedCheckout.
+  // Capture the page the user actually lands on after Subscribe — never remount
+  // /billing/plans under this label (that invents a resting state and wipes toasts).
   await subscribe.click({ timeout: 10_000 });
-  await page.waitForTimeout(500);
-  const stillLocal = await ensureOnLocalhost(page);
-  // Blocked checkout may bounce to /billing or an external host — always land back on plans.
-  if (!stillLocal || !/\/billing\/plans\/?(\?|$)/.test(new URL(page.url()).pathname)) {
-    await resetToLocalRoute(page, ctx, `/${locale}/billing/plans`);
+  await page.waitForTimeout(800);
+  // If a blocked external navigation somehow completed, abort should have kept
+  // us local; do NOT resetToLocalRoute(/billing/plans).
+  const stillLocal = /localhost|127\.0\.0\.1/.test(page.url());
+  if (!stillLocal) {
+    // Fail-closed: leave non-local URL recorded; ensureOnLocalhost in capture
+    // will blank only if needed — prefer staying put when already aborted.
+    await page.goBack({ waitUntil: "domcontentloaded", timeout: 5_000 }).catch(() => undefined);
   }
-  // Stay on plans with plan cards visible (reject blank/redirected/loading thin captures)
+  const finalUrl = page.url();
+  let captureRoute = `/${locale}/billing/plans`;
+  try {
+    if (/localhost|127\.0\.0\.1/.test(finalUrl)) {
+      captureRoute = new URL(finalUrl).pathname || captureRoute;
+    }
+  } catch {
+    /* keep plans path */
+  }
+  // Wait for toast and/or main chrome on the actual destination (plans or /billing).
+  await page
+    .locator('[data-sonner-toast], main h1, main .page-title')
+    .first()
+    .waitFor({ state: "visible", timeout: 12_000 })
+    .catch(() => undefined);
   await page
     .getByText(/loading subscription|cargando suscripci|loading plans|cargando planes/i)
     .first()
-    .waitFor({ state: "hidden", timeout: 15_000 })
+    .waitFor({ state: "hidden", timeout: 10_000 })
     .catch(() => undefined);
   await expect(
-    page.getByRole("button", { name: /subscribe|suscribir|current plan|plan actual/i }).first(),
-    "plans-checkout-attempt-blocked must show plan CTAs (not loading shell)",
-  ).toBeVisible({ timeout: 15_000 });
-  await expect(
-    page.locator("main .page-title, main h1").first(),
-  ).toBeVisible({ timeout: 8_000 });
-  await page
-    .evaluate(() => {
-      (window as unknown as { __iableeToast?: { dismiss?: () => void } }).__iableeToast?.dismiss?.();
-    })
-    .catch(() => undefined);
+    page.locator("main .page-title, main h1, [data-sonner-toast]").first(),
+    "plans-checkout-attempt-blocked must show local main or toast chrome",
+  ).toBeVisible({ timeout: 12_000 });
   await waitForVisualReady(page);
   await captureState(
     page,
@@ -917,8 +942,9 @@ export async function auditInteractiveAuthenticated(
     screenshots,
     phaseDir,
     ctx,
-    `/${locale}/billing/plans`,
+    captureRoute,
     "plans-checkout-attempt-blocked",
+    { preserveToasts: true, finalUrl },
   );
   await page.unroute("**/api/billing/subscriptions**").catch(() => undefined);
   // Fresh goto after checkout attempt so a stuck navigation cannot poison later states
@@ -1328,6 +1354,8 @@ export function buildExpectedAuditStates(opts: {
           }
         } else {
           for (const r of filters.routes) {
+            // Wizard is covered by wizard-landing / wizard-step-* (not route-wizard).
+            if (r === "wizard" || r.startsWith("wizard/")) continue;
             push(locale, theme, viewport, `route-${r.replace(/\//g, "-")}`);
           }
         }

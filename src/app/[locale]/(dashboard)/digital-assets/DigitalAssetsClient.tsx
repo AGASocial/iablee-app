@@ -433,7 +433,7 @@ export default function DigitalAssetsClient() {
           onAssetUpdated={refreshAssets}
         />
         <Dialog open={assignModalOpen} onOpenChange={(open) => { setAssignModalOpen(open); if (!open) { setSelectedAsset(null); setSelectedBeneficiaryId(null); } }}>
-          <DialogContent className="max-w-lg w-full bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-700 p-4 sm:p-8">
+          <DialogContent className="max-w-lg w-full bg-card border border-border p-4 sm:p-8">
             <DialogHeader>
               <DialogTitle className="text-foreground">{t('assignBeneficiary')}</DialogTitle>
               <DialogClose asChild />
@@ -456,7 +456,7 @@ export default function DigitalAssetsClient() {
                     >
                       <div>
                         <span className="font-medium text-foreground">{b.full_name}</span>
-                        <span className="block text-sm text-gray-500 dark:text-gray-300">{b.email}</span>
+                        <span className="block text-sm text-muted-foreground">{b.email}</span>
                       </div>
                       {selectedBeneficiaryId === b.id && <span className="ml-4 text-xs text-link">{t('selected')}</span>}
                     </button>

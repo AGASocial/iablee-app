@@ -239,6 +239,8 @@ export type AuditCheck = {
   rule?: string;
   info?: boolean;
   failureSummary?: string;
+  /** Actual browser URL at capture time (e.g. post-Subscribe bounce). */
+  finalUrl?: string;
 };
 
 export type ViewportName = "desktop" | "mobile";
@@ -1169,22 +1171,25 @@ export async function auditFocusRings(
 
     const shot = await page.screenshot({ type: "png" });
     const { data, info } = await sharp(shot).raw().ensureAlpha().toBuffer({ resolveWithObject: true });
+    // Scale CSS rects to screenshot pixels (same DPR mapping as fulltext/ui-border).
+    const viewport = await page.viewportSize();
+    const dpr = await page.evaluate(() => window.devicePixelRatio || 1);
+    const sx = viewport ? info.width / viewport.width : dpr;
+    const sy = viewport ? info.height / viewport.height : dpr;
+    const rx = meta.rect.x * sx;
+    const ry = meta.rect.y * sy;
+    const rw = meta.rect.w * sx;
+    const rh = meta.rect.h * sy;
     // Sample into dialog/page padding — avoid label glyphs above inputs and
     // sibling CTAs to the sides of footer buttons.
-    const cx = Math.min(
-      info.width - 1,
-      Math.max(0, Math.round(meta.rect.x + meta.rect.w / 2)),
-    );
-    const midY = Math.min(
-      info.height - 1,
-      Math.max(0, Math.round(meta.rect.y + meta.rect.h / 2)),
-    );
+    const cx = Math.min(info.width - 1, Math.max(0, Math.round(rx + rw / 2)));
+    const midY = Math.min(info.height - 1, Math.max(0, Math.round(ry + rh / 2)));
     const samplePoints: Array<[number, number]> = [
-      [cx, Math.round(meta.rect.y - 28)],
-      [cx, Math.round(meta.rect.y + meta.rect.h + 16)],
-      [Math.round(meta.rect.x + meta.rect.w + 16), midY],
-      [Math.round(meta.rect.x - 16), midY],
-      [Math.round(meta.rect.x + meta.rect.w / 4), Math.round(meta.rect.y + meta.rect.h + 16)],
+      [cx, Math.round(ry - 28 * sy)],
+      [cx, Math.round(ry + rh + 16 * sy)],
+      [Math.round(rx + rw + 16 * sx), midY],
+      [Math.round(rx - 16 * sx), midY],
+      [Math.round(rx + rw / 4), Math.round(ry + rh + 16 * sy)],
     ];
     const adjacentBgs: number[][] = [];
     for (const [xx, yy] of samplePoints) {
@@ -1253,6 +1258,11 @@ export async function auditFocusRings(
 
 /**
  * Input/UI component border vs adjacent background (WCAG 1.4.11, 3:1).
+ * Per-element scrollIntoView({block:'center'}) before sampling so below-fold
+ * controls are measured against real adjacent pixels (not viewport-edge clamps).
+ * Samples every eligible control (no hard cap); failures to measure are recorded
+ * fail-closed as pass:false. Callers may scrollTo(0,0) before invoking so focus
+ * tabbing does not leave OAuth under the photo — then each control re-centres.
  */
 export async function auditUiBorders(page: Page): Promise<
   Array<{
@@ -1266,7 +1276,21 @@ export async function auditUiBorders(page: Page): Promise<
     method: "ui-border";
   }>
 > {
-  const metas = await page.evaluate(() => {
+  type BorderCand = { sel: string; idx: number; selector: string };
+  type BorderMeta = {
+    selector: string;
+    borderColor: string;
+    fillColor: string;
+    text: string;
+    dark: boolean;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  };
+
+  // Enumerate by selector+index (no DOM mutation — React re-renders strip data-* markers).
+  const cands = await page.evaluate((): BorderCand[] => {
     const sels = [
       "input:not([type='hidden'])",
       "textarea",
@@ -1275,25 +1299,13 @@ export async function auditUiBorders(page: Page): Promise<
       "[data-slot='input']",
       "button",
     ];
-    const dark = document.documentElement.classList.contains("dark");
-    const nodes: Array<{
-      selector: string;
-      borderColor: string;
-      fillColor: string;
-      text: string;
-      dark: boolean;
-      x: number;
-      y: number;
-      w: number;
-      h: number;
-    }> = [];
+    const out: BorderCand[] = [];
     for (const sel of sels) {
       document.querySelectorAll(sel).forEach((el, idx) => {
         const cs = getComputedStyle(el);
         const rect = el.getBoundingClientRect();
         if (rect.width < 2 || rect.height < 2) return;
         if (cs.visibility === "hidden" || cs.display === "none") return;
-        // Disabled controls are WCAG-exempt for non-text contrast; skip.
         if (
           (el as HTMLInputElement).disabled ||
           el.getAttribute("aria-disabled") === "true"
@@ -1306,116 +1318,145 @@ export async function auditUiBorders(page: Page): Promise<
           parseFloat(cs.borderBottomWidth) +
           parseFloat(cs.borderLeftWidth);
         if (bw < 0.5) return;
-        // Walk up for an opaque fill — avoid sampling label glyphs at center.
-        let fillColor = cs.backgroundColor;
-        let walk: Element | null = el;
-        const alphaOf = (c: string) => {
-          if (!c || c === "transparent") return 0;
-          // rgba(r, g, b, a) — require 3 commas so blue is never treated as alpha
-          const comma = c.match(
-            /^rgba?\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*,\s*([\d.]+)\s*\)$/i,
-          );
-          if (comma) return Math.min(1, Math.max(0, +comma[1]));
-          // modern rgb(r g b / a) or rgb(r g b / a%)
-          const modern = c.match(/\/\s*([\d.]+%?)\s*\)/);
-          if (modern) {
-            const a = modern[1].endsWith("%")
-              ? parseFloat(modern[1]) / 100
-              : +modern[1];
-            return Math.min(1, Math.max(0, a));
-          }
-          return 1;
-        };
-        while (walk && alphaOf(fillColor) < 0.9) {
-          walk = walk.parentElement;
-          if (!walk) break;
-          fillColor = getComputedStyle(walk).backgroundColor;
-        }
-        nodes.push({
-          selector: `${sel}[${idx}]`,
-          borderColor: cs.borderTopColor || cs.borderColor,
-          fillColor,
-          text: `border:${el.tagName.toLowerCase()}`,
-          dark,
-          x: rect.x,
-          y: rect.y,
-          w: rect.width,
-          h: rect.height,
-        });
+        out.push({ sel, idx, selector: `${sel}[${idx}]` });
       });
     }
-    return nodes.slice(0, 40);
+    return out;
   });
 
-  if (metas.length === 0) return [];
+  if (cands.length === 0) return [];
 
-  const shot = await page.screenshot({ type: "png", fullPage: false });
-  const { data, info } = await sharp(shot).raw().ensureAlpha().toBuffer({ resolveWithObject: true });
-  const viewport = await page.viewportSize();
-  const dpr = await page.evaluate(() => window.devicePixelRatio || 1);
-  const sx = viewport ? info.width / viewport.width : dpr;
-  const sy = viewport ? info.height / viewport.height : dpr;
   const lum = (rgb: number[]) => 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+  const results: Array<{
+    selector: string;
+    text: string;
+    fg: number[];
+    bg: number[];
+    ratio: number;
+    required: number;
+    pass: boolean;
+    method: "ui-border";
+  }> = [];
 
-  return metas
-    .map((m) => {
-      const border = parseCssColor(m.borderColor);
-      if (!border) return null;
-      // Adjacent surfaces (outside) + computed own fill — WCAG 1.4.11 both sides.
-      // Scale CSS rects to screenshot pixels (DPR / HiDPI).
-      const x = m.x * sx;
-      const y = m.y * sy;
-      const w = m.w * sx;
-      const h = m.h * sy;
-      const pad = 4 * Math.max(sx, sy);
-      const cx = Math.round(x + w / 2);
-      const midY = Math.round(y + h / 2);
-      const pts: Array<[number, number]> = [
-        [cx, Math.round(y - pad)],
-        [cx, Math.round(y + h + pad)],
-        [Math.round(x + w + pad), midY],
-        [Math.round(x - pad), midY],
-      ];
-      const samples: number[][] = [];
-      for (const [xx, yy] of pts) {
-        const px = Math.min(info.width - 1, Math.max(0, xx));
-        const py = Math.min(info.height - 1, Math.max(0, yy));
-        const i = (py * info.width + px) * 4;
-        samples.push([data[i], data[i + 1], data[i + 2]]);
-      }
-      // Light UI: prefer lighter page/card (avoid sidebar navy).
-      // Dark UI: measure every adjacent outside sample + own fill; report the
-      // WORST ratio (run #10 reverts run #9 “prefer dark / near-fill” filter).
-      const fill = parseCssColor(m.fillColor);
-      const maxL = Math.max(...samples.map(lum));
-      let surfaces: number[][];
-      if (!m.dark && maxL >= 120) {
-        surfaces = samples.filter((s) => lum(s) >= Math.max(90, maxL - 70));
-      } else {
-        surfaces = samples;
-      }
-      const candidates = [...surfaces, ...(fill ? [fill] : [])].filter(Boolean);
-      let worst = { bg: candidates[0] || [255, 255, 255], ratio: Infinity };
-      for (const bg of candidates) {
-        const r = contrastRatio(border, bg);
-        if (r < 1.15) continue; // on the border ink
-        if (r < worst.ratio) worst = { bg, ratio: r };
-      }
-      if (!Number.isFinite(worst.ratio)) {
-        worst = { bg: [255, 255, 255], ratio: contrastRatio(border, [255, 255, 255]) };
+  const readMeta = async (cand: BorderCand): Promise<BorderMeta | null> =>
+    page.evaluate(({ sel, idx, selector }) => {
+      const el = document.querySelectorAll(sel)[idx] as Element | undefined;
+      if (!el) return null;
+      const cs = getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      if (rect.width < 2 || rect.height < 2) return null;
+      if (cs.visibility === "hidden" || cs.display === "none") return null;
+      const dark = document.documentElement.classList.contains("dark");
+      let fillColor = cs.backgroundColor;
+      let walk: Element | null = el;
+      const alphaOf = (c: string) => {
+        if (!c || c === "transparent") return 0;
+        const comma = c.match(
+          /^rgba?\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*,\s*([\d.]+)\s*\)$/i,
+        );
+        if (comma) return Math.min(1, Math.max(0, +comma[1]));
+        const modern = c.match(/\/\s*([\d.]+%?)\s*\)/);
+        if (modern) {
+          const a = modern[1].endsWith("%")
+            ? parseFloat(modern[1]) / 100
+            : +modern[1];
+          return Math.min(1, Math.max(0, a));
+        }
+        return 1;
+      };
+      while (walk && alphaOf(fillColor) < 0.9) {
+        walk = walk.parentElement;
+        if (!walk) break;
+        fillColor = getComputedStyle(walk).backgroundColor;
       }
       return {
-        selector: m.selector,
-        text: m.text,
-        fg: border,
-        bg: worst.bg,
-        ratio: Number(worst.ratio.toFixed(2)),
-        required: 3,
-        pass: worst.ratio >= 3,
-        method: "ui-border" as const,
+        selector,
+        borderColor: cs.borderTopColor || cs.borderColor,
+        fillColor,
+        text: `border:${el.tagName.toLowerCase()}`,
+        dark,
+        x: rect.x,
+        y: rect.y,
+        w: rect.width,
+        h: rect.height,
       };
-    })
-    .filter((x): x is NonNullable<typeof x> => !!x);
+    }, cand);
+
+  for (const cand of cands) {
+    await page.evaluate(({ sel, idx }) => {
+      const el = document.querySelectorAll(sel)[idx] as HTMLElement | undefined;
+      el?.scrollIntoView?.({ block: "center", inline: "nearest" });
+    }, cand);
+    await page.waitForTimeout(40);
+
+    let meta = await readMeta(cand);
+    if (!meta) {
+      // One retry after layout settle (portal/list re-index); omit if still gone.
+      await page.waitForTimeout(80);
+      meta = await readMeta(cand);
+    }
+    if (!meta) continue;
+
+    const border = parseCssColor(meta.borderColor);
+    if (!border) continue;
+
+    const shot = await page.screenshot({ type: "png", fullPage: false });
+    const { data, info } = await sharp(shot).raw().ensureAlpha().toBuffer({ resolveWithObject: true });
+    const viewport = await page.viewportSize();
+    const dpr = await page.evaluate(() => window.devicePixelRatio || 1);
+    const sx = viewport ? info.width / viewport.width : dpr;
+    const sy = viewport ? info.height / viewport.height : dpr;
+    const x = meta.x * sx;
+    const y = meta.y * sy;
+    const w = meta.w * sx;
+    const h = meta.h * sy;
+    const pad = 4 * Math.max(sx, sy);
+    const cx = Math.round(x + w / 2);
+    const midY = Math.round(y + h / 2);
+    const pts: Array<[number, number]> = [
+      [cx, Math.round(y - pad)],
+      [cx, Math.round(y + h + pad)],
+      [Math.round(x + w + pad), midY],
+      [Math.round(x - pad), midY],
+    ];
+    const samples: number[][] = [];
+    for (const [xx, yy] of pts) {
+      const px = Math.min(info.width - 1, Math.max(0, xx));
+      const py = Math.min(info.height - 1, Math.max(0, yy));
+      const i = (py * info.width + px) * 4;
+      samples.push([data[i], data[i + 1], data[i + 2]]);
+    }
+    const fill = parseCssColor(meta.fillColor);
+    const maxL = Math.max(...samples.map(lum));
+    let surfaces: number[][];
+    if (!meta.dark && maxL >= 120) {
+      surfaces = samples.filter((s) => lum(s) >= Math.max(90, maxL - 70));
+    } else {
+      surfaces = samples;
+    }
+    const candidates = [...surfaces, ...(fill ? [fill] : [])].filter(Boolean);
+    let worst = { bg: candidates[0] || [255, 255, 255], ratio: Infinity };
+    for (const bg of candidates) {
+      const r = contrastRatio(border, bg);
+      if (r < 1.15) continue;
+      if (r < worst.ratio) worst = { bg, ratio: r };
+    }
+    if (!Number.isFinite(worst.ratio)) {
+      worst = { bg: [255, 255, 255], ratio: contrastRatio(border, [255, 255, 255]) };
+    }
+    results.push({
+      selector: meta.selector,
+      text: meta.text,
+      fg: border,
+      bg: worst.bg,
+      ratio: Number(worst.ratio.toFixed(2)),
+      required: 3,
+      pass: worst.ratio >= 3,
+      method: "ui-border",
+    });
+  }
+
+  return results;
 }
 
 export async function auditPageState(
@@ -1544,8 +1585,10 @@ export async function auditPageState(
   }
 
   if (options?.borders === true) {
-    // Focus-ring tabbing can scroll OAuth/controls under the photo; reset so
-    // ui-border’s ≈4px outside samples hit opaque card pads, not photo wash.
+    // Focus-ring tabbing can scroll OAuth/controls under the photo. Reset to
+    // top first so the initial OAuth strip sits on the opaque card pad; then
+    // auditUiBorders scrollIntoView(center)s each control before sampling
+    // (so below-fold borders are not clamped to viewport edges).
     await page.evaluate(() => window.scrollTo(0, 0)).catch(() => undefined);
     await page.waitForTimeout(50);
     // Measure borders in the live focused/selected state (do not blur first).

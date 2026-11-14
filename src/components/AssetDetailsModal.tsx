@@ -175,10 +175,10 @@ export default function AssetDetailsModal({
         switch (asset.asset_type) {
             case 'letter':
                 return (
-                    <div className="relative p-6 bg-white dark:bg-gray-900/50 rounded-xl border border-border mt-4 shadow-sm">
+                    <div className="relative p-6 bg-card rounded-xl border border-border mt-4 shadow-sm">
                         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-rose-400/50 to-transparent opacity-50" />
                         <h4 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wider">{t('messageContent') || 'Message'}</h4>
-                        <div className="prose dark:prose-invert max-w-none text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                        <div className="prose dark:prose-invert max-w-none text-muted-foreground whitespace-pre-wrap">
                             {customFields.message_content ? String(customFields.message_content) : <span className="italic text-muted-foreground">{t('noContent') || 'No content provided.'}</span>}
                         </div>
                     </div>
@@ -190,7 +190,7 @@ export default function AssetDetailsModal({
                         {customFields.photo_caption && (
                             <div className="p-4 bg-muted/30 rounded-lg border border-border/50">
                                 <h4 className="text-xs font-semibold text-muted-foreground mb-1 uppercase">{t('caption') || 'Caption'}</h4>
-                                <p className="text-gray-700 dark:text-gray-300">{String(customFields.photo_caption)}</p>
+                                <p className="text-muted-foreground">{String(customFields.photo_caption)}</p>
                             </div>
                         )}
 
@@ -229,7 +229,7 @@ export default function AssetDetailsModal({
                         {customFields.video_caption && (
                             <div className="p-4 bg-muted/30 rounded-lg border border-border/50">
                                 <h4 className="text-xs font-semibold text-muted-foreground mb-1 uppercase">{t('caption') || 'Caption'}</h4>
-                                <p className="text-gray-700 dark:text-gray-300">{String(customFields.video_caption)}</p>
+                                <p className="text-muted-foreground">{String(customFields.video_caption)}</p>
                             </div>
                         )}
 
@@ -291,14 +291,14 @@ export default function AssetDetailsModal({
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="p-4 bg-muted/30 rounded-lg border border-border/50">
                                 <h4 className="text-xs font-semibold text-muted-foreground mb-1 uppercase">{t('documentType') || 'Type'}</h4>
-                                <p className="text-gray-900 dark:text-gray-100 font-medium capitalize">
+                                <p className="text-foreground font-medium capitalize">
                                     {String(customFields.document_type || 'Document')}
                                 </p>
                             </div>
                             {customFields.observations && (
                                 <div className="p-4 bg-muted/30 rounded-lg border border-border/50 sm:col-span-2">
                                     <h4 className="text-xs font-semibold text-muted-foreground mb-1 uppercase">{t('observations') || 'Observations'}</h4>
-                                    <p className="text-gray-700 dark:text-gray-300">{String(customFields.observations)}</p>
+                                    <p className="text-muted-foreground">{String(customFields.observations)}</p>
                                 </div>
                             )}
                         </div>
@@ -308,7 +308,7 @@ export default function AssetDetailsModal({
                             <div className="border border-border rounded-xl overflow-hidden divide-y divide-border">
                                 {attachments.slice(0, 3).map(file => (
                                     <div key={file.id} className="p-3 flex items-center gap-3 hover:bg-muted/50 transition-colors">
-                                        <File className="w-5 h-5 text-blue-500" />
+                                        <File className="w-5 h-5 text-primary" />
                                         <span className="text-sm truncate flex-1">{file.file_name}</span>
                                         <a
                                             href={`/api/assets/attachments/${file.id}`}
@@ -454,7 +454,7 @@ export default function AssetDetailsModal({
                     {shouldShowField('files') && (
                         <div className="flex items-center justify-between p-4 bg-muted/20 rounded-xl border border-border/60">
                             <div className="flex items-center gap-3">
-                                <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg text-blue-600 dark:text-blue-400">
+                                <div className="p-2 bg-primary/10 rounded-lg text-primary">
                                     <Paperclip className="w-4 h-4" />
                                 </div>
                                 <div>

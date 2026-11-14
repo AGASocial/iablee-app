@@ -149,7 +149,7 @@ export default function AddBeneficiaryModal({ open, onOpenChange, onSuccess, ben
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[500px] glass-panel border-white/10 dark:border-white/5">
                 <DialogHeader>
-                    <DialogTitle className="text-xl font-heading font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-600">
+                    <DialogTitle className="text-xl font-heading font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary">
                         {beneficiaryToEdit ? t('editBeneficiary') : t('addBeneficiary')}
                     </DialogTitle>
                 </DialogHeader>
