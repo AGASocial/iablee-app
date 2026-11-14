@@ -75,10 +75,19 @@ function randomSuffix(length = 6): string {
   return out;
 }
 
+/** Guaranteed policy-compliant password: upper, lower, digit, special, len>=10, no 4-run seq/repeat. */
+function buildCompliantPassword(): string {
+  // Separators break any accidental sequential/repeated runs in the random parts.
+  const a = randomSuffix(3);
+  const b = randomSuffix(3);
+  const c = randomSuffix(3);
+  return `Tp9!${a}-${b}_${c}`;
+}
+
 function buildUserIdentity(): { email: string; password: string; fullName: string } {
   const now = Date.now();
   const email = `e2e-${now}-${randomSuffix()}@iablee.test`;
-  const password = `E2E!${randomSuffix(10)}${Date.now().toString().slice(-4)}`;
+  const password = buildCompliantPassword();
   const fullName = `E2E User ${randomSuffix(4)}`;
   return { email, password, fullName };
 }

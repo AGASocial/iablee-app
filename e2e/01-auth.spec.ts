@@ -34,7 +34,7 @@ test.describe("01 auth", () => {
     await page.goto("/en/auth/register");
     await page.getByLabel(/full name/i).fill("E2E Register");
     await page.getByLabel(/email/i).fill("e2e-register@iablee.test");
-    await page.getByLabel(/password/i).fill("Password123!");
+    await page.locator('input[type="password"]').fill("Password123!");
     await page.getByRole("button", { name: /create account/i }).click();
 
     await expect(page).toHaveURL(/\/en\/auth\/login\?registered=true/);

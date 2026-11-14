@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthRedirectOrigin, resolveAuthLocale } from '@/lib/app-url';
 import { createRouteClient } from '@/lib/supabase-server';
 import { checkRateLimit, getClientIp, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
+import { getPasswordPolicyError } from '@/lib/password-policy';
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,6 +16,14 @@ export async function POST(request: NextRequest) {
 
     if (!email || !password) {
       return NextResponse.json({ error: 'Email and password are required' }, { status: 400 });
+    }
+
+    const policyError = getPasswordPolicyError(
+      typeof password === 'string' ? password : '',
+      { email: typeof email === 'string' ? email : undefined },
+    );
+    if (policyError) {
+      return NextResponse.json({ error: policyError }, { status: 400 });
     }
 
     const safeLocale = resolveAuthLocale(locale);

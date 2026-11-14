@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useForm } from "react-hook-form"
+import { useForm, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { Button } from "@/components/ui/button"
@@ -13,25 +13,17 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form"
-import { Input } from "@/components/ui/input"
+import { PasswordInput } from "@/components/ui/password-input"
+import { PasswordStrengthChecklist } from "@/components/ui/password-strength-checklist"
 import { toast } from "sonner"
 import { useTranslations } from "next-intl"
 import { Link, useRouter } from "@/i18n/navigation"
+import { strongPasswordSuperRefine } from "@/lib/password-policy"
 
-const formSchema = z
-  .object({
-    password: z
-      .string()
-      .min(8, "Password must be at least 8 characters")
-      .max(100, "Password must be less than 100 characters"),
-    confirmPassword: z.string(),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
-  })
-
-type FormData = z.infer<typeof formSchema>
+type FormData = {
+  password: string
+  confirmPassword: string
+}
 
 export function ResetPasswordForm() {
   const router = useRouter()
@@ -40,6 +32,22 @@ export function ResetPasswordForm() {
   const [hasSession, setHasSession] = React.useState(false)
   const [submitError, setSubmitError] = React.useState<string | null>(null)
   const t = useTranslations()
+
+  const formSchema = React.useMemo(
+    () =>
+      z
+        .object({
+          password: z.string().min(1, t("passwordPolicy.tooWeak")),
+          confirmPassword: z.string(),
+        })
+        .superRefine(strongPasswordSuperRefine({ message: t("passwordPolicy.tooWeak") }))
+        .refine((data) => data.password === data.confirmPassword, {
+          message: t("settings.passwordsDoNotMatch"),
+          path: ["confirmPassword"],
+        }),
+    [t],
+  )
+
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -47,6 +55,8 @@ export function ResetPasswordForm() {
       confirmPassword: "",
     },
   })
+
+  const watchedPassword = useWatch({ control: form.control, name: "password" }) ?? ""
 
   React.useEffect(() => {
     async function checkSession() {
@@ -161,9 +171,8 @@ export function ResetPasswordForm() {
               <FormItem>
                 <FormLabel>{t("newPassword")}</FormLabel>
                 <FormControl>
-                  <Input
+                  <PasswordInput
                     placeholder="••••••••"
-                    type="password"
                     autoComplete="new-password"
                     className="bg-background/80 dark:bg-background/70"
                     {...field}
@@ -173,6 +182,7 @@ export function ResetPasswordForm() {
                     }}
                   />
                 </FormControl>
+                <PasswordStrengthChecklist password={watchedPassword} className="pt-1" />
                 <FormMessage />
               </FormItem>
             )}
@@ -184,9 +194,8 @@ export function ResetPasswordForm() {
               <FormItem>
                 <FormLabel>{t("confirmPassword")}</FormLabel>
                 <FormControl>
-                  <Input
+                  <PasswordInput
                     placeholder="••••••••"
-                    type="password"
                     autoComplete="new-password"
                     className="bg-background/80 dark:bg-background/70"
                     {...field}

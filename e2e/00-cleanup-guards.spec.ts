@@ -94,7 +94,9 @@ test.describe("00 cleanup guards", () => {
   test("fails closed when run ownership is foreign", async () => {
     const admin = getSupabaseAdmin();
     const email = `e2e-${Date.now()}-foreign@iablee.test`;
-    const password = `E2E!${randomUUID().replace(/-/g, "").slice(0, 12)}9`;
+    // Policy-compliant: upper, lower, digit, special, len>=10, separators break seq/repeat runs.
+    const hex = randomUUID().replace(/-/g, "");
+    const password = `Tp9!${hex.slice(0, 3)}-${hex.slice(3, 6)}_${hex.slice(6, 9)}`;
     const fullName = "E2E Foreign Run";
     const foreignRunId = `foreign-${Date.now()}`;
 

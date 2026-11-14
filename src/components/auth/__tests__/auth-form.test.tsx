@@ -4,6 +4,10 @@ import userEvent from '@testing-library/user-event';
 import { AuthForm } from '../auth-form';
 import { toast } from 'sonner';
 
+function getPasswordInput() {
+  return screen.getByLabelText('password', { selector: 'input' });
+}
+
 describe('AuthForm', () => {
   const mockFetch = global.fetch as jest.Mock;
 
@@ -27,7 +31,7 @@ describe('AuthForm', () => {
 
       expect(screen.getByText('welcome')).toBeInTheDocument();
       expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
+      expect(getPasswordInput()).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /^signIn$/i })).toBeInTheDocument();
     });
 
@@ -36,7 +40,7 @@ describe('AuthForm', () => {
       render(<AuthForm type="login" />);
 
       await user.type(screen.getByLabelText(/email/i), 'invalid-email');
-      await user.type(screen.getByLabelText(/password/i), 'password123');
+      await user.type(getPasswordInput(), 'password123');
       await user.click(screen.getByRole('button', { name: /^signIn$/i }));
 
       await waitFor(() => {
@@ -59,7 +63,7 @@ describe('AuthForm', () => {
       render(<AuthForm type="login" />);
 
       await user.type(screen.getByLabelText(/email/i), 'test@example.com');
-      await user.type(screen.getByLabelText(/password/i), 'password123');
+      await user.type(getPasswordInput(), 'password123');
       await user.click(screen.getByRole('button', { name: /^signIn$/i }));
 
       await waitFor(() => {
@@ -83,12 +87,23 @@ describe('AuthForm', () => {
       render(<AuthForm type="login" />);
 
       await user.type(screen.getByLabelText(/email/i), 'test@example.com');
-      await user.type(screen.getByLabelText(/password/i), 'password123');
+      await user.type(getPasswordInput(), 'password123');
       await user.click(screen.getByRole('button', { name: /^signIn$/i }));
 
       await waitFor(() => {
         expect(toast.error).toHaveBeenCalledWith(errorMessage);
       });
+    });
+
+    it('should toggle password visibility', async () => {
+      const user = userEvent.setup();
+      render(<AuthForm type="login" />);
+
+      expect(getPasswordInput()).toHaveAttribute('type', 'password');
+      await user.click(screen.getByRole('button', { name: 'showPassword' }));
+      expect(getPasswordInput()).toHaveAttribute('type', 'text');
+      await user.click(screen.getByRole('button', { name: 'hidePassword' }));
+      expect(getPasswordInput()).toHaveAttribute('type', 'password');
     });
   });
 
@@ -99,7 +114,7 @@ describe('AuthForm', () => {
       expect(screen.getByText('createAnAccount')).toBeInTheDocument();
       expect(screen.getByLabelText(/fullName/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
+      expect(getPasswordInput()).toBeInTheDocument();
     });
 
     it('should call backend register on successful registration', async () => {
@@ -113,7 +128,7 @@ describe('AuthForm', () => {
 
       await user.type(screen.getByLabelText(/fullName/i), 'John Doe');
       await user.type(screen.getByLabelText(/email/i), 'test@example.com');
-      await user.type(screen.getByLabelText(/password/i), 'password123');
+      await user.type(getPasswordInput(), 'Password123!');
       await user.click(screen.getByRole('button', { name: /createAccount/i }));
 
       await waitFor(() => {
