@@ -5,7 +5,7 @@ import {
   parseWompiReference,
 } from '../wompi.adapter';
 import type { PlanDefinition } from '../../types';
-import { WOMPI_PLACEHOLDER_COP_CENTS } from '../../wompi-pricing';
+import { WOMPI_PLAN_AMOUNT_COP_CENTS } from '../../wompi-pricing';
 
 describe('buildWompiIntegritySignature', () => {
   it('matches the official Wompi integrity test vector', () => {
@@ -106,7 +106,7 @@ describe('WompiAdapter.createCheckoutSession', () => {
       },
     });
 
-    const expectedAmount = WOMPI_PLACEHOLDER_COP_CENTS[plan.id];
+    const expectedAmount = WOMPI_PLAN_AMOUNT_COP_CENTS[plan.id];
     const expectedSignature = buildWompiIntegritySignature({
       reference: `wompi_${userId}_${plan.id}_111`,
       amountInCents: expectedAmount,

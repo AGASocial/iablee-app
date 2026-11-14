@@ -1,12 +1,12 @@
 import {
   resolveWompiAmountInCents,
-  WOMPI_PLACEHOLDER_COP_CENTS,
+  WOMPI_PLAN_AMOUNT_COP_CENTS,
 } from '../wompi-pricing';
 
 describe('resolveWompiAmountInCents', () => {
-  it('uses placeholder config when provider map is a non-numeric legacy id', () => {
+  it('uses config when provider map is a non-numeric legacy id', () => {
     expect(resolveWompiAmountInCents('plan_necessary_month', 'necessary_monthly')).toBe(
-      WOMPI_PLACEHOLDER_COP_CENTS.plan_necessary_month
+      WOMPI_PLAN_AMOUNT_COP_CENTS.plan_necessary_month
     );
   });
 
@@ -26,8 +26,14 @@ describe('resolveWompiAmountInCents', () => {
     );
   });
 
-  it('keeps paid-plan placeholders positive for sandbox checkout', () => {
-    for (const [planId, amount] of Object.entries(WOMPI_PLACEHOLDER_COP_CENTS)) {
+  it('keeps paid-plan COP amounts positive and matches confirmed prices', () => {
+    expect(WOMPI_PLAN_AMOUNT_COP_CENTS).toEqual({
+      plan_necessary_month: 4_000_000,
+      plan_necessary_year: 40_000_000,
+      plan_premium_month: 8_000_000,
+      plan_premium_year: 80_000_000,
+    });
+    for (const [planId, amount] of Object.entries(WOMPI_PLAN_AMOUNT_COP_CENTS)) {
       expect(amount).toBeGreaterThan(0);
       expect(resolveWompiAmountInCents(planId)).toBe(amount);
     }
