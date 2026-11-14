@@ -49,7 +49,7 @@ export default function DashboardOnboardingChecklist({
 
   return (
     <section
-      className="rounded-3xl border border-brand-chip/80 bg-brand-tint/70 p-6 shadow-sm backdrop-blur dark:border-border dark:bg-card/80"
+      className="rounded-3xl border border-brand-chip/80 bg-brand-tint p-6 shadow-sm backdrop-blur dark:border-border dark:bg-card"
       aria-labelledby="dashboard-checklist-title"
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -98,7 +98,7 @@ export default function DashboardOnboardingChecklist({
           return (
             <li
               key={step.key}
-              className="flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-card/80 px-4 py-3 dark:bg-background/40"
+              className="flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-card px-4 py-3"
             >
               <div className="flex items-center gap-3">
                 {step.done ? (

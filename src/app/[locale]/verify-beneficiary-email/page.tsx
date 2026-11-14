@@ -15,25 +15,25 @@ const STATUS_CONFIG: Record<
     icon: CheckCircle2,
     titleKey: "beneficiaryEmailVerifySuccessTitle",
     descriptionKey: "beneficiaryEmailVerifySuccessDescription",
-    className: "text-green-500",
+    className: "text-success",
   },
   expired: {
     icon: Clock,
     titleKey: "beneficiaryEmailVerifyExpiredTitle",
     descriptionKey: "beneficiaryEmailVerifyExpiredDescription",
-    className: "text-amber-500",
+    className: "text-warning-foreground",
   },
   used: {
     icon: CheckCircle2,
     titleKey: "beneficiaryEmailVerifyUsedTitle",
     descriptionKey: "beneficiaryEmailVerifyUsedDescription",
-    className: "text-green-500",
+    className: "text-success",
   },
   invalid: {
     icon: XCircle,
     titleKey: "beneficiaryEmailVerifyInvalidTitle",
     descriptionKey: "beneficiaryEmailVerifyInvalidDescription",
-    className: "text-red-500",
+    className: "text-destructive",
   },
 };
 
@@ -59,7 +59,7 @@ export default function VerifyBeneficiaryEmailPage() {
         <p className="text-muted-foreground">{t(config.descriptionKey)}</p>
         <Link
           href="https://iablee.com"
-          className="inline-block text-sm text-primary hover:underline"
+          className="inline-block text-sm font-medium text-link hover:underline"
         >
           {t("learnMoreAboutIablee")}
         </Link>

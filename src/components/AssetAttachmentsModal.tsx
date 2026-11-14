@@ -243,11 +243,11 @@ export default function AssetAttachmentsModal({
   const renderPreview = (file: AttachmentWithState) => {
     if (file.error === 'not_found') {
       return (
-        <div className="flex items-center justify-center p-8 text-center bg-gray-50 dark:bg-gray-800 rounded-lg h-64">
+        <div className="flex items-center justify-center p-8 text-center bg-muted rounded-lg h-64">
           <div>
-            <File className="w-16 h-16 mx-auto mb-4 text-red-500" />
-            <p className="text-red-600 font-medium mb-2">{t('fileNotFound')}</p>
-            <p className="text-sm text-gray-500 mb-4">{t('fileNotFoundDesc') || "The file could not be found."}</p>
+            <File className="w-16 h-16 mx-auto mb-4 text-destructive" />
+            <p className="text-destructive font-medium mb-2">{t('fileNotFound')}</p>
+            <p className="text-sm text-muted-foreground mb-4">{t('fileNotFoundDesc') || "The file could not be found."}</p>
           </div>
         </div>
       );
@@ -342,17 +342,17 @@ export default function AssetAttachmentsModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-7xl md:max-w-7xl lg:max-w-7xl w-[95vw] max-h-[90vh] bg-white dark:bg-gray-800 border-0 shadow-2xl p-0">
-        <DialogHeader className="p-6 pb-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+      <DialogContent className="sm:max-w-7xl md:max-w-7xl lg:max-w-7xl w-[95vw] max-h-[90vh] bg-card border-0 shadow-2xl p-0">
+        <DialogHeader className="p-6 pb-4 bg-card border-b border-border">
           <DialogTitle className="text-foreground text-xl font-semibold">
             {t('assetAttachments')} - {asset?.asset_name || ''}
           </DialogTitle>
           <DialogClose asChild />
         </DialogHeader>
 
-        <div className="flex flex-col h-full bg-white dark:bg-gray-800">
+        <div className="flex flex-col h-full bg-card">
           {/* Upload Section */}
-          <div className="p-6 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+          <div className="p-6 border-b border-border bg-card">
             <div className="flex items-center gap-4">
               <input
                 type="file"
@@ -366,7 +366,7 @@ export default function AssetAttachmentsModal({
                 <Button
                   asChild
                   disabled={uploading}
-                  className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-white dark:bg-gray-700 dark:hover:bg-gray-600"
+                  className="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80"
                 >
                   <span>
                     <Upload className="w-4 h-4" />
@@ -381,13 +381,13 @@ export default function AssetAttachmentsModal({
           </div>
 
           {/* Content Area */}
-          <div className="flex-1 overflow-hidden bg-white dark:bg-gray-800">
+          <div className="flex-1 overflow-hidden bg-card">
             {loading ? (
-              <div className="flex items-center justify-center h-64 bg-white dark:bg-gray-800">
+              <div className="flex items-center justify-center h-64 bg-card">
                 <div className="text-muted-foreground">{t('loading')}</div>
               </div>
             ) : attachments.length === 0 ? (
-              <div className="flex items-center justify-center h-64 bg-white dark:bg-gray-800">
+              <div className="flex items-center justify-center h-64 bg-card">
                 <div className="text-center">
                   <File className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
                   <p className="text-muted-foreground">{t('noFilesAttached')}</p>
@@ -395,8 +395,8 @@ export default function AssetAttachmentsModal({
               </div>
             ) : previewFile ? (
               /* Preview Mode */
-              <div className="h-full flex flex-col bg-white dark:bg-gray-800">
-                <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between bg-white dark:bg-gray-800">
+              <div className="h-full flex flex-col bg-card">
+                <div className="p-4 border-b border-border flex items-center justify-between bg-card">
                   <h3 className="font-medium text-foreground">
                     {previewFile.file_name}
                   </h3>
@@ -404,24 +404,24 @@ export default function AssetAttachmentsModal({
                     variant="outline"
                     size="sm"
                     onClick={() => setPreviewFile(null)}
-                    className="border-gray-300 dark:border-gray-600"
+                    className="border-border"
                   >
                     <X className="w-4 h-4" />
                   </Button>
                 </div>
-                <div className="flex-1 overflow-auto bg-white dark:bg-gray-800">
+                <div className="flex-1 overflow-auto bg-card">
                   {renderPreview(previewFile)}
                 </div>
               </div>
             ) : (
               /* File List Mode */
-              <div className="h-full overflow-auto bg-white dark:bg-gray-800">
+              <div className="h-full overflow-auto bg-card">
                 <div className="p-6">
                   <div className="space-y-3">
                     {attachments.map((file, index) => (
                       <div
                         key={file.id || index}
-                        className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-shadow bg-white dark:bg-gray-700"
+                        className="border border-border rounded-lg p-4 hover:shadow-md transition-shadow bg-card"
                       >
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
                           <div className="flex-shrink-0 text-muted-foreground">
@@ -443,7 +443,7 @@ export default function AssetAttachmentsModal({
                               size="sm"
                               variant="outline"
                               onClick={() => openPreview(file)}
-                              className="border-gray-300 dark:border-gray-600 whitespace-nowrap"
+                              className="border-border whitespace-nowrap"
                             >
                               <Eye className="w-4 h-4 mr-1" />
                               {t('preview')}
@@ -452,7 +452,7 @@ export default function AssetAttachmentsModal({
                               size="sm"
                               variant="outline"
                               onClick={() => handleDownload(file)}
-                              className="border-gray-300 dark:border-gray-600"
+                              className="border-border"
                               title={t('download')}
                             >
                               <Download className="w-4 h-4" />

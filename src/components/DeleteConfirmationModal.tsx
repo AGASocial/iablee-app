@@ -27,10 +27,10 @@ export default function DeleteConfirmationModal({
     return (
         <Dialog open={open} onOpenChange={(val) => !val && !loading && onClose()}>
             <DialogContent className="sm:max-w-[425px] p-0 overflow-hidden border-0 shadow-xl">
-                <div className="bg-white dark:bg-zinc-950 p-6">
+                <div className="bg-card p-6">
                     <div className="flex flex-col items-center text-center gap-4 pt-4">
-                        <div className="h-16 w-16 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center mb-2">
-                            <AlertTriangle className="h-8 w-8 text-red-600 dark:text-red-500" />
+                        <div className="h-16 w-16 rounded-full bg-destructive/10 flex items-center justify-center mb-2">
+                            <AlertTriangle className="h-8 w-8 text-destructive" />
                         </div>
                         <DialogHeader>
                             <DialogTitle className="text-xl sm:text-2xl text-center">{title}</DialogTitle>

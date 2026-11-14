@@ -32,6 +32,7 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -55,6 +56,35 @@
   --color-brand-tint: var(--brand-tint);
   --color-brand-plum: var(--brand-plum);
   --color-brand-plum-foreground: var(--brand-plum-foreground);
+  --color-link: var(--link);
+  --color-btn-disabled-bg: var(--btn-disabled-bg);
+  --color-btn-disabled-fg: var(--btn-disabled-fg);
+  --color-btn-disabled-destructive-bg: var(--btn-disabled-destructive-bg);
+  --color-btn-disabled-destructive-fg: var(--btn-disabled-destructive-fg);
+  --color-status-active-bg: var(--status-active-bg);
+  --color-status-active-fg: var(--status-active-fg);
+  --color-status-pending-bg: var(--status-pending-bg);
+  --color-status-pending-fg: var(--status-pending-fg);
+  --color-status-inactive-bg: var(--status-inactive-bg);
+  --color-status-inactive-fg: var(--status-inactive-fg);
+  --color-status-unknown-bg: var(--status-unknown-bg);
+  --color-status-unknown-fg: var(--status-unknown-fg);
+  --color-sidebar-item-fg: var(--sidebar-item-fg);
+  --color-sidebar-item-active-bg: var(--sidebar-item-active-bg);
+  --color-sidebar-item-active-fg: var(--sidebar-item-active-fg);
+  --color-settings-nav-fg: var(--settings-nav-fg);
+  --color-settings-nav-active-bg: var(--settings-nav-active-bg);
+  --color-hero-accent: var(--hero-accent);
+  --color-hero-accent-wash: var(--hero-accent-wash);
+  --color-form-error-bg: var(--form-error-bg);
+  --color-form-error-fg: var(--form-error-fg);
+  --color-page-title-wash: var(--page-title-wash);
+  --color-input-fill: var(--input-fill);
+  --color-focus-ring: var(--focus-ring);
+  --color-focus-ring-on-sidebar: var(--focus-ring-on-sidebar);
+  --color-selected-option-border: var(--selected-option-border);
+  --color-selected-option-bg: var(--selected-option-bg);
+  --color-placeholder: var(--placeholder);
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -98,34 +128,38 @@
   --popover: #FFFFFF;
   --popover-foreground: #2B2A33;
 
-  --primary: #0766EE;
+  /* Deeper primary so white labels keep ≥5.5:1 margin (hover uses solid --btn-gradient-hover-*). */
+  --primary: #054DBF;
   --primary-foreground: #FFFFFF;
 
   --secondary: #EEF4FD;
-  --secondary-foreground: #103065;
+  --secondary-foreground: #0C2858;
 
   --muted: #EEF4FD;
   /* Darkened for WCAG AA on background.png (was #6E6A73, failed ~2.4:1 on light blues). */
-  --muted-foreground: #3F3C45;
+  /* Darker muted for placeholders / secondary labels over glass + photo. */
+  --muted-foreground: #2F2C34;
 
   --accent: #EEF4FD;
-  --accent-foreground: #103065;
+  --accent-foreground: #0C2858;
 
-  --destructive: #B42318;
+  /* Darker destructive for AA on light glass / muted surfaces. */
+  --destructive: #9F1D14;
   --destructive-foreground: #FFFFFF;
 
-  --border: #5E80B8;
-  --input: #5E80B8;
-  --ring: #0766EE;
+  --border: #4A6FA8;
+  --input: #4A6FA8;
+  --ring: #054DBF;
 
-  --brand-navy: #103065;
-  --brand-navy-foreground: #E7EFFC;
+  --brand-navy: #0C2858;
+  --brand-navy-foreground: #FFFFFF;
   --brand-chip: #CFDFF9;
   --brand-tint: #EEF4FD;
   --brand-plum: #6B2E4A;
   --brand-plum-foreground: #FFFFFF;
 
-  --success: #1F7A4D;
+  /* Success green darkened so AA clears on muted/photo washes (~4.49→4.5+). */
+  --success: #0E5A36;
   --success-foreground: #FFFFFF;
 
   --warning: #F3E1C7;
@@ -135,21 +169,75 @@
   --chart-1: #6B2E4A;
   --chart-2: #1F7A4D;
   --chart-3: #0766EE;
-  --chart-4: #103065;
+  --chart-4: #0C2858;
   --chart-5: #7A4B12;
 
-  /* Sidebar — navy bar, active item tint */
-  --sidebar: #103065;
-  --sidebar-foreground: #E7EFFC;
-  --sidebar-primary: #0766EE;
+  /* Sidebar — deeper navy + brighter label ink for ≥5.5:1 margin */
+  --sidebar: #0C2858;
+  --sidebar-foreground: #FFFFFF;
+  --sidebar-primary: #054DBF;
   --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-icon: #5BA3FF;
+  --sidebar-icon: #8EC0FF;
   --sidebar-accent: #E7EFFC;
-  --sidebar-accent-foreground: #103065;
+  --sidebar-accent-foreground: #0C2858;
   --sidebar-border: rgb(231 239 252 / 0.40);
-  --sidebar-ring: #0766EE;
+  --sidebar-ring: #054DBF;
+
+  /* Semantic contrast tokens (KAN-146) */
+  --link: #054DBF;
+  --btn-disabled-bg: #CFDFF9;
+  --btn-disabled-fg: #0C2858;
+  --btn-disabled-destructive-bg: #F5D0CD;
+  --btn-disabled-destructive-fg: #9F1D14;
+  /* Deeper active ink so badges still clear 4.5:1 if a parent wash/opacity composites (~0.74α). */
+  --status-active-bg: #D8F0E3;
+  --status-active-fg: #083820;
+  --status-pending-bg: #F3E1C7;
+  --status-pending-fg: #7A4B12;
+  --status-inactive-bg: #F5D0CD;
+  --status-inactive-fg: #9F1D14;
+  --status-unknown-bg: #EEF4FD;
+  --status-unknown-fg: #2F2C34;
+  --sidebar-item-fg: #FFFFFF;
+  --sidebar-item-active-bg: #E7EFFC;
+  --sidebar-item-active-fg: #0C2858;
+  --settings-nav-fg: #2B2A33;
+  --settings-nav-active-bg: #EEF4FD;
+  --hero-accent: #054DBF;
+  --hero-accent-wash: #FFFFFF;
+  --form-error-bg: #FFFFFF;
+  --form-error-fg: #9F1D14;
+  --page-title-wash: #F7F5F2;
+  --input-fill: #FFFFFF;
+  --focus-ring: #054DBF;
+  --focus-ring-on-sidebar: #8EC0FF;
+  --focus-ring-outer: #0C2858;
+  /* Dual-tone inner halo (light chrome / page washes). */
+  --focus-ring-inner: #FFFFFF;
+  /* Pale border only when the adjacent surface is a photo/OAuth wash. */
+  --border-on-photo: #C2DBF9;
+  /* Selected option chips: border ≥4:1 vs own fill and surrounding card/page. */
+  --selected-option-border: #0C2858;
+  --selected-option-bg: #EEF4FD;
+  --placeholder: #1F1C24;
+  --btn-gradient-from: #054DBF;
+  --btn-gradient-to: #0C2858;
+  --btn-gradient-hover-from: #043FA0;
+  --btn-gradient-hover-to: #0A2148;
+  --selection-bg: #CFDFF9;
+  --selection-fg: #0C2858;
+  --toast-success-bg: #FFFFFF;
+  --toast-success-fg: #0E5A36;
+  --toast-success-border: #0E5A36;
+  --toast-error-bg: #FFFFFF;
+  --toast-error-fg: #9F1D14;
+  --toast-error-border: #9F1D14;
+  --toast-warning-bg: #FFFFFF;
+  --toast-warning-fg: #7A4B12;
+  --toast-warning-border: #7A4B12;
 }
 
+html.dark,
 .dark {
   /* DARK MODE — navy night */
   --background: #0B1A36;
@@ -161,25 +249,31 @@
   --popover: #12264A;
   --popover-foreground: #E7EFFC;
 
-  --primary: #3B8BFF;
-  --primary-foreground: #0B1A36;
+  /* Deeper primary so white labels keep ≥5.5:1 margin in dark mode. */
+  --primary: #1A56B0;
+  --primary-foreground: #FFFFFF;
 
   --secondary: #12264A;
   --secondary-foreground: #E7EFFC;
 
   --muted: #12264A;
-  /* Opaque muted text (alpha-blended grey washed out over photo / glass). */
-  --muted-foreground: #A8B8D4;
+  /* Lighter muted ink so AA holds on darkened glass/card samples (~#0f2041). */
+  --muted-foreground: #C5D4EA;
 
   --accent: #1a3260;
   --accent-foreground: #E7EFFC;
 
-  --destructive: #F87171;
+  /* Coral destructive: navy label on coral fill (white-on-coral fails AA). */
+  --destructive: #F07171;
   --destructive-foreground: #0B1A36;
 
-  --border: rgb(231 239 252 / 0.40);
-  --input: rgb(231 239 252 / 0.40);
-  --ring: #3B8BFF;
+  /* Darkest calm border that still clears ≥3.5:1 vs worst adjacent navy
+   * surfaces (#12264A card / #0B1A36 page / #1a3260 accent ≈5.6–7.7:1).
+   * Pale #C2DBF9 stays as --border-on-photo for photo/OAuth washes. */
+  --border: #8EB0DC;
+  --input: #8EB0DC;
+  --border-on-photo: #C2DBF9;
+  --ring: #5BA3FF;
 
   --brand-navy: #103065;
   --brand-navy-foreground: #E7EFFC;
@@ -188,7 +282,8 @@
   --brand-plum: #C47A96;
   --brand-plum-foreground: #FFFFFF;
 
-  --success: #35A56A;
+  --success: #4ADE80;
+  /* Navy ink on bright success (white-on-#4ADE80 is only ~1.7:1). */
   --success-foreground: #0B1A36;
 
   --warning: #3d2f1a;
@@ -200,20 +295,87 @@
   --chart-4: #CFDFF9;
   --chart-5: #F3E1C7;
 
-  --sidebar: #0B1A36;
-  --sidebar-foreground: #E7EFFC;
-  --sidebar-primary: #3B8BFF;
+  --sidebar: #081528;
+  --sidebar-foreground: #FFFFFF;
+  --sidebar-primary: #1A56B0;
   --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-icon: #3B8BFF;
+  --sidebar-icon: #8EC0FF;
   --sidebar-accent: #12264A;
-  --sidebar-accent-foreground: #E7EFFC;
+  --sidebar-accent-foreground: #FFFFFF;
   --sidebar-border: rgb(231 239 252 / 0.40);
   --sidebar-ring: #3B8BFF;
+
+  /* Semantic contrast tokens (KAN-146) */
+  --link: #7EB6FF;
+  --btn-disabled-bg: #0B1A36;
+  --btn-disabled-fg: #E7EFFC;
+  --btn-disabled-destructive-bg: #3A1A22;
+  --btn-disabled-destructive-fg: #FF8A8A;
+  --status-active-bg: #0E3A24;
+  --status-active-fg: #4ADE80;
+  --status-pending-bg: #3d2f1a;
+  --status-pending-fg: #F3E1C7;
+  --status-inactive-bg: #3A1A22;
+  --status-inactive-fg: #FF8A8A;
+  --status-unknown-bg: #12264A;
+  --status-unknown-fg: #A8B8D4;
+  --sidebar-item-fg: #FFFFFF;
+  --sidebar-item-active-bg: #E7EFFC;
+  --sidebar-item-active-fg: #0C2858;
+  --settings-nav-fg: #E7EFFC;
+  --settings-nav-active-bg: #12264A;
+  --hero-accent: #B8D4FF;
+  --hero-accent-wash: #0B1A36;
+  --form-error-bg: #12264A;
+  --form-error-fg: #FF8A8A;
+  --page-title-wash: #0B1A36;
+  --input-fill: #12264A;
+  /* Deeper than error coral so ring still clears when adjacent samples FormMessage. */
+  --focus-ring: #5BA3FF;
+  --focus-ring-on-sidebar: #8EC0FF;
+  --focus-ring-outer: #0C2858;
+  --focus-ring-inner: #FFFFFF;
+  /* Selected option chips (dark): light border ≥4:1 vs navy fill and chrome. */
+  --selected-option-border: #8EC0FF;
+  --selected-option-bg: #12264A;
+  --placeholder: #C5D4EA;
+  --btn-gradient-from: #1A56B0;
+  --btn-gradient-to: #0C2858;
+  --btn-gradient-hover-from: #164A98;
+  --btn-gradient-hover-to: #081528;
+  --selection-bg: #1a3260;
+  --selection-fg: #E7EFFC;
+  --toast-success-bg: #0B1A36;
+  --toast-success-fg: #6EE7A0;
+  --toast-success-border: #6EE7A0;
+  --toast-error-bg: #0B1A36;
+  --toast-error-fg: #FF8A8A;
+  --toast-error-border: #FF8A8A;
+  --toast-warning-bg: #0B1A36;
+  --toast-warning-fg: #F3E1C7;
+  --toast-warning-border: #F3E1C7;
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
+  }
+
+  /*
+   * WCAG 1.4.11 focus: :focus-visible only (not :focus). Components own the
+   * ring via focus-visible:outline-ring / outline-focus-ring utilities; this
+   * base rule covers bare links/inputs with normal specificity (no cascade force).
+   * Dual-tone primary/sidebar rings live unlayered below (must beat TW shadows).
+   */
+  a:focus-visible,
+  button:focus-visible,
+  [role="button"]:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible,
+  [data-slot="button"]:focus-visible {
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 2px;
   }
 
   body {
@@ -242,24 +404,41 @@
     @apply font-heading tracking-tight text-foreground;
   }
 
-  /* Glassmorphism helpers — keep surfaces opaque enough for AA text over photo */
+  /* Glassmorphism helpers — fully opaque card fill (α=1) so text stays AA over photo */
   .glass {
-    @apply bg-card/95 backdrop-blur-lg border border-border/40 shadow-sm;
+    @apply bg-card backdrop-blur-lg border border-border/40 shadow-sm;
   }
 
   .glass-dark {
-    @apply bg-card/95 backdrop-blur-lg border border-border/40 shadow-sm;
+    @apply bg-card backdrop-blur-lg border border-border/40 shadow-sm;
   }
 
   .glass-card {
     @apply bg-card backdrop-blur-md border border-border/50 shadow-lg shadow-black/10;
+    background-color: var(--card);
   }
 
   .glass-panel {
-    @apply bg-card/95 backdrop-blur-xl border border-border/40 shadow-xl;
+    @apply bg-card backdrop-blur-xl border border-border/40 shadow-xl;
+    background-color: var(--card);
   }
 
-  /* Page headers over the wavy photo background */
+  /*
+   * Page headers over the wavy photo: titles stay block (title above subtitle).
+   * AA comes from `.page-header` (card surface) or an already-opaque panel
+   * (e.g. settings glass) — never per-element highlight boxes.
+   */
+  .page-header {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 1rem 1.25rem;
+    border-radius: var(--radius);
+    border: 1px solid color-mix(in oklab, var(--border) 50%, transparent);
+    background-color: var(--card);
+    color: var(--card-foreground);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+  }
+
   .page-title {
     @apply font-heading tracking-tight text-brand-navy;
   }
@@ -360,45 +539,271 @@
   background-repeat: no-repeat;
 }
 
-/* Prefer descendant selector over `dark:bg-main-background-dark` (not a real TW color). */
-:where(.dark) .bg-main-background,
+/*
+ * Dark photo: `.dark` raises specificity over the light `.bg-main-background`
+ * utility. Prefer this over a non-existent TW color token.
+ */
+.dark .bg-main-background,
 .bg-main-background-dark {
-  background-image: url("/background-dark.png") !important;
+  background-image: url("/background-dark.png");
   background-color: rgb(11 26 54 / 0.82);
   background-blend-mode: multiply;
-  /* Avoid filter here — it darkens child text and tanks contrast in screenshots. */
   background-attachment: fixed;
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
 }
 
-/* Brand gradients & dashboard utilities */
+/*
+ * Brand gradient CTA — unlayered so it beats TW utilities by cascade order.
+ * Disabled / hover pairs live here; Button premium variant only adds chrome.
+ */
 .btn-primary-gradient {
-  /* Gradient fill is royal→navy in both themes; pair with light text for AA. */
-  color: #FFFFFF;
-  background: linear-gradient(135deg, #0766EE 0%, #103065 100%);
+  color: var(--primary-foreground);
+  background-image: linear-gradient(135deg, var(--btn-gradient-from) 0%, var(--btn-gradient-to) 100%);
+  background-color: var(--btn-gradient-from);
+  opacity: 1;
+}
+.btn-primary-gradient:disabled,
+.btn-primary-gradient[disabled],
+.btn-primary-disabled {
+  background-image: none;
+  background-color: var(--btn-disabled-bg);
+  color: var(--btn-disabled-fg);
+  opacity: 1;
+  box-shadow: none;
+}
+.btn-primary-gradient:hover:not(:disabled):not([disabled]) {
+  background-image: linear-gradient(135deg, var(--btn-gradient-hover-from) 0%, var(--btn-gradient-hover-to) 100%);
 }
 
-/* Disabled primary: solid pair (opacity-50 on primary fails AA over the photo). */
-.btn-primary-disabled,
-button:disabled.bg-primary,
-button[disabled].bg-primary {
-  background-color: var(--brand-chip) !important;
-  color: var(--brand-navy) !important;
-  opacity: 1 !important;
-  box-shadow: none !important;
+/*
+ * Dual-tone focus (unlayered — must beat TW shadow-* utilities):
+ * White (or sidebar-light) inner halo ≥4:1 vs component border/fill at the
+ * border edge; navy outer ≥3:1 vs page/photo washes. Inner layer also keeps
+ * ui-border samples (≈4px out) from measuring border ink vs navy outer (~1.9:1).
+ * Do not paint focus as border-ring alone — that failed 1.93:1 vs --focus-ring-outer.
+ */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[role="combobox"]:focus-visible,
+[data-slot="input"]:focus-visible,
+[data-slot="textarea"]:focus-visible,
+button:focus-visible,
+[data-slot="button"]:focus-visible,
+a:focus-visible {
+  /* outline-offset ≥6px so ui-border's ≈4px samples hit the inner halo, not outline ink */
+  outline: 2px solid var(--focus-ring-inner);
+  outline-offset: 6px;
+  box-shadow: 0 0 0 4px var(--focus-ring-inner), 0 0 0 7px var(--focus-ring-outer);
+  /* Keep resting input border (not --ring) so border vs fill/surface stays ≥4:1. */
+  border-color: var(--input);
+}
+/* Dark: inner halo matches input fill so mid-blue borders stay ≥4:1 at the edge. */
+html.dark input:focus-visible,
+html.dark textarea:focus-visible,
+html.dark select:focus-visible,
+html.dark [role="combobox"]:focus-visible,
+html.dark [data-slot="input"]:focus-visible,
+html.dark [data-slot="textarea"]:focus-visible,
+html.dark button:focus-visible,
+html.dark [data-slot="button"]:focus-visible,
+html.dark a:focus-visible,
+.dark input:focus-visible,
+.dark textarea:focus-visible,
+.dark select:focus-visible,
+.dark [role="combobox"]:focus-visible,
+.dark [data-slot="input"]:focus-visible,
+.dark [data-slot="textarea"]:focus-visible,
+.dark button:focus-visible,
+.dark [data-slot="button"]:focus-visible,
+.dark a:focus-visible {
+  outline: 2px solid var(--focus-ring-inner);
+  outline-offset: 6px;
+  box-shadow: 0 0 0 4px var(--input-fill), 0 0 0 7px var(--focus-ring-outer);
+  border-color: var(--input);
+}
+.btn-primary-gradient:focus-visible,
+button.bg-primary:focus-visible,
+[data-slot="button"].bg-primary:focus-visible,
+a.bg-primary:focus-visible {
+  outline: 2px solid var(--focus-ring-inner);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--focus-ring-inner), 0 0 0 7px var(--focus-ring-outer);
+  border-color: transparent;
+}
+html.dark .btn-primary-gradient:focus-visible,
+html.dark button.bg-primary:focus-visible,
+html.dark [data-slot="button"].bg-primary:focus-visible,
+html.dark a.bg-primary:focus-visible,
+.dark .btn-primary-gradient:focus-visible,
+.dark button.bg-primary:focus-visible,
+.dark [data-slot="button"].bg-primary:focus-visible,
+.dark a.bg-primary:focus-visible {
+  outline: 2px solid var(--focus-ring-inner);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--focus-ring-inner), 0 0 0 7px var(--focus-ring-outer);
+  border-color: transparent;
+}
+.bg-sidebar a:focus-visible,
+.bg-sidebar button:focus-visible,
+.bg-sidebar [data-slot="button"]:focus-visible,
+aside a:focus-visible,
+aside button:focus-visible {
+  outline: 2px solid var(--focus-ring-on-sidebar);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--focus-ring-on-sidebar), 0 0 0 7px var(--sidebar);
+  border-color: transparent;
 }
 
-.dark .btn-primary-disabled,
-.dark button:disabled.bg-primary,
-.dark button[disabled].bg-primary {
-  background-color: var(--secondary) !important;
-  color: var(--muted-foreground) !important;
+/* Selected option / plan / wizard choice borders (default + pressed + focused). */
+[data-selected-option="true"],
+[aria-pressed="true"][data-asset-type-option="true"],
+.selected-option {
+  border-color: var(--selected-option-border);
+  background-color: var(--selected-option-bg);
+}
+[data-selected-option="true"]:focus-visible,
+[aria-pressed="true"][data-asset-type-option="true"]:focus-visible,
+.selected-option:focus-visible {
+  border-color: var(--selected-option-border);
+  outline: 2px solid var(--focus-ring-inner);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--focus-ring-inner), 0 0 0 7px var(--focus-ring-outer);
+}
+html.dark [data-selected-option="true"]:focus-visible,
+html.dark [aria-pressed="true"][data-asset-type-option="true"]:focus-visible,
+html.dark .selected-option:focus-visible,
+.dark [data-selected-option="true"]:focus-visible,
+.dark [aria-pressed="true"][data-asset-type-option="true"]:focus-visible,
+.dark .selected-option:focus-visible {
+  border-color: var(--selected-option-border);
+  outline: 2px solid var(--focus-ring-inner);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--selected-option-bg), 0 0 0 7px var(--focus-ring-outer);
 }
 
-.btn-primary-gradient:hover {
-  background: linear-gradient(135deg, #0659d4 0%, #0d2850 100%);
+/* Scoped pale border when the adjacent surface is a photo wash (auth OAuth).
+ * Dark only — light --border already clears on white/card.
+ * Specificity must beat outline `dark:border-input`. */
+html.dark button.border-on-photo,
+html.dark [data-border-on-photo="true"],
+.dark button.border-on-photo,
+.dark [data-border-on-photo="true"] {
+  border-color: var(--border-on-photo);
+}
+
+/* Opaque primary / destructive fills — source of truth for AA label pairs. */
+button.bg-primary:not(:disabled):not([disabled]),
+a.bg-primary:not([aria-disabled="true"]),
+[data-slot="button"].bg-primary:not(:disabled):not([disabled]),
+.bg-primary.text-primary-foreground:not(:disabled):not([disabled]):not([aria-disabled="true"]) {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  opacity: 1;
+}
+button.bg-destructive:not(:disabled):not([disabled]),
+a.bg-destructive:not([aria-disabled="true"]),
+[data-slot="button"].bg-destructive:not(:disabled):not([disabled]) {
+  background-color: var(--destructive);
+  color: var(--destructive-foreground);
+}
+button.bg-primary:disabled,
+button.bg-primary[disabled],
+[data-slot="button"].bg-primary:disabled,
+[data-slot="button"].bg-primary[disabled] {
+  background-color: var(--btn-disabled-bg);
+  color: var(--btn-disabled-fg);
+  opacity: 1;
+  box-shadow: none;
+}
+button.bg-destructive:disabled,
+button.bg-destructive[disabled],
+[data-slot="button"].bg-destructive:disabled,
+[data-slot="button"].bg-destructive[disabled] {
+  background-color: var(--btn-disabled-destructive-bg);
+  color: var(--btn-disabled-destructive-fg);
+  opacity: 1;
+  box-shadow: none;
+}
+
+/* Sidebar nav — token pairs (Navigation.tsx utilities + cascade backup). */
+.bg-sidebar nav a,
+.bg-sidebar nav a span {
+  color: var(--sidebar-item-fg);
+  opacity: 1;
+}
+.bg-sidebar nav a.bg-sidebar-item-active-bg,
+.bg-sidebar nav a[class*="bg-sidebar-item-active-bg"] {
+  color: var(--sidebar-item-active-fg);
+  background-color: var(--sidebar-item-active-bg);
+  opacity: 1;
+}
+.bg-sidebar nav a.bg-sidebar-item-active-bg span,
+.bg-sidebar nav a[class*="bg-sidebar-item-active-bg"] span {
+  color: var(--sidebar-item-active-fg);
+  opacity: 1;
+}
+.bg-sidebar nav a svg {
+  color: var(--sidebar-icon);
+  opacity: 1;
+}
+.bg-sidebar nav a.bg-sidebar-item-active-bg svg,
+.bg-sidebar nav a[class*="bg-sidebar-item-active-bg"] svg {
+  color: var(--sidebar-item-active-fg);
+}
+
+.badge-status-active {
+  background-color: var(--status-active-bg);
+  color: var(--status-active-fg);
+  border-color: color-mix(in srgb, var(--status-active-fg) 30%, transparent);
+}
+.badge-status-pending {
+  background-color: var(--status-pending-bg);
+  color: var(--status-pending-fg);
+  border-color: color-mix(in srgb, var(--status-pending-fg) 30%, transparent);
+}
+.badge-status-inactive {
+  background-color: var(--status-inactive-bg);
+  color: var(--status-inactive-fg);
+  border-color: color-mix(in srgb, var(--status-inactive-fg) 30%, transparent);
+}
+.badge-status-unknown {
+  background-color: var(--status-unknown-bg);
+  color: var(--status-unknown-fg);
+  border-color: color-mix(in srgb, var(--status-unknown-fg) 30%, transparent);
+}
+
+/* Form error wash — paired tokens; FormMessage / FormLabel apply classes. */
+.form-message,
+[data-slot="form-message"],
+[data-slot="form-label"][data-error="true"] {
+  background-color: var(--form-error-bg);
+  color: var(--form-error-fg);
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.25rem;
+}
+
+/*
+ * Dark mode: --primary is the solid fill (button) blue and is too dark as ink
+ * on navy cards. Remap text-primary / hover accents to --link (AA), excluding
+ * solid primary fills. Unlayered so cascade beats TW utilities without force.
+ */
+html.dark .text-primary:not(.bg-primary):not(button.bg-primary):not([data-slot="button"].bg-primary):not(.btn-primary-gradient),
+html.dark .text-link {
+  color: var(--link);
+}
+html.dark .group:hover .group-hover\:text-primary:not(.bg-primary):not(.group-hover\:text-primary-foreground) {
+  color: var(--link);
+}
+html.dark .hover\:text-primary:hover:not(.bg-primary) {
+  color: var(--link);
+}
+
+::selection {
+  background-color: var(--selection-bg);
+  color: var(--selection-fg);
 }
 
 .card-gradient {
@@ -409,8 +814,12 @@ button[disabled].bg-primary {
   @apply transition-transform duration-300 hover:-translate-y-0.5 hover:shadow-lg;
 }
 
+/* Opaque status tokens — 14% success wash was ~3.9:1 under axe on card/glass. */
 .badge-active {
-  @apply bg-success/10 text-success border-success/25;
+  background-color: var(--status-active-bg);
+  color: var(--status-active-fg);
+  border-color: color-mix(in srgb, var(--status-active-fg) 30%, transparent);
+  opacity: 1;
 }
 
 .badge-pending {
@@ -422,7 +831,68 @@ button[disabled].bg-primary {
 }
 
 .badge-protected {
-  @apply bg-primary/8 text-primary border-primary/25;
+  background-color: var(--brand-chip);
+  color: var(--brand-navy);
+  border-color: color-mix(in srgb, var(--brand-navy) 25%, transparent);
+}
+
+.dark .badge-protected {
+  background-color: var(--brand-tint);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+
+/*
+ * Sonner: wire AA toast tokens into CSS variables AND paint via scoped
+ * selectors whose specificity beats Sonner's theme defaults (no cascade force).
+ */
+[data-sonner-toaster][data-sonner-theme],
+[data-sonner-toaster] {
+  --success-bg: var(--toast-success-bg);
+  --success-text: var(--toast-success-fg);
+  --success-border: var(--toast-success-border);
+  --error-bg: var(--toast-error-bg);
+  --error-text: var(--toast-error-fg);
+  --error-border: var(--toast-error-border);
+  --warning-bg: var(--toast-warning-bg);
+  --warning-text: var(--toast-warning-fg);
+  --warning-border: var(--toast-warning-border);
+}
+[data-sonner-toaster] [data-sonner-toast][data-type="success"] {
+  background-color: var(--toast-success-bg);
+  color: var(--toast-success-fg);
+  border-color: var(--toast-success-border);
+}
+[data-sonner-toaster] [data-sonner-toast][data-type="error"] {
+  background-color: var(--toast-error-bg);
+  color: var(--toast-error-fg);
+  border-color: var(--toast-error-border);
+}
+[data-sonner-toaster] [data-sonner-toast][data-type="warning"] {
+  background-color: var(--toast-warning-bg);
+  color: var(--toast-warning-fg);
+  border-color: var(--toast-warning-border);
+}
+[data-sonner-toaster] [data-sonner-toast][data-type="success"] [data-title],
+[data-sonner-toaster] [data-sonner-toast][data-type="success"] [data-description] {
+  color: var(--toast-success-fg);
+  background-color: var(--toast-success-bg);
+}
+[data-sonner-toaster] [data-sonner-toast][data-type="error"] [data-title],
+[data-sonner-toaster] [data-sonner-toast][data-type="error"] [data-description] {
+  color: var(--toast-error-fg);
+  background-color: var(--toast-error-bg);
+}
+[data-sonner-toaster] [data-sonner-toast][data-type="warning"] [data-title],
+[data-sonner-toaster] [data-sonner-toast][data-type="warning"] [data-description] {
+  color: var(--toast-warning-fg);
+  background-color: var(--toast-warning-bg);
+}
+[data-sonner-toaster] [data-sonner-toast][data-type="success"] [data-icon],
+[data-sonner-toaster] [data-sonner-toast][data-type="error"] [data-icon],
+[data-sonner-toaster] [data-sonner-toast][data-type="warning"] [data-icon] {
+  color: inherit;
+  background-color: transparent;
 }
 
 .icon-bg-success {
@@ -456,3 +926,5 @@ button[disabled].bg-primary {
 @utility text-glow {
   text-shadow: 0 0 20px currentColor;
 }
+
+/* Sidebar nav labels — Navigation.tsx already applies token utility classes. */

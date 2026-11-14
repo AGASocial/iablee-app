@@ -163,7 +163,7 @@ export function ResetPasswordForm() {
       </div>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <form method="post" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <FormField
             control={form.control}
             name="password"
@@ -174,7 +174,7 @@ export function ResetPasswordForm() {
                   <PasswordInput
                     placeholder="••••••••"
                     autoComplete="new-password"
-                    className="bg-background/80 dark:bg-background/70"
+                    className="bg-input-fill"
                     {...field}
                     onChange={(e) => {
                       setSubmitError(null)
@@ -197,7 +197,7 @@ export function ResetPasswordForm() {
                   <PasswordInput
                     placeholder="••••••••"
                     autoComplete="new-password"
-                    className="bg-background/80 dark:bg-background/70"
+                    className="bg-input-fill"
                     {...field}
                   />
                 </FormControl>

@@ -4,7 +4,7 @@
 import Image from 'next/image';
 import Navigation from "@/components/Navigation";
 import Navbar from "@/components/Navbar";
-import { Toaster } from "sonner";
+import { Toaster } from "@/components/ui/sonner";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { useTranslations, useLocale } from 'next-intl';
@@ -51,7 +51,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
     return (
       <div className="min-h-screen bg-transparent">
         {children}
-        <Toaster richColors closeButton position="top-right" />
+        <Toaster closeButton position="top-right" />
       </div>
     );
   }
@@ -66,7 +66,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
         <div className="relative flex-1 flex flex-col min-h-0 bg-sidebar border-r border-sidebar-border shadow-xl transition-all duration-300">
           {/* Logo Area */}
           <div className={cn(
-            "flex items-center h-20 border-b border-sidebar-border bg-sidebar/95 backdrop-blur-xl transition-all duration-300 shrink-0",
+            "flex items-center h-20 border-b border-sidebar-border bg-sidebar backdrop-blur-xl transition-all duration-300 shrink-0",
             sidebarCollapsed ? "justify-center px-0" : "px-6"
           )}>
             <div className={cn(
@@ -92,7 +92,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
           {/* Toggle Button */}
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="absolute -right-3 top-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg ring-2 ring-background hover:bg-primary/90 transition-colors"
+            className="absolute -right-3 top-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg ring-2 ring-background hover:bg-[color:var(--btn-gradient-hover-from)]"
             aria-label="Toggle sidebar"
           >
             <svg
@@ -149,10 +149,10 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
                   </DropdownMenuSubTrigger>
                   <DropdownMenuSubContent className="p-1">
                     <DropdownMenuItem onClick={() => switchLocale('en')} className="cursor-pointer">
-                      <span className={locale === 'en' ? 'font-bold text-primary' : ''}>English</span>
+                      <span className={locale === 'en' ? 'font-bold text-link' : ''}>English</span>
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => switchLocale('es')} className="cursor-pointer">
-                      <span className={locale === 'es' ? 'font-bold text-primary' : ''}>Español</span>
+                      <span className={locale === 'es' ? 'font-bold text-link' : ''}>Español</span>
                     </DropdownMenuItem>
                   </DropdownMenuSubContent>
                 </DropdownMenuSub>
@@ -226,10 +226,10 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
                     </DropdownMenuSubTrigger>
                     <DropdownMenuSubContent className="p-1">
                       <DropdownMenuItem onClick={() => switchLocale('en')} className="cursor-pointer">
-                        <span className={locale === 'en' ? 'font-bold text-primary' : ''}>English</span>
+                        <span className={locale === 'en' ? 'font-bold text-link' : ''}>English</span>
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => switchLocale('es')} className="cursor-pointer">
-                        <span className={locale === 'es' ? 'font-bold text-primary' : ''}>Español</span>
+                        <span className={locale === 'es' ? 'font-bold text-link' : ''}>Español</span>
                       </DropdownMenuItem>
                     </DropdownMenuSubContent>
                   </DropdownMenuSub>
@@ -259,7 +259,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
           {children}
         </div>
       </main>
-      <Toaster richColors closeButton position="top-right" />
+      <Toaster closeButton position="top-right" />
       <SecurityPinModal
         isOpen={isAuthPage ? false : (pathname?.includes('/digital-assets') || pathname?.includes('/beneficiaries') || pathname?.includes('/my-beneficiary-relationships')) && (securityState.locked || !securityState.hasPin)}
         mode={!securityState.hasPin ? "setup" : "verify"}

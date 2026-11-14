@@ -96,7 +96,7 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
 
   return (
     <div className="flex-1 space-y-8 p-4 sm:p-8 pt-6">
-      <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+      <div className="page-header flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h2 className="page-title text-2xl font-bold sm:text-3xl">
             {t('dashboard') || 'Dashboard'}
@@ -188,7 +188,7 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
       {/* Main Content Cards */}
       <div className="grid gap-6 grid-cols-1 md:grid-cols-2 animate-fade-in-up delay-[500ms]">
         {/* Digital Assets Card */}
-        <Card className="col-span-1 glass-card border border-border/60 bg-card/90 shadow-xl dark:bg-card/90 dark:shadow-black/40">
+        <Card className="col-span-1 glass-card border border-border/60 bg-card shadow-xl dark:shadow-black/40">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b border-border/50 pb-4">
             <div>
               <CardTitle className="text-xl text-foreground">{t('yourDigitalAssets')}</CardTitle>
@@ -208,23 +208,26 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
                 <p className="text-center text-sm text-muted-foreground mb-4 max-w-[250px]">
                   {t('noAssets')}
                 </p>
-                <Link href="/wizard">
-                  <Button className="btn-primary-gradient flex items-center gap-2 text-primary-foreground shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all">
+                <Button
+                  asChild
+                  className="btn-primary-gradient flex items-center gap-2 text-primary-foreground transition-all"
+                >
+                  <Link href="/wizard">
                     <Sparkles className="h-4 w-4" />
                     {t('setupWizard')}
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
               </div>
             ) : (
               <div className="space-y-3">
                 {assets.map((asset) => (
-                  <div key={asset.id} className="group flex items-center justify-between rounded-xl border border-border/40 bg-background/70 p-4 transition-all hover:scale-[1.01] hover:border-primary/25 hover:bg-background/85 hover:shadow-lg dark:bg-background/65 dark:hover:bg-background/80">
+                  <div key={asset.id} className="group flex items-center justify-between rounded-xl border border-border/40 bg-background p-4 transition-all hover:scale-[1.01] hover:border-primary/25 hover:bg-muted hover:shadow-lg">
                     <div className="flex items-center space-x-4">
-                      <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                      <div className="h-10 w-10 rounded-lg bg-brand-chip text-brand-navy dark:bg-secondary dark:text-foreground flex items-center justify-center group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
                         <Key className="h-5 w-5" />
                       </div>
                       <div>
-                        <p className="font-semibold text-foreground group-hover:text-primary transition-colors">{asset.asset_name}</p>
+                        <p className="font-semibold text-foreground transition-colors group-hover:text-link">{asset.asset_name}</p>
                         <p className="text-sm text-muted-foreground">{asset.asset_type}</p>
                       </div>
                     </div>
@@ -237,7 +240,7 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
         </Card>
 
         {/* Beneficiaries Card */}
-        <Card className="col-span-1 glass-card border border-border/60 bg-card/90 shadow-xl dark:bg-card/90 dark:shadow-black/40">
+        <Card className="col-span-1 glass-card border border-border/60 bg-card shadow-xl dark:shadow-black/40">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b border-border/50 pb-4">
             <div>
               <CardTitle className="text-xl text-foreground">{t('recentBeneficiaries')}</CardTitle>
@@ -261,15 +264,15 @@ export default function DashboardClient({ initialData }: DashboardClientProps) {
             ) : (
               <div className="space-y-3">
                 {beneficiaries.map((beneficiary) => (
-                  <div key={beneficiary.id} className="group flex flex-col rounded-xl border border-border/40 bg-background/70 p-4 transition-all hover:scale-[1.01] hover:border-primary/25 hover:bg-background/85 hover:shadow-lg dark:bg-background/65 dark:hover:bg-background/80 md:flex-row md:items-center md:justify-between">
+                  <div key={beneficiary.id} className="group flex flex-col rounded-xl border border-border/40 bg-background p-4 transition-all hover:scale-[1.01] hover:border-primary/25 hover:bg-muted hover:shadow-lg md:flex-row md:items-center md:justify-between">
                     <div className="flex flex-col space-y-1">
-                      <span className="font-semibold text-foreground group-hover:text-primary transition-colors">{beneficiary.full_name}</span>
+                      <span className="font-semibold text-foreground transition-colors group-hover:text-link">{beneficiary.full_name}</span>
                       <span className="text-sm text-muted-foreground">{beneficiary.email}</span>
                       {/* Truncate less important info for cleaner look if needed, keeping mostly same for now */}
                       <div className="flex gap-2 flex-wrap mt-2">
                         {beneficiary.email && (
                           <span className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full font-bold ${
-                            beneficiary.email_verified ? 'bg-success/10 text-success' : 'bg-warning text-warning-foreground'
+                            beneficiary.email_verified ? 'badge-active' : 'bg-warning text-warning-foreground'
                           }`}>
                             {beneficiary.email_verified ? t('emailVerified') : t('emailNotVerified')}
                           </span>

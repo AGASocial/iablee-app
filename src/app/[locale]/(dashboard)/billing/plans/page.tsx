@@ -217,7 +217,7 @@ export default function PlansPage() {
 
   return (
     <div className="container mx-auto py-10">
-      <div className="mb-10 text-center">
+      <div className="page-header mb-10 text-center">
         <h1 className="page-title mb-4 text-4xl font-bold">{t('pricing')}</h1>
         <p className="page-subtitle mb-8">
           {t('choosePlan')}
@@ -260,8 +260,9 @@ export default function PlansPage() {
           return (
             <Card
               key={plan.id}
+              data-selected-option={isPremium ? "true" : undefined}
               className={`relative ${
-                isPremium ? 'border-primary shadow-lg' : ''
+                isPremium ? 'border-selected-option-border bg-selected-option-bg shadow-lg' : ''
               }`}
             >
               {isPremium && (

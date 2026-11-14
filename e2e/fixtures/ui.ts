@@ -2,16 +2,68 @@ import type { Locator, Page } from "@playwright/test";
 import type { E2EUser } from "./supabase";
 
 export async function loginViaUi(page: Page, user: E2EUser, locale: "en" | "es" = "en"): Promise<void> {
-  await page.goto(`/${locale}/auth/login`);
-  await page.getByLabel(/email/i).fill(user.email);
-  await page.locator('input[type="password"]').fill(user.password);
-  await page.locator('form button[type="submit"]').click();
-  await page.waitForURL(new RegExp(`/${locale}/(wizard|dashboard)`), { timeout: 20000 });
+  // Bypass the in-memory login limiter (10/min per IP; local IP is often "unknown")
+  // without weakening production — unique TEST-ONLY x-real-ip per login attempt.
+  const loginRoute = "**/api/auth/login";
+  let loginIp = `203.0.113.${100 + Math.floor(Math.random() * 100)}`;
+  await page.route(loginRoute, async (route) => {
+    const headers = {
+      ...route.request().headers(),
+      "x-real-ip": loginIp,
+    };
+    await route.continue({ headers });
+  });
+
+  const attempt = async () => {
+    loginIp = `203.0.113.${100 + Math.floor(Math.random() * 100)}`;
+    // Prefer load over domcontentloaded so client handlers hydrate before submit
+    // (unhydrated <form> would GET and leak credentials into the query string;
+    // method="post" is a hard fallback, but the JS path still needs hydration).
+    await page.goto(`/${locale}/auth/login`, { waitUntil: "load" });
+    await page.waitForLoadState("networkidle").catch(() => undefined);
+    const form = page.locator('form[method="post"]').first();
+    await form.waitFor({ state: "visible", timeout: 15_000 });
+    // Wait until React has attached the submit handler (button leaves SSR-only state).
+    const email = page.getByLabel(/email/i);
+    await email.waitFor({ state: "visible" });
+    await email.fill(user.email);
+    await page.locator('input[type="password"]').fill(user.password);
+    const submit = form.locator('button[type="submit"]').first();
+    await submit.waitFor({ state: "visible" });
+    await expectEnabled(submit);
+    await Promise.all([
+      page.waitForURL(new RegExp(`/${locale}/(wizard|dashboard)`), { timeout: 30_000 }),
+      submit.click(),
+    ]);
+  };
+
+  try {
+    try {
+      await attempt();
+    } catch {
+      // One retry for intermittent auth/network races (and Supabase soft rate-limits).
+      await page.waitForTimeout(2_000);
+      await attempt();
+    }
+  } finally {
+    await page.unroute(loginRoute).catch(() => undefined);
+  }
+}
+
+async function expectEnabled(locator: Locator): Promise<void> {
+  await locator.waitFor({ state: "visible" });
+  // Soft readiness: ensure the control is interactable after hydration.
+  for (let i = 0; i < 20; i += 1) {
+    if (await locator.isEnabled().catch(() => false)) return;
+    await locator.page().waitForTimeout(100);
+  }
 }
 
 export async function openProfileMenu(page: Page): Promise<void> {
-  const desktopTrigger = page.getByRole("button", { name: /profile/i }).first();
-  await desktopTrigger.click({ force: true });
+  const desktopTrigger = page
+    .getByRole("button", { name: /profile|perfil|account|cuenta|user|usuario/i })
+    .first();
+  await desktopTrigger.click({ force: true, timeout: 15_000 });
 }
 
 export async function signOut(page: Page): Promise<void> {

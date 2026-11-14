@@ -216,14 +216,14 @@ export default function BillingPage() {
 
   return (
     <div className="container mx-auto py-10 space-y-8 px-2">
-      <div>
+      <div className="page-header">
         <h1 className="page-title mb-2 text-3xl font-bold">{t('billingDashboard')}</h1>
         <p className="page-subtitle">{t('manageBilling')}</p>
       </div>
 
       {/* Subscription Details */}
       <Card className="glass-panel overflow-hidden border-border/50 shadow-xl">
-        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-blue-500"></div>
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-primary"></div>
         <CardHeader className="border-b border-border/50 pb-6">
           <CardTitle className="flex items-center justify-between text-xl">
             <span className="flex items-center gap-2">

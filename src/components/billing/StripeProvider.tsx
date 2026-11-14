@@ -49,7 +49,7 @@ export default function StripeProvider({ children, clientSecret }: StripeProvide
   // Show error if Stripe failed to load
   if (!stripe) {
     return (
-      <div className="p-4 text-center text-red-600">
+      <div className="p-4 text-center text-destructive">
         Failed to load payment processor. Please check configuration.
       </div>
     );

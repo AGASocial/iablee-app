@@ -12,11 +12,11 @@ export default function Home() {
         <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] rounded-full bg-secondary/20 blur-[120px] mix-blend-screen" />
       </div>
 
-      <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
+      <header className="sticky top-0 z-50 w-full border-b border-border bg-card backdrop-blur-md">
         <div className="container flex h-16 items-center px-4 sm:px-6 lg:px-8">
           <div className="mr-4 flex">
             <Link href="/" className="mr-6 flex items-center space-x-2">
-              <span className="font-heading text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-violet-500">
+              <span className="font-heading text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-brand-plum">
                 iablee
               </span>
             </Link>
@@ -27,7 +27,7 @@ export default function Home() {
                 <Button variant="ghost" className="font-medium">Login</Button>
               </Link>
               <Link href="/auth/register">
-                <Button variant="premium" className="font-bold shadow-lg shadow-indigo-500/20">
+                <Button variant="premium" className="font-bold shadow-lg shadow-primary/20">
                   Get Started
                 </Button>
               </Link>
@@ -44,9 +44,11 @@ export default function Home() {
               Launch v2.0 is live 🚀
             </div>
 
-            <h1 className="font-heading text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl lg:text-7xl bg-clip-text text-transparent bg-gradient-to-br from-foreground to-foreground/70 drop-shadow-sm">
-              Secure Your <br className="hidden sm:block" />
-              <span className="text-primary bg-clip-text text-transparent bg-gradient-to-r from-indigo-500 to-violet-500">
+            <h1 className="font-heading text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl lg:text-7xl drop-shadow-sm">
+              <span className="bg-clip-text text-transparent bg-gradient-to-br from-foreground to-foreground/70">
+                Secure Your <br className="hidden sm:block" />
+              </span>
+              <span className="inline-block rounded-md bg-hero-accent-wash px-2 text-hero-accent">
                 Digital Legacy
               </span>
             </h1>
@@ -151,8 +153,8 @@ export default function Home() {
             <p className="max-w-[85%] leading-normal text-muted-foreground sm:text-lg sm:leading-7">
               Join the growing community of people securing their digital future.
             </p>
-            <div className="flex w-full items-center justify-center gap-8 pt-8 opacity-50 grayscale hover:grayscale-0 transition-all duration-500">
-              {/* Placeholders for logos */}
+            <div className="flex w-full items-center justify-center gap-8 pt-8 text-muted-foreground transition-colors duration-500 hover:text-foreground">
+              {/* Placeholders for logos — keep muted-foreground (no opacity) for AA */}
               <span className="text-xl font-bold">Acme Corp</span>
               <span className="text-xl font-bold">Stark Ind</span>
               <span className="text-xl font-bold">Wayne Ent</span>
@@ -161,15 +163,15 @@ export default function Home() {
         </section>
       </main>
 
-      <footer className="border-t border-white/10 bg-background/50 py-6 md:py-0 backdrop-blur-lg">
+      <footer className="border-t border-border bg-card py-6 md:py-0 backdrop-blur-lg">
         <div className="container flex flex-col items-center justify-between gap-4 md:h-24 md:flex-row px-4">
           <p className="text-center text-sm leading-loose text-muted-foreground md:text-left flex items-center gap-1">
-            Built with <Heart className="h-4 w-4 text-red-500 fill-red-500" /> by{" "}
+            Built with <Heart className="h-4 w-4 text-destructive fill-destructive" /> by{" "}
             <a
               href="https://github.com/yourusername"
               target="_blank"
               rel="noreferrer"
-              className="font-medium underline underline-offset-4 hover:text-primary transition-colors"
+              className="font-medium text-link underline underline-offset-4 transition-colors hover:text-link"
             >
               iablee team
             </a>

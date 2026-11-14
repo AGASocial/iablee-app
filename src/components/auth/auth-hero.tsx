@@ -187,7 +187,7 @@ export function AuthHero({ quote, author, children }: { quote: string; author: s
       </div>
 
       {/* Gradient overlay - calmer in dark mode to reduce visual noise */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/70 via-primary/50 to-primary/70 backdrop-blur-[2px] dark:from-slate-950/85 dark:via-indigo-950/55 dark:to-slate-950/85" />
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/70 via-primary/50 to-primary/70 backdrop-blur-[2px] dark:from-background/85 dark:via-primary/25 dark:to-background/85" />
 
       {/* Additional overlay for depth and readability */}
       <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/30 dark:from-black/70 dark:via-black/20 dark:to-black/60" />
@@ -197,9 +197,9 @@ export function AuthHero({ quote, author, children }: { quote: string; author: s
 
       {/* Animated gradient orbs for visual interest (muted in dark mode) */}
       <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute left-1/4 top-1/4 h-96 w-96 rounded-full bg-primary/20 blur-3xl animate-pulse dark:bg-indigo-500/12 dark:blur-[140px] dark:opacity-60" />
+        <div className="absolute left-1/4 top-1/4 h-96 w-96 rounded-full bg-primary/20 blur-3xl animate-pulse dark:bg-primary/12 dark:blur-[140px] dark:opacity-60" />
         <div
-          className="absolute bottom-1/4 right-1/4 h-96 w-96 rounded-full bg-primary/30 blur-3xl animate-pulse dark:bg-blue-500/10 dark:blur-[150px] dark:opacity-50"
+          className="absolute bottom-1/4 right-1/4 h-96 w-96 rounded-full bg-primary/30 blur-3xl animate-pulse dark:bg-primary/10 dark:blur-[150px] dark:opacity-50"
           style={{ animationDelay: '1s' }}
         />
       </div>

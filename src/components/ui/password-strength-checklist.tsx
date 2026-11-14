@@ -41,7 +41,7 @@ export function PasswordStrengthChecklist({
   const allMet = rules.length > 0 && rules.every((r) => r.met)
 
   return (
-    <div className={cn("space-y-1.5", className)}>
+    <div className={cn("space-y-1.5 rounded-md bg-card p-2", className)}>
       <p className="text-xs text-muted-foreground" aria-live="polite">
         {allMet && password.length > 0
           ? t("passwordPolicy.strong")
@@ -53,7 +53,7 @@ export function PasswordStrengthChecklist({
             key={rule.id}
             className={cn(
               "flex items-start gap-2 text-xs",
-              rule.met ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground",
+              rule.met ? "text-success font-medium" : "text-muted-foreground",
             )}
           >
             {rule.met ? (
