@@ -344,7 +344,7 @@ export default function AssetAttachmentsModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-7xl md:max-w-7xl lg:max-w-7xl w-[95vw] max-h-[90vh] bg-white dark:bg-gray-800 border-0 shadow-2xl p-0">
         <DialogHeader className="p-6 pb-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-          <DialogTitle className="text-gray-900 dark:text-white text-xl font-semibold">
+          <DialogTitle className="text-foreground text-xl font-semibold">
             {t('assetAttachments')} - {asset?.asset_name || ''}
           </DialogTitle>
           <DialogClose asChild />
@@ -397,7 +397,7 @@ export default function AssetAttachmentsModal({
               /* Preview Mode */
               <div className="h-full flex flex-col bg-white dark:bg-gray-800">
                 <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between bg-white dark:bg-gray-800">
-                  <h3 className="font-medium text-gray-900 dark:text-white">
+                  <h3 className="font-medium text-foreground">
                     {previewFile.file_name}
                   </h3>
                   <Button
