@@ -10,38 +10,38 @@ import type { Asset } from "@/models/asset";
 import { useAssetTypes, type AssetType } from '@/lib/assetTypes';
 
 // Visual style config per asset type — inspired by the Stitch design
-const typeStyles: Record<string, { gradient: string; iconBg: string; iconColor: string }> = {
+const typeStyles: Record<string, { surface: string; iconBg: string; iconColor: string }> = {
   letter: {
-    gradient: 'from-rose-50 to-pink-50 dark:from-rose-950/30 dark:to-pink-950/30',
-    iconBg: 'bg-rose-100 dark:bg-rose-900/40',
-    iconColor: 'text-rose-600 dark:text-rose-400',
+    surface: 'bg-brand-chip dark:bg-card',
+    iconBg: 'bg-brand-tint dark:bg-muted',
+    iconColor: 'text-brand-plum dark:text-foreground',
   },
   audio: {
-    gradient: 'from-violet-50 to-purple-50 dark:from-violet-950/30 dark:to-purple-950/30',
-    iconBg: 'bg-violet-100 dark:bg-violet-900/40',
-    iconColor: 'text-violet-600 dark:text-violet-400',
+    surface: 'bg-brand-tint dark:bg-card',
+    iconBg: 'bg-brand-chip dark:bg-muted',
+    iconColor: 'text-brand-navy dark:text-foreground',
   },
   photo: {
-    gradient: 'from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30',
-    iconBg: 'bg-amber-100 dark:bg-amber-900/40',
-    iconColor: 'text-amber-700 dark:text-amber-400',
+    surface: 'bg-warning dark:bg-card',
+    iconBg: 'bg-status-pending-bg dark:bg-muted',
+    iconColor: 'text-warning-foreground dark:text-foreground',
   },
   video: {
-    gradient: 'from-sky-50 to-cyan-50 dark:from-sky-950/30 dark:to-cyan-950/30',
-    iconBg: 'bg-sky-100 dark:bg-sky-900/40',
-    iconColor: 'text-sky-600 dark:text-sky-400',
+    surface: 'bg-brand-tint dark:bg-card',
+    iconBg: 'bg-primary/10 dark:bg-muted',
+    iconColor: 'text-primary dark:text-foreground',
   },
   document: {
-    gradient: 'from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30',
-    iconBg: 'bg-emerald-100 dark:bg-emerald-900/40',
-    iconColor: 'text-emerald-600 dark:text-emerald-400',
+    surface: 'bg-status-active-bg dark:bg-card',
+    iconBg: 'bg-success/15 dark:bg-muted',
+    iconColor: 'text-success dark:text-foreground',
   },
 };
 
 const defaultStyle = {
-  gradient: 'from-gray-50 to-slate-50 dark:from-gray-950/30 dark:to-slate-950/30',
-  iconBg: 'bg-gray-100 dark:bg-gray-900/40',
-  iconColor: 'text-gray-600 dark:text-gray-400',
+  surface: 'bg-muted dark:bg-card',
+  iconBg: 'bg-muted',
+  iconColor: 'text-foreground',
 };
 
 // Fallback descriptions when translations are unavailable
@@ -206,7 +206,7 @@ function AssetTypeCard({
   onClick,
 }: {
   type: AssetType;
-  style: { gradient: string; iconBg: string; iconColor: string };
+  style: { surface: string; iconBg: string; iconColor: string };
   description: string;
   label: string;
   onClick: () => void;
@@ -216,9 +216,12 @@ function AssetTypeCard({
 
   return (
     <button
+      type="button"
+      data-asset-type={type.key}
+      data-asset-type-option="true"
       className={`
         group relative flex flex-col items-center text-center p-5 rounded-2xl
-        bg-gradient-to-br ${style.gradient}
+        ${style.surface}
         border border-border/40
         transition-all duration-300 ease-out
         hover:scale-[1.03] hover:-translate-y-1

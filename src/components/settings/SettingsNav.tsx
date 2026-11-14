@@ -48,9 +48,9 @@ export function SettingsNav({ className, ...props }: SettingsNavProps) {
                         className={cn(
                             buttonVariants({ variant: "ghost" }),
                             isActive
-                                ? "bg-muted hover:bg-muted font-medium"
-                                : "hover:bg-transparent hover:underline text-muted-foreground",
-                            "justify-start dark:text-foreground"
+                                ? "bg-settings-nav-active-bg hover:bg-settings-nav-active-bg font-medium text-settings-nav-fg"
+                                : "hover:bg-settings-nav-active-bg/60 hover:underline text-settings-nav-fg",
+                            "justify-start"
                         )}
                     >
                         <item.icon className="mr-2 h-4 w-4" />

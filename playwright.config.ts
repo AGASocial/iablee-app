@@ -60,6 +60,14 @@ export default defineConfig({
     timeout: 180 * 1000,
     env: {
       ...process.env,
+      // Honor PLAYWRIGHT_TEST_BASE_URL port (e.g. 3007) so webServer doesn't bind 3000 and wait forever.
+      PORT: (() => {
+        try {
+          return new URL(process.env.PLAYWRIGHT_TEST_BASE_URL || "http://localhost:3000").port || "3000";
+        } catch {
+          return "3000";
+        }
+      })(),
       APP_TOKEN_SECRET:
         process.env.APP_TOKEN_SECRET ??
         "e2e-playwright-app-token-secret-minimum-32-characters",

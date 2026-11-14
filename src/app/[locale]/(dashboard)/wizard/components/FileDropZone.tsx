@@ -60,7 +60,7 @@ export function FileDropZone({
         onDragLeave={() => setDragging(false)}
         onDrop={handleDrop}
         className={`w-full rounded-xl border border-dashed p-4 text-center transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${
-          dragging ? "border-primary bg-brand-tint" : "border-border bg-card"
+          dragging ? "border-selected-option-border bg-selected-option-bg" : "border-border bg-card"
         }`}
       >
         <Upload className="mx-auto mb-2 h-5 w-5 text-primary" aria-hidden="true" />

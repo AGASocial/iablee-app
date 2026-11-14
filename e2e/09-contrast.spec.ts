@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "./fixtures/test";
 import { createPinFromSecurityPage, loginViaUi } from "./fixtures/ui";
-import { sampleContrast, setTheme } from "./lib/contrast";
+import { assertPageTitleLayout, sampleContrast, setTheme } from "./lib/contrast";
 
 const PIN = "123456";
 
@@ -50,30 +50,67 @@ test.describe("09 contrast WCAG AA", () => {
       for (const route of ROUTES) {
         await page.goto(route, { waitUntil: "domcontentloaded" });
         await setTheme(page, theme);
-        await page.waitForTimeout(250);
+        await page.waitForTimeout(400);
+        // Drop transient overlays that confuse axe (toasts / nextjs issue badge).
+        await page
+          .evaluate(() => {
+            (window as unknown as { __iableeToast?: { dismiss?: () => void } }).__iableeToast?.dismiss?.();
+            document
+              .querySelectorAll(
+                "nextjs-portal, [data-next-badge], [data-nextjs-toast], #__next-build-watcher",
+              )
+              .forEach((el) => el.remove());
+          })
+          .catch(() => undefined);
 
-        const results = await new AxeBuilder({ page })
-          .withRules(["color-contrast"])
-          .analyze();
+        // Snap transitions so primary CTA hover mid-frames cannot wash #FFFFFF on #054DBF → ~2.8:1.
+        const freeze = await page.addStyleTag({
+          content: `
+            html body, html body * {
+              transition: none !important;
+            }
+            html body .animate-fade-in-up, html body .animate-fade-in {
+              animation: none !important;
+              opacity: 1 !important;
+            }
+          `,
+        });
+        await page.evaluate(
+          () =>
+            new Promise<void>((resolve) => {
+              requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+            }),
+        );
+        try {
+          const results = await new AxeBuilder({ page })
+            .withRules(["color-contrast"])
+            .analyze();
 
-        const contrastViolations = results.violations.filter((v) => v.id === "color-contrast");
-        expect(
-          contrastViolations,
-          `axe color-contrast failed on ${route} (${theme}): ${JSON.stringify(
-            contrastViolations.map((v) => ({
-              nodes: v.nodes.map((n) => ({
-                target: n.target,
-                summary: n.failureSummary,
+          const contrastViolations = results.violations.filter((v) => v.id === "color-contrast");
+          expect(
+            contrastViolations,
+            `axe color-contrast failed on ${route} (${theme}): ${JSON.stringify(
+              contrastViolations.map((v) => ({
+                nodes: v.nodes.map((n) => ({
+                  target: n.target,
+                  summary: n.failureSummary,
+                })),
               })),
-            })),
-          )}`,
-        ).toEqual([]);
+            )}`,
+          ).toEqual([]);
+        } finally {
+          await freeze.evaluate((el) => {
+            if (el.parentNode) el.parentNode.removeChild(el);
+          }).catch(() => undefined);
+        }
       }
 
       for (const route of HEADER_ROUTES) {
         await page.goto(route, { waitUntil: "networkidle" });
         await setTheme(page, theme);
         await page.waitForTimeout(300);
+
+        await assertPageTitleLayout(page, `${route} (${theme})`);
 
         const title = await sampleContrast(
           page,
@@ -98,6 +135,14 @@ test.describe("09 contrast WCAG AA", () => {
           ).toBe(true);
         }
       }
+
+      // Settings + billing: no clipping / stacked title above subtitle
+      for (const route of ["/es/settings", "/es/billing"] as const) {
+        await page.goto(route, { waitUntil: "networkidle" });
+        await setTheme(page, theme);
+        await page.waitForTimeout(200);
+        await assertPageTitleLayout(page, `${route} (${theme})`);
+      }
     }
 
     // English sample after Spanish fixes
@@ -106,6 +151,80 @@ test.describe("09 contrast WCAG AA", () => {
     await setTheme(page, "light");
     const enTitle = await sampleContrast(page, "main h1.page-title, main h2.page-title, main h1, main h2");
     expect(enTitle?.pass).toBe(true);
+  });
+
+  // Plan-limit disabled "Add Beneficiary" — tokenised disabled styles must clear 4.5:1
+  // (develop previously failed axe at ~1.35:1 with washed primary-on-primary).
+  test("plan-limit disabled Add Beneficiary contrast (es, light + dark)", async ({
+    page,
+    user,
+  }) => {
+    test.setTimeout(180_000);
+
+    await loginViaUi(page, user, "en");
+    await createPinFromSecurityPage(page, PIN);
+    const verifyPin = await page.request.post("/api/security/verify-pin", {
+      headers: { "x-real-ip": `203.0.113.${140 + Math.floor(Math.random() * 40)}` },
+      data: { pin: PIN },
+    });
+    expect(verifyPin.status()).toBe(200);
+
+    // Free-trial default maxBeneficiaries is 2 — fill to the limit for this throwaway only.
+    const stamp = Date.now();
+    for (let i = 0; i < 2; i += 1) {
+      const create = await page.request.post("/api/beneficiaries", {
+        data: { full_name: `Limit Ben ${stamp}-${i}` },
+      });
+      expect(create.status(), `create beneficiary ${i}`).toBe(201);
+    }
+
+    for (const theme of ["light", "dark"] as const) {
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await page.goto("/es/beneficiaries", { waitUntil: "load" });
+      await setTheme(page, theme);
+      await page.waitForTimeout(400);
+
+      const disabledAdd = page.getByTestId("add-beneficiary-header");
+      await expect(disabledAdd).toBeVisible({ timeout: 15_000 });
+      await expect(disabledAdd).toBeDisabled();
+
+      await page
+        .evaluate(() => {
+          (window as unknown as { __iableeToast?: { dismiss?: () => void } }).__iableeToast?.dismiss?.();
+          document
+            .querySelectorAll(
+              "nextjs-portal, [data-next-badge], [data-nextjs-toast], #__next-build-watcher",
+            )
+            .forEach((el) => el.remove());
+        })
+        .catch(() => undefined);
+
+      // Page-level axe (disabled controls are typically exempt, but catch any sibling failures).
+      const results = await new AxeBuilder({ page }).withRules(["color-contrast"]).analyze();
+      const contrastViolations = results.violations.filter((v) => v.id === "color-contrast");
+      expect(
+        contrastViolations,
+        `axe color-contrast failed on /es/beneficiaries plan-limit (${theme}): ${JSON.stringify(
+          contrastViolations.map((v) => ({
+            nodes: v.nodes.map((n) => ({ target: n.target, summary: n.failureSummary })),
+          })),
+        )}`,
+      ).toEqual([]);
+
+      const sample = await sampleContrast(page, '[data-testid="add-beneficiary-header"]', {
+        forcePixel: true,
+        sampleInside: true,
+      });
+      expect(sample, `missing disabled Add Beneficiary on /es/beneficiaries (${theme})`).toBeTruthy();
+      expect(
+        sample!.ratio,
+        `disabled Add Beneficiary contrast ${sample!.ratio}:4.5 on /es/beneficiaries (${theme}) color=${sample!.color} bg=${JSON.stringify(sample!.bg)} text=${sample!.text}`,
+      ).toBeGreaterThanOrEqual(4.5);
+      expect(
+        sample!.pass,
+        `disabled Add Beneficiary pass=${sample!.pass} ratio=${sample!.ratio}:${sample!.required} (${theme})`,
+      ).toBe(true);
+    }
   });
 
   // Landing is public — no throwaway user required. Premium CTA uses a fixed dark gradient.
@@ -121,7 +240,7 @@ test.describe("09 contrast WCAG AA", () => {
 
       const premium = await sampleContrast(
         page,
-        'main a[href*="auth/register"] button.from-violet-600, main a[href*="auth/register"] button',
+        'main a[href*="auth/register"] button.btn-primary-gradient, main a[href*="auth/register"] button',
         { forcePixel: true, sampleInside: true },
       );
       expect(premium, `missing premium CTA on /es (${theme})`).toBeTruthy();

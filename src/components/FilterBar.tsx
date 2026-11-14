@@ -41,14 +41,15 @@ export function FilterBar({
     const hasActiveFilters = searchQuery.length > 0 || Object.keys(activeFilters).length > 0;
 
     return (
-        <div className={`flex flex-col sm:flex-row gap-4 mb-6 ${className}`}>
+        <div className={`flex flex-col sm:flex-row gap-4 mb-6 rounded-xl bg-card p-3 border border-border/60 shadow-sm ${className}`}>
             <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                {/* left-3 (12px) + 16px icon = 28px; pl-10 (40px) keeps placeholder clear of the icon */}
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
                 <Input
                     placeholder={placeholder || t('search') || 'Search...'}
                     value={searchQuery}
                     onChange={(e) => onSearch(e.target.value)}
-                    className="pl-9 dark:placeholder:text-slate-600"
+                    className="pl-10 bg-input-fill placeholder:text-placeholder"
                 />
             </div>
 
@@ -59,7 +60,7 @@ export function FilterBar({
                             value={activeFilters[filter.key] || "all"}
                             onValueChange={(value) => onFilterChange(filter.key, value === "all" ? "" : value)}
                         >
-                            <SelectTrigger className="dark:data-[placeholder]:text-slate-600">
+                            <SelectTrigger className="bg-card data-[placeholder]:text-muted-foreground">
                                 <SelectValue placeholder={filter.label} />
                             </SelectTrigger>
                             <SelectContent>

@@ -216,7 +216,7 @@ export default function BillingPage() {
 
   return (
     <div className="container mx-auto py-10 space-y-8 px-2">
-      <div>
+      <div className="page-header">
         <h1 className="page-title mb-2 text-3xl font-bold">{t('billingDashboard')}</h1>
         <p className="page-subtitle">{t('manageBilling')}</p>
       </div>

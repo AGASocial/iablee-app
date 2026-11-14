@@ -25,42 +25,42 @@ import { Beneficiary } from "@/models/beneficiary";
 // Reusing style config to match AddAssetModal
 const typeStyles: Record<string, { gradient: string; iconBg: string; iconColor: string; borderColor: string }> = {
     letter: {
-        gradient: 'from-rose-50 to-pink-50 dark:from-rose-950/30 dark:to-pink-950/30',
-        iconBg: 'bg-rose-100 dark:bg-rose-900/40',
-        iconColor: 'text-rose-600 dark:text-rose-400',
-        borderColor: 'border-rose-200 dark:border-rose-800',
+        gradient: 'from-brand-chip to-brand-tint dark:from-secondary dark:to-card',
+        iconBg: 'bg-brand-tint dark:bg-muted',
+        iconColor: 'text-brand-plum dark:text-foreground',
+        borderColor: 'border-border dark:border-border',
     },
     audio: {
-        gradient: 'from-violet-50 to-purple-50 dark:from-violet-950/30 dark:to-purple-950/30',
-        iconBg: 'bg-violet-100 dark:bg-violet-900/40',
-        iconColor: 'text-violet-600 dark:text-violet-400',
-        borderColor: 'border-violet-200 dark:border-violet-800',
+        gradient: 'from-brand-tint to-brand-chip dark:from-secondary dark:to-card',
+        iconBg: 'bg-brand-chip dark:bg-muted',
+        iconColor: 'text-brand-navy dark:text-foreground',
+        borderColor: 'border-border dark:border-border',
     },
     photo: {
-        gradient: 'from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30',
-        iconBg: 'bg-amber-100 dark:bg-amber-900/40',
-        iconColor: 'text-amber-700 dark:text-amber-400',
-        borderColor: 'border-amber-200 dark:border-amber-800',
+        gradient: 'from-warning to-status-pending-bg dark:from-secondary dark:to-card',
+        iconBg: 'bg-status-pending-bg dark:bg-muted',
+        iconColor: 'text-warning-foreground dark:text-foreground',
+        borderColor: 'border-border dark:border-border',
     },
     video: {
-        gradient: 'from-sky-50 to-cyan-50 dark:from-sky-950/30 dark:to-cyan-950/30',
-        iconBg: 'bg-sky-100 dark:bg-sky-900/40',
-        iconColor: 'text-sky-600 dark:text-sky-400',
-        borderColor: 'border-sky-200 dark:border-sky-800',
+        gradient: 'from-brand-tint to-brand-chip dark:from-secondary dark:to-card',
+        iconBg: 'bg-primary/10 dark:bg-muted',
+        iconColor: 'text-primary dark:text-foreground',
+        borderColor: 'border-border dark:border-border',
     },
     document: {
-        gradient: 'from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30',
-        iconBg: 'bg-emerald-100 dark:bg-emerald-900/40',
-        iconColor: 'text-emerald-600 dark:text-emerald-400',
-        borderColor: 'border-emerald-200 dark:border-emerald-800',
+        gradient: 'from-status-active-bg to-brand-tint dark:from-secondary dark:to-card',
+        iconBg: 'bg-success/15 dark:bg-muted',
+        iconColor: 'text-success dark:text-foreground',
+        borderColor: 'border-border dark:border-border',
     },
 };
 
 const defaultStyle = {
-    gradient: 'from-gray-50 to-slate-50 dark:from-gray-950/30 dark:to-slate-950/30',
-    iconBg: 'bg-gray-100 dark:bg-gray-900/40',
-    iconColor: 'text-gray-600 dark:text-gray-400',
-    borderColor: 'border-gray-200 dark:border-gray-800',
+    gradient: 'from-muted to-brand-tint dark:from-secondary dark:to-card',
+    iconBg: 'bg-muted dark:bg-muted',
+    iconColor: 'text-muted-foreground dark:text-foreground',
+    borderColor: 'border-border dark:border-border',
 };
 
 interface AssetDetailsModalProps {
@@ -313,7 +313,7 @@ export default function AssetDetailsModal({
                                         <a
                                             href={`/api/assets/attachments/${file.id}`}
                                             download={file.file_name}
-                                            className="p-1.5 text-muted-foreground hover:text-primary hover:bg-secondary rounded-md"
+                                            className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-link"
                                         >
                                             <Download className="w-4 h-4" />
                                         </a>
@@ -397,7 +397,7 @@ export default function AssetDetailsModal({
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild disabled={updatingBeneficiary}>
                                         <div className="p-3.5 rounded-xl border border-border bg-card shadow-sm flex items-center gap-3 relative group cursor-pointer hover:bg-muted/50 transition-colors">
-                                            <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-bold text-sm">
+                                            <div className="w-10 h-10 rounded-full bg-brand-chip text-brand-navy dark:bg-secondary dark:text-foreground flex items-center justify-center font-bold text-sm">
                                                 {asset.beneficiary?.full_name?.charAt(0) || <User className="w-5 h-5 opacity-60" />}
                                             </div>
                                             <div className="flex-1 overflow-hidden">

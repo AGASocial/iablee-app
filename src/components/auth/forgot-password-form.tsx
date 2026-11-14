@@ -100,7 +100,7 @@ export function ForgotPasswordForm() {
       </div>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <form method="post" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <FormField
             control={form.control}
             name="email"
@@ -112,7 +112,7 @@ export function ForgotPasswordForm() {
                     placeholder="name@example.com"
                     type="email"
                     autoComplete="email"
-                    className="bg-background/80 dark:bg-background/70"
+                    className="bg-input-fill"
                     {...field}
                   />
                 </FormControl>
@@ -134,7 +134,7 @@ export function ForgotPasswordForm() {
       </Form>
 
       <p className="px-8 text-center text-sm text-muted-foreground">
-        <Link href="/auth/login" className="underline underline-offset-4 hover:text-primary">
+        <Link href="/auth/login" className="text-link underline underline-offset-4 hover:text-link">
           {t("backToSignIn")}
         </Link>
       </p>

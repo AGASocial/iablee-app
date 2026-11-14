@@ -279,11 +279,11 @@ export default function DigitalAssetsClient() {
             onFilesUpdated={refreshAssets}
           />
         )}
-        <div className="mb-8 flex items-center justify-between">
+        <div className="page-header mb-8 flex items-center justify-between gap-4">
           <div>
             <h1 className="page-title text-3xl font-bold sm:text-4xl">{t('digitalAssetsTitle')}</h1>
             {limitReached && limitInfo && (
-              <p className="text-sm text-warning-foreground dark:text-amber-400 mt-1">
+              <p className="text-sm text-warning-foreground mt-1">
                 {t('assetLimitReachedDescription', { limit: limitInfo.limit ?? 0 })} —{' '}
                 <button className="underline font-medium hover:opacity-90" onClick={() => router.push('/billing/plans')}>
                   {t('viewPlans')}
@@ -292,7 +292,7 @@ export default function DigitalAssetsClient() {
             )}
           </div>
           <Button
-            className="hidden sm:inline-flex rounded-full bg-primary px-6 py-2 text-base font-medium text-primary-foreground shadow-lg shadow-primary/25 hover:bg-primary/90"
+            className="inline-flex rounded-full bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/25 hover:bg-[color:var(--btn-gradient-hover-from)] sm:px-6 sm:text-base"
             onClick={handleAddAsset}
             disabled={limitReached}
           >
@@ -327,7 +327,7 @@ export default function DigitalAssetsClient() {
               <h3 className="text-xl font-semibold mb-2">{t('noAssetsFound')}</h3>
               <p className="text-muted-foreground mb-6 max-w-sm">{searchQuery || Object.keys(activeFilters).length > 0 ? t('tryAdjustingFilters') || 'Try adjusting your filters' : t('startByAddingAsset')}</p>
               {!(searchQuery || Object.keys(activeFilters).length > 0) && (
-                <Button className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/25" onClick={handleAddAsset} disabled={limitReached}>
+                <Button className="bg-primary text-primary-foreground hover:bg-[color:var(--btn-gradient-hover-from)] shadow-lg shadow-primary/25" onClick={handleAddAsset} disabled={limitReached}>
                   <Plus className="mr-2 h-4 w-4" /> {t('addAsset')}
                 </Button>
               )}
@@ -353,15 +353,15 @@ export default function DigitalAssetsClient() {
                 >
                   {/* Card Header */}
                   <div className="flex items-start justify-between mb-4">
-                    <div className="p-3 rounded-xl bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors duration-300 shadow-inner">
+                    <div className="p-3 rounded-xl bg-brand-chip text-brand-navy dark:bg-secondary dark:text-foreground group-hover:bg-primary group-hover:text-primary-foreground transition-colors duration-300 shadow-inner">
                       <Icon className="w-6 h-6" />
                     </div>
                     {/* Status Pill - could be dynamic based on status if that field exists reliably */}
                     {/* <div className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-green-500/10 text-green-500 border border-green-500/20">
                       Active
                     </div> */}
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 absolute top-4 right-4 bg-background/80 backdrop-blur-sm rounded-lg p-1 shadow-sm border border-border/50">
-                      <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-red-500" onClick={(e) => { e.stopPropagation(); handleDeleteAsset(asset.id); }} title={t('delete')}>
+                    <div className="absolute top-4 right-4 flex gap-1 rounded-lg border border-border/50 bg-background/80 p-1 shadow-sm opacity-100 backdrop-blur-sm transition-opacity duration-200 sm:opacity-0 sm:group-hover:opacity-100">
+                      <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-destructive" onClick={(e) => { e.stopPropagation(); handleDeleteAsset(asset.id); }} title={t('delete')}>
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>
@@ -369,7 +369,7 @@ export default function DigitalAssetsClient() {
 
                   {/* Card Body */}
                   <div className="mb-4">
-                    <h3 className="font-bold text-lg mb-1 line-clamp-1 group-hover:text-primary transition-colors cursor-pointer">
+                    <h3 className="mb-1 line-clamp-1 cursor-pointer text-lg font-bold transition-colors group-hover:text-link">
                       {asset.asset_name}
                     </h3>
                     <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-3">
@@ -381,7 +381,7 @@ export default function DigitalAssetsClient() {
                         className="flex items-center gap-2 text-sm p-2 rounded-lg bg-muted/30 hover:bg-muted/60 transition-colors cursor-pointer"
                         onClick={(e) => { e.stopPropagation(); openAssignModal(asset); }}
                       >
-                        <div className="h-6 w-6 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center text-[10px] font-bold text-indigo-600 dark:text-indigo-300">
+                        <div className="h-6 w-6 rounded-full bg-brand-chip text-brand-navy dark:bg-secondary dark:text-foreground flex items-center justify-center text-[10px] font-bold">
                           {asset.beneficiary?.full_name?.charAt(0) || '?'}
                         </div>
                         <span className={`text-xs font-medium truncate ${!asset.beneficiary ? 'text-muted-foreground italic' : ''}`}>
@@ -391,7 +391,7 @@ export default function DigitalAssetsClient() {
 
                       {asset.valid_until && (
                         <div className="flex items-center gap-2 text-xs text-muted-foreground px-2">
-                          <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                          <span className="w-1.5 h-1.5 rounded-full bg-success"></span>
                           {t('validUntil')}: {new Date(asset.valid_until).toLocaleDateString()}
                         </div>
                       )}
@@ -402,7 +402,7 @@ export default function DigitalAssetsClient() {
                   <div className="mt-auto pt-3 border-t border-border/50 flex items-center justify-between">
                     <button
                       onClick={(e) => { e.stopPropagation(); openAttachmentsModal(asset); }}
-                      className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-primary transition-colors group/files"
+                      className="group/files flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-link"
                     >
                       <Paperclip className="w-3.5 h-3.5 group-hover/files:scale-110 transition-transform" />
                       {getFileCount(asset)} {t('files')}
@@ -446,10 +446,11 @@ export default function DigitalAssetsClient() {
                   {beneficiaries.map(b => (
                     <button
                       key={b.id}
+                      data-selected-option={selectedBeneficiaryId === b.id ? "true" : undefined}
                       className={`flex flex-row items-center justify-between p-4 border rounded-lg transition text-left w-full 
                         ${selectedBeneficiaryId === b.id
-                          ? 'bg-primary/10 border-primary text-foreground dark:bg-primary/20 dark:border-primary'
-                          : 'bg-gray-50 border-gray-200 text-gray-900 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700 dark:hover:bg-gray-700'}
+                          ? 'bg-selected-option-bg border-selected-option-border text-foreground'
+                          : 'bg-muted border-border text-foreground hover:bg-accent'}
                       `}
                       onClick={() => setSelectedBeneficiaryId(b.id)}
                     >
@@ -457,7 +458,7 @@ export default function DigitalAssetsClient() {
                         <span className="font-medium text-foreground">{b.full_name}</span>
                         <span className="block text-sm text-gray-500 dark:text-gray-300">{b.email}</span>
                       </div>
-                      {selectedBeneficiaryId === b.id && <span className="ml-4 text-xs text-blue-600 dark:text-blue-300">{t('selected')}</span>}
+                      {selectedBeneficiaryId === b.id && <span className="ml-4 text-xs text-link">{t('selected')}</span>}
                     </button>
                   ))}
                 </div>

@@ -83,6 +83,7 @@ export function ProfileForm() {
                             value={fullName}
                             onChange={(e) => setFullName(e.target.value)}
                             placeholder="John Doe"
+                            className="bg-card text-foreground"
                         />
                     </div>
 
