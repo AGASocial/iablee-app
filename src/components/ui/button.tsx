@@ -20,7 +20,8 @@ const buttonVariants = cva(
         ghost:
           "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 disabled:opacity-50",
         link: "text-primary underline-offset-4 hover:underline disabled:opacity-50",
-        premium: "bg-gradient-to-r from-violet-600 to-indigo-600 text-primary-foreground shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/50 hover:from-violet-500 hover:to-indigo-500 border-0 disabled:opacity-50",
+        // Gradient fill stays dark violet→indigo in both themes; keep light text (not text-primary-foreground — dark mode maps that to navy).
+        premium: "bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/50 hover:from-violet-500 hover:to-indigo-500 border-0 disabled:opacity-50",
       },
       size: {
         default: "h-9 px-4 py-2 has-[>svg]:px-3",

@@ -74,7 +74,11 @@ export type ContrastSample = {
 export async function sampleContrast(
   page: Page,
   selector: string,
-  options?: { forcePixel?: boolean },
+  options?: {
+    forcePixel?: boolean;
+    /** Sample inside the element (gradient/solid controls) instead of above/below (photo headers). */
+    sampleInside?: boolean;
+  },
 ): Promise<ContrastSample | null> {
   const locator = page.locator(selector).first();
   if ((await locator.count()) === 0) return null;
@@ -170,9 +174,14 @@ export async function sampleContrast(
   const samples: number[][] = [];
   for (const px of [0.15, 0.35, 0.5, 0.65, 0.85]) {
     const x = Math.min(info.width - 1, Math.max(0, Math.round(meta.rect.x + meta.rect.w * px)));
-    const yAbove = Math.min(info.height - 1, Math.max(0, Math.round(meta.rect.y - 2)));
-    const yBelow = Math.min(info.height - 1, Math.max(0, Math.round(meta.rect.y + meta.rect.h + 2)));
-    for (const y of [yAbove, yBelow]) {
+    const pad = Math.min(4, Math.max(1, Math.round(meta.rect.h * 0.2)));
+    const yTop = options?.sampleInside
+      ? Math.min(info.height - 1, Math.max(0, Math.round(meta.rect.y + pad)))
+      : Math.min(info.height - 1, Math.max(0, Math.round(meta.rect.y - 2)));
+    const yBot = options?.sampleInside
+      ? Math.min(info.height - 1, Math.max(0, Math.round(meta.rect.y + meta.rect.h - pad)))
+      : Math.min(info.height - 1, Math.max(0, Math.round(meta.rect.y + meta.rect.h + 2)));
+    for (const y of [yTop, yBot]) {
       const i = (y * info.width + x) * 4;
       samples.push([data[i], data[i + 1], data[i + 2]]);
     }

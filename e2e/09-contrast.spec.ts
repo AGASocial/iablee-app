@@ -107,4 +107,28 @@ test.describe("09 contrast WCAG AA", () => {
     const enTitle = await sampleContrast(page, "main h1.page-title, main h2.page-title, main h1, main h2");
     expect(enTitle?.pass).toBe(true);
   });
+
+  // Landing is public — no throwaway user required. Premium CTA uses a fixed dark gradient.
+  test("landing premium CTA contrast (es, light + dark)", async ({ page }) => {
+    test.setTimeout(120_000);
+    // Prior serial test may leave auth cookies; landing is for signed-out users.
+    await page.context().clearCookies();
+
+    for (const theme of ["light", "dark"] as const) {
+      await page.goto("/es", { waitUntil: "domcontentloaded" });
+      await setTheme(page, theme);
+      await page.waitForTimeout(250);
+
+      const premium = await sampleContrast(
+        page,
+        'main a[href*="auth/register"] button.from-violet-600, main a[href*="auth/register"] button',
+        { forcePixel: true, sampleInside: true },
+      );
+      expect(premium, `missing premium CTA on /es (${theme})`).toBeTruthy();
+      expect(
+        premium!.pass,
+        `premium CTA contrast ${premium!.ratio}:${premium!.required} on /es (${theme}) color=${premium!.color} bg=${JSON.stringify(premium!.bg)} text=${premium!.text}`,
+      ).toBe(true);
+    }
+  });
 });
