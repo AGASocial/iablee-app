@@ -1,13 +1,18 @@
-# Callback URL
-http://localhost:3000/en/payments/payu/return?merchantId=508029&merchant_name=Test+PayU&merchant_address=Av+123+Calle+12&telephone=7512354&merchant_url=http%3A%2F%2Fpruebaslapv.xtrweb.com&transactionState=4&lapTransactionState=APPROVED&message=APPROVED&referenceCode=payu_48508890-08ea-40bc-8dc6-4a0860f6bc6a_1769218748365&reference_pol=2156386850&transactionId=cc22397e-6cd6-4c58-9157-a4ab28b7c490&description=Premium&trazabilityCode=102038074500&cus=102038074500&orderLanguage=es&extra1=48508890-08ea-40bc-8dc6-4a0860f6bc6a&extra2=plan_premium_month&extra3=&polTransactionState=4&signature=84bb03c751a39677aae937dd7220494a&polResponseCode=1&lapResponseCode=APPROVED&risk=&polPaymentMethod=1074&lapPaymentMethod=MASTERCARD&polPaymentMethodType=2&lapPaymentMethodType=CREDIT_CARD&installmentsNumber=1&TX_VALUE=19.99&TX_TAX=.00&currency=USD&lng=es&pseCycle=&buyerEmail=gaveho%40gmail.com&pseBank=&pseReference1=&pseReference2=&pseReference3=&authorizationCode=654321&authorizationCode=654321&khipuBank=&TX_ADMINISTRATIVE_FEE=.00&TX_TAX_ADMINISTRATIVE_FEE=.00&TX_TAX_ADMINISTRATIVE_FEE_RETURN_BASE=.00&processingDate=2026-01-23
-
 # Billing & Subscription System - Setup Guide
 
 This document provides a comprehensive guide for the newly implemented billing and subscription system.
 
 ## Overview
 
-The billing system is **provider-agnostic** and currently supports Stripe, with the architecture designed to easily add PayPal, Wompi, or PayU in the future.
+The billing system is **provider-agnostic**. Implemented gateways:
+
+| Gateway | Model | Notes |
+|---------|--------|--------|
+| **PayU** | Hosted WebCheckout (POST form) | Default `PAYMENT_GATEWAY` |
+| **Stripe** | Customer vault + native subscriptions | Requires saved payment method |
+| **Wompi** (Colombia) | Hosted Web Checkout (GET form) | COP only; renew-by-checkout (KAN-139) |
+
+PayPal remains a type placeholder only.
 
 ## What Has Been Implemented
 
@@ -40,6 +45,8 @@ The billing system is **provider-agnostic** and currently supports Stripe, with 
   - Checkout sessions
   - Billing portal sessions
 - **StripeWebhookNormalizer** - Converts Stripe webhooks to normalized domain events
+- **PayUAdapter** / **PayUWebhookNormalizer** - WebCheckout + confirmation webhook
+- **WompiAdapter** / **WompiWebhookNormalizer** - Web Checkout (GET) + `transaction.updated` events
 
 ### 4. API Endpoints ✅
 - `GET /api/billing/plans` - List all available plans
@@ -52,6 +59,8 @@ The billing system is **provider-agnostic** and currently supports Stripe, with 
 - `GET /api/billing/invoices` - List invoices
 - `POST /api/webhooks/stripe` - Stripe webhook endpoint
 - `POST /api/webhooks/payu` - PayU confirmation webhook endpoint (WebCheckout)
+- `POST /api/webhooks/wompi` - Wompi events webhook (`transaction.updated`)
+- `GET /api/payments/wompi/transaction` - Informational transaction lookup for return page
 
 ### 5. Database Types ✅
 - Updated `src/lib/supabase.ts` with all billing table types
@@ -64,27 +73,43 @@ Add the following to your `.env.local`:
 
 ```bash
 # Payment Gateway Configuration
-PAYMENT_GATEWAY=stripe  # Set to 'payu' to use PayU WebCheckout
-NEXT_PUBLIC_PAYMENT_GATEWAY=stripe # Client-side hint for rendering the correct UI
+# Default in application code is payu. Supported: payu | stripe | wompi
+PAYMENT_GATEWAY=payu
+NEXT_PUBLIC_PAYMENT_GATEWAY=payu
 
 # Stripe Configuration (Server-side only)
-STRIPE_SECRET_KEY=sk_test_...  # Your Stripe secret key
-STRIPE_WEBHOOK_SECRET=whsec_...  # Your Stripe webhook signing secret
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
 
-# PayU WebCheckout (example sandbox credentials)
+# PayU WebCheckout
 PAYU_ENV=sandbox
-PAYU_API_KEY=p4yu_s4ndb0x_k3y
-PAYU_API_LOGIN=p4yu_s4ndb0x_l0gin
-PAYU_MERCHANT_ID=508029
-PAYU_ACCOUNT_ID=512321
+PAYU_API_KEY=
+PAYU_API_LOGIN=
+PAYU_MERCHANT_ID=
+PAYU_ACCOUNT_ID=
 PAYU_PAYMENT_URL=https://sandbox.checkout.payulatam.com/ppp-web-gateway-payu
-PAYU_RESPONSE_URL=https://example.com/payments/payu/return
-PAYU_CONFIRMATION_URL=https://example.com/api/webhooks/payu
+PAYU_RESPONSE_URL=http://localhost:3000/es/payments/payu/return
+PAYU_CONFIRMATION_URL=http://localhost:3000/api/webhooks/payu
 PAYU_LANGUAGE=es
 
+# Wompi (Colombia) — see Step 6. Do not flip production to wompi until keys + COP prices are confirmed.
+WOMPI_ENV=sandbox
+WOMPI_PUBLIC_KEY=
+WOMPI_PRIVATE_KEY=
+WOMPI_EVENTS_SECRET=
+WOMPI_INTEGRITY_SECRET=
+NEXT_PUBLIC_WOMPI_PUBLIC_KEY=
+WOMPI_REDIRECT_URL=http://localhost:3000/es/payments/wompi/return
+# Wompi events URLs (configure per commerce environment — never cross-wire):
+# Production: https://app.iablee.com/api/webhooks/wompi
+# Sandbox:    https://<vercel-develop-or-preview-host>/api/webhooks/wompi
+
 # Supabase Service Role Key (needed for server-side operations)
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+SUPABASE_SERVICE_ROLE_KEY=
 ```
+
+See also root `.env.example` for the full placeholder list.
 
 ### Step 2: Run Database Migrations
 
@@ -153,6 +178,37 @@ stripe trigger customer.subscription.created
    - **Confirmation URL**: `https://your-domain.com/api/webhooks/payu`
 3. Set `PAYMENT_GATEWAY=payu` and `NEXT_PUBLIC_PAYMENT_GATEWAY=payu` in `.env.local`. The checkout UI now generates a signed PayU form instead of Stripe Elements.
 4. Use PayU sandbox cards to test the flow. The webhook updates `billing_subscriptions` and `billing_invoices` when the transaction state is `APPROVED`, `DECLINED`, or `PENDING`.
+
+### Step 6: Configure Wompi Web Checkout (optional, KAN-139)
+
+Wompi has **no native subscriptions**. iablee uses the same renew-by-checkout model as PayU:
+
+1. User selects a plan → backend creates an incomplete subscription + open invoice keyed by a unique `reference`.
+2. Browser auto-submits a **GET** form to `https://checkout.wompi.co/p/` with integrity signature.
+3. Wompi redirects to `WOMPI_REDIRECT_URL?id={transaction_id}` (informational only — **do not** activate from the client).
+4. Wompi POSTs `transaction.updated` to `/api/webhooks/wompi`. After checksum verification, `APPROVED` → `invoice.paid` (activates/extends the local period).
+
+#### Env / Dashboard
+
+1. Create sandbox keys in the Wompi Commerce Dashboard (`pub_test_`, `prv_test_`, `test_events_`, `test_integrity_`).
+2. **Events URL — one per Wompi environment (required isolation):**
+   - **Production commerce:** `https://app.iablee.com/api/webhooks/wompi`
+   - **Sandbox commerce:** the current Vercel develop/preview deployment webhook, e.g. `https://<vercel-develop-or-preview-host>/api/webhooks/wompi` (use the live develop/preview URL from the Vercel dashboard; do not invent a hostname).
+   - Local testing: `https://<tunnel>/api/webhooks/wompi` or similar.
+   - **Never** point sandbox commerce at the production events URL, and **never** point production commerce at a sandbox/preview URL. Wompi requires a separate events URL per environment.
+   - Commerce may be awaiting approval while production is already enabled; still keep sandbox and production isolated.
+3. Fill `WOMPI_*` vars from `.env.example`. Keep `PAYMENT_GATEWAY=payu` in production until go-live.
+4. **COP pricing**: plans are USD in `billing_plans.amount_cents`. Wompi charges COP only. Official COP amounts (confirmed 2026-11-13, KAN-139) come from:
+   - `src/lib/billing/wompi-pricing.ts` (`WOMPI_PLAN_AMOUNT_COP_CENTS`), or
+   - numeric `provider_price_map.wompi` (amount-in-cents string), via migration `supabase/migrations/20261113140000_wompi_cop_placeholder_prices.sql` (filename kept for history; prices are official)
+   - Necessary monthly/yearly: `4000000` / `40000000`; Premium monthly/yearly: `8000000` / `80000000`. Migration is **not** auto-applied — run when deploying Wompi.
+5. **Provider ID uniqueness (do not apply until reviewed):** migration `supabase/migrations/20261113150000_billing_provider_id_unique.sql` adds UNIQUE indexes on `billing_invoices.provider_invoice_id` and `billing_subscriptions.provider_subscription_id`. Application code uses select-then-update/insert so paid webhooks work before this lands. Next `supabase db push` would apply it.
+
+#### Recurring follow-up (not implemented)
+
+**Option B — Payment sources + server-side charges:** tokenize card/Nequi via acceptance token, `POST /v1/payment_sources`, later `POST /v1/transactions` with `payment_source_id` (and `recurrent=true` for Visa/MC COF). Requires a renewals job, 3RI/3DS considerations, and card/Nequi only. Documented here as follow-up; vault methods on `WompiAdapter` throw `PaymentGatewayError` like PayU.
+
+Official docs: [Web Checkout](https://docs.wompi.co/en/docs/colombia/widget-checkout-web/), [Events](https://docs.wompi.co/en/docs/colombia/eventos/), [Transactions](https://docs.wompi.co/en/docs/colombia/transacciones/), [Payment sources](https://docs.wompi.co/docs/colombia/fuentes-de-pago/).
 
 ## Usage Examples
 
@@ -259,23 +315,32 @@ src/
 │       ├── billing.service.ts                # BillingService orchestration
 │       ├── server.ts                         # Server-side utilities
 │       ├── index.ts                          # Public exports
+│       ├── wompi-pricing.ts                  # Official COP amounts (KAN-139)
 │       └── adapters/
-│           ├── stripe.adapter.ts             # Stripe implementation
-│           ├── stripe-webhook.normalizer.ts  # Stripe webhook normalizer
+│           ├── stripe.adapter.ts
+│           ├── stripe-webhook.normalizer.ts
+│           ├── payu.adapter.ts
+│           ├── payu-webhook.normalizer.ts
+│           ├── wompi.adapter.ts
+│           ├── wompi-webhook.normalizer.ts
 │           └── index.ts
 ├── app/
 │   └── api/
 │       ├── billing/
-│       │   ├── plans/route.ts                # GET plans
-│       │   ├── subscriptions/route.ts        # CRUD subscriptions
-│       │   ├── payment-methods/route.ts      # CRUD payment methods
-│       │   └── invoices/route.ts             # GET invoices
+│       │   ├── plans/route.ts
+│       │   ├── subscriptions/route.ts
+│       │   ├── payment-methods/route.ts
+│       │   └── invoices/route.ts
+│       ├── payments/wompi/transaction/route.ts
 │       └── webhooks/
-│           └── stripe/route.ts               # Stripe webhook handler
+│           ├── stripe/route.ts
+│           ├── payu/route.ts
+│           └── wompi/route.ts
 supabase/
 └── migrations/
     ├── 20251029000000_create_billing_tables.sql
-    └── 20251029000001_seed_billing_plans.sql
+    ├── 20251029000001_seed_billing_plans.sql
+    └── 20261113140000_wompi_cop_placeholder_prices.sql  # Official COP; apply when deploying Wompi
 ```
 
 ## Security Considerations

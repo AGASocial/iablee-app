@@ -159,6 +159,8 @@ export interface PaymentGateway {
     sessionId: string;
     url: string;
     formFields?: Record<string, string>;
+    /** Wompi Web Checkout uses GET; PayU uses POST. */
+    formMethod?: 'GET' | 'POST';
   }>;
 
   /**

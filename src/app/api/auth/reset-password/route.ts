@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAuthenticatedRouteClient } from '@/lib/supabase-server';
+import { getPasswordPolicyError } from '@/lib/password-policy';
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,24 +10,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Password is required' }, { status: 400 });
     }
 
-    if (password.length < 8) {
-      return NextResponse.json(
-        { error: 'Password must be at least 8 characters' },
-        { status: 400 }
-      );
-    }
-
-    if (password.length > 100) {
-      return NextResponse.json(
-        { error: 'Password must be less than 100 characters' },
-        { status: 400 }
-      );
-    }
-
     const { supabase, user } = await createAuthenticatedRouteClient();
 
     if (!user) {
       return NextResponse.json({ error: 'Invalid or expired reset link' }, { status: 401 });
+    }
+
+    const policyError = getPasswordPolicyError(password, { email: user.email });
+    if (policyError) {
+      return NextResponse.json({ error: policyError }, { status: 400 });
     }
 
     const { error } = await supabase.auth.updateUser({ password });
