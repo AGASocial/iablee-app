@@ -33,6 +33,12 @@ import {
 } from './types';
 import { resolveWompiAmountInCents } from './wompi-pricing';
 import { persistByProviderId } from './persistence';
+import { parseWompiReference as parseWompiRefDetailed } from './wompi-references';
+import {
+  applyWompiRenewalApproval,
+  applyWompiRenewalFailure,
+} from './renewals';
+import { activateFirstCharge } from './wompi-subscribe';
 
 export class BillingService {
   constructor(
@@ -114,6 +120,7 @@ export class BillingService {
       .from('billing_payment_methods')
       .select('*')
       .eq('user_id', userId)
+      .is('voided_at', null)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -189,9 +196,16 @@ export class BillingService {
       throw new BillingError('User not found', 'USER_NOT_FOUND');
     }
 
-    if (this.gateway.getName() === 'payu' || this.gateway.getName() === 'wompi') {
+    if (this.gateway.getName() === 'payu') {
       throw new BillingError(
-        `${this.gateway.getName() === 'wompi' ? 'Wompi' : 'PayU'} Web Checkout does not support stored payment methods`,
+        'PayU Web Checkout does not support stored payment methods',
+        'PAYMENT_METHOD_UNSUPPORTED'
+      );
+    }
+
+    if (this.gateway.getName() === 'wompi') {
+      throw new BillingError(
+        'Use /api/billing/wompi/payment-sources to attach Wompi payment methods',
         'PAYMENT_METHOD_UNSUPPORTED'
       );
     }
@@ -370,12 +384,20 @@ export class BillingService {
     }
 
     if (providerName === 'wompi') {
-      return this.createWompiCheckout({
-        userId,
-        plan,
-        email: user.email,
-        name: user.full_name || undefined,
-      });
+      // KAN-166: first purchase uses payment sources via /api/billing/wompi/subscribe.
+      // Legacy Web Checkout remains available only when explicitly requested.
+      if (paymentMethodToken === '__legacy_web_checkout__') {
+        return this.createWompiCheckout({
+          userId,
+          plan,
+          email: user.email,
+          name: user.full_name || undefined,
+        });
+      }
+      throw new BillingError(
+        'Wompi subscriptions require tokenized payment source via /api/billing/wompi/subscribe',
+        'WOMPI_SOURCE_REQUIRED'
+      );
     }
 
     // Get or create customer
@@ -775,6 +797,7 @@ export class BillingService {
     if (!atPeriodEnd) {
       updates.status = 'canceled';
       updates.canceled_at = new Date().toISOString();
+      updates.canceled_reason = 'user';
     } else if (!subscription.current_period_end) {
       // If current_period_end is not set (e.g. PayU subscriptions), compute it
       // based on the plan's billing interval from the most recent invoice paid_at or creation date
@@ -821,16 +844,19 @@ export class BillingService {
    * Handle a normalized webhook event — enqueue then process.
    * Returns after persisting the event; processing runs inline but
    * the event is stored with handled=false first for queue visibility.
+   * Retries of unhandled events (handled=false) are reprocessed.
+   * Fully handled duplicates are no-ops.
    */
   async handleWebhookEvent(event: NormalizedEvent): Promise<void> {
     const eventId = await this.enqueueWebhookEvent(event);
-    if (!eventId) return; // duplicate
+    if (!eventId) return; // already handled successfully
     await this.processWebhookEvent(event, eventId);
   }
 
   /**
    * Enqueue webhook event for async processing audit trail.
-   * Returns null if duplicate (idempotency).
+   * Returns null only when a prior successful handle exists (handled=true).
+   * On unique conflict with handled=false, returns that row id for reprocessing.
    */
   async enqueueWebhookEvent(event: NormalizedEvent): Promise<string | null> {
     const { data, error } = await this.supabase
@@ -845,11 +871,31 @@ export class BillingService {
       .select('id')
       .single();
 
-    if (error) {
-      if (error.code === '23505') return null; // unique constraint — duplicate
-      throw error;
+    if (!error && data?.id) {
+      return data.id as string;
     }
-    return data.id;
+
+    if (error?.code === '23505') {
+      const { data: existing } = await this.supabase
+        .from('billing_webhook_events')
+        .select('id, handled')
+        .eq('provider', event.provider)
+        .eq('provider_event_id', event.id)
+        .maybeSingle();
+
+      if (!existing?.id) {
+        throw error;
+      }
+      // Successful prior handle — idempotent no-op
+      if (existing.handled === true) {
+        return null;
+      }
+      // Soft-fail left handled=false — reprocess on Wompi retry
+      return existing.id as string;
+    }
+
+    if (error) throw error;
+    return null;
   }
 
   /**
@@ -866,10 +912,10 @@ export class BillingService {
           await this.handleSubscriptionCanceled(event.data as SubscriptionEventData);
           break;
         case 'invoice.paid':
-          await this.handleInvoicePaid(event.data as InvoiceEventData);
+          await this.handleInvoicePaidRouted(event.data as InvoiceEventData);
           break;
         case 'invoice.payment_failed':
-          await this.handleInvoicePaymentFailed(event.data as InvoiceEventData);
+          await this.handleInvoicePaymentFailedRouted(event.data as InvoiceEventData);
           break;
         case 'payment_method.attached':
           await this.handlePaymentMethodAttached(event.data as PaymentMethodEventData);
@@ -1036,6 +1082,110 @@ export class BillingService {
       .maybeSingle();
 
     return byUserProvider?.id as string | undefined;
+  }
+
+  /**
+   * Route Wompi first-charge vs renewal by reference format (KAN-166).
+   */
+  private async handleInvoicePaidRouted(data: InvoiceEventData): Promise<void> {
+    if (this.gateway.getName() === 'wompi') {
+      const parsed = parseWompiRefDetailed(data.invoiceId);
+      if (parsed?.kind === 'renewal') {
+        await applyWompiRenewalApproval(this.supabase, {
+          reference: data.invoiceId,
+          transactionId:
+            data.providerTransactionId || data.subscriptionId || data.invoiceId,
+          amountCents: data.amountCents,
+        });
+        return;
+      }
+      if (parsed?.kind === 'first' || parsed?.kind === 'legacy_first') {
+        await this.handleWompiFirstChargePaid(data, parsed);
+        return;
+      }
+    }
+    await this.handleInvoicePaid(data);
+  }
+
+  private async handleInvoicePaymentFailedRouted(data: InvoiceEventData): Promise<void> {
+    if (this.gateway.getName() === 'wompi') {
+      const parsed = parseWompiRefDetailed(data.invoiceId);
+      if (parsed?.kind === 'renewal') {
+        await applyWompiRenewalFailure(this.supabase, {
+          reference: data.invoiceId,
+          transactionId:
+            data.providerTransactionId || data.subscriptionId || data.invoiceId,
+          status: 'declined',
+          message: data.rawStatus,
+        });
+        return;
+      }
+    }
+    await this.handleInvoicePaymentFailed(data);
+  }
+
+  private async handleWompiFirstChargePaid(
+    data: InvoiceEventData,
+    parsed: { userId: string; planId: string; subscriptionId?: string }
+  ): Promise<void> {
+    const userId = data.userId || parsed.userId;
+    const planId = data.planId || parsed.planId;
+
+    // Prefer the subscription id embedded in the deterministic reference —
+    // never activate "latest by created_at" (DECLINED retries can leave orphans).
+    type SubSnap = {
+      id: string;
+      status: string;
+      current_period_end: string | null;
+    };
+    let sub: SubSnap | null = null;
+
+    if (parsed.subscriptionId) {
+      const { data: byId } = await this.supabase
+        .from('billing_subscriptions')
+        .select('id, status, current_period_end')
+        .eq('id', parsed.subscriptionId)
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (byId) sub = byId as SubSnap;
+    }
+
+    if (!sub) {
+      const { data: latest } = await this.supabase
+        .from('billing_subscriptions')
+        .select('id, status, current_period_end')
+        .eq('user_id', userId)
+        .eq('provider', 'wompi')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (latest) sub = latest as SubSnap;
+    }
+
+    if (!sub?.id || !planId) {
+      await this.handleInvoicePaid(data);
+      return;
+    }
+
+    const plan = await this.getPlan(planId);
+    const { data: user } = await this.supabase
+      .from('users')
+      .select('email')
+      .eq('id', userId)
+      .maybeSingle();
+
+    // activateFirstCharge marks approved+requires_refund when already active
+    // (extra APPROVED) and is a no-op for the activating reference redelivery.
+    await activateFirstCharge(this.supabase, {
+      userId,
+      subscriptionId: sub.id as string,
+      plan,
+      reference: data.invoiceId,
+      transactionId:
+        data.providerTransactionId || data.subscriptionId || data.invoiceId,
+      amountInCents: data.amountCents,
+      email: (user?.email as string) || '',
+    });
   }
 
   /**
@@ -1264,25 +1414,27 @@ export class BillingService {
    */
   private mapPaymentMethodFromDb(data: Record<string, unknown>): PaymentMethod {
     const brand = data.brand as string | undefined;
-    const last4 = data.last4 as string | undefined;
+    const last4 = (data.last4 || data.phone_last4) as string | undefined;
     const expMonth = data.exp_month as number | undefined;
     const expYear = data.exp_year as number | undefined;
+    const methodType = ((data.method_type as string) || 'card').toLowerCase();
 
     return {
       id: data.id as string,
       userId: data.user_id as string,
       provider: data.provider as PaymentMethod['provider'],
-      providerCustomerId: data.provider_customer_id as string,
-      token: data.token as string,
-      type: 'card', // Payment type
-      // Include nested card object for UI compatibility
-      card: brand && last4 && expMonth && expYear ? {
-        brand,
-        last4,
-        expMonth,
-        expYear,
-      } : undefined,
-      // Also keep flat properties for backward compatibility
+      providerCustomerId: (data.provider_customer_id as string) || '',
+      token: (data.token || data.provider_payment_source_id || '') as string,
+      type: methodType === 'nequi' ? 'nequi' : 'card',
+      card:
+        brand && last4
+          ? {
+              brand,
+              last4,
+              expMonth: expMonth || 0,
+              expYear: expYear || 0,
+            }
+          : undefined,
       brand,
       last4,
       expMonth,

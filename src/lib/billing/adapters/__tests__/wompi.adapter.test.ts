@@ -149,3 +149,79 @@ describe('WompiAdapter.createCheckoutSession', () => {
     expect(session.formFields?.['amount-in-cents']).toBe('1234500');
   });
 });
+
+describe('WompiAdapter.findTransactionByReference contract', () => {
+  const adapter = new WompiAdapter({
+    environment: 'sandbox',
+    publicKey: 'pub_test_example',
+    privateKey: 'prv_test_example',
+    integritySecret: 'test_integrity_example',
+    redirectUrl: 'http://localhost:3000/es/payments/wompi/return',
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('returns found when 200 + data array with a transaction', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: [
+          {
+            id: 'tx-1',
+            status: 'APPROVED',
+            reference: 'ref-1',
+            amount_in_cents: 990000,
+            currency: 'COP',
+          },
+        ],
+        meta: {},
+      }),
+    } as Response);
+
+    const result = await adapter.findTransactionByReference('ref-1');
+    expect(result).toEqual({
+      kind: 'found',
+      transaction: expect.objectContaining({ id: 'tx-1', status: 'APPROVED' }),
+    });
+  });
+
+  it('returns empty on 200 + data:[] (safe-to-abandon signal)', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: [], meta: {} }),
+    } as Response);
+
+    await expect(adapter.findTransactionByReference('ref-missing')).resolves.toEqual({
+      kind: 'empty',
+    });
+  });
+
+  it('returns error on non-200 (never treat as empty)', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: async () => ({ error: 'unauthorized' }),
+    } as Response);
+
+    await expect(adapter.findTransactionByReference('ref-1')).resolves.toEqual({
+      kind: 'error',
+      httpStatus: 401,
+      message: 'HTTP 401',
+    });
+  });
+
+  it('returns error on unexpected shape', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: { weird: true }, meta: {} }),
+    } as Response);
+
+    const result = await adapter.findTransactionByReference('ref-1');
+    expect(result.kind).toBe('error');
+  });
+});

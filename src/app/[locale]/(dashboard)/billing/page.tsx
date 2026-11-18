@@ -408,8 +408,10 @@ export default function BillingPage() {
         </CardContent>
       </Card>
 
-      {/* Payment Methods */}
-      {provider !== 'payu' && <PaymentMethodsList />}
+      {/* Payment Methods: Stripe vault + Wompi sources; hide for PayU hosted checkout */}
+      {provider !== 'payu' && (
+        <PaymentMethodsList provider={provider || PAYMENT_GATEWAY} />
+      )}
 
       {/* Billing History */}
       <Card className="glass-panel border-border/50">

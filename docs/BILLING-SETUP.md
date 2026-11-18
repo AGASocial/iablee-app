@@ -204,9 +204,19 @@ Wompi has **no native subscriptions**. iablee uses the same renew-by-checkout mo
    - Migrations are **not** auto-applied — run when deploying.
 5. **Provider ID uniqueness (do not apply until reviewed):** migration `supabase/migrations/20261113150000_billing_provider_id_unique.sql` adds UNIQUE indexes on `billing_invoices.provider_invoice_id` and `billing_subscriptions.provider_subscription_id`. Application code uses select-then-update/insert so paid webhooks work before this lands. Next `supabase db push` would apply it.
 
-#### Recurring follow-up (not implemented)
+#### Recurring renewals (KAN-166 — implemented)
 
-**Option B — Payment sources + server-side charges:** tokenize card/Nequi via acceptance token, `POST /v1/payment_sources`, later `POST /v1/transactions` with `payment_source_id` (and `recurrent=true` for Visa/MC COF). Requires a renewals job, 3RI/3DS considerations, and card/Nequi only. Documented here as follow-up; vault methods on `WompiAdapter` throw `PaymentGatewayError` like PayU.
+**Payment sources + nightly cron (approved design):**
+
+1. **First purchase:** user accepts Wompi terms + personal-data auth → browser tokenizes card (`POST /v1/tokens/cards` with public key; PAN/CVC never hit iablee) → `POST /api/billing/wompi/subscribe` creates `payment_sources` with private key, stores `provider_payment_source_id` / brand / last4 in `billing_payment_methods`, charges with `payment_source_id` + `recurrent:true` (Visa/MC COF on RBM).
+2. **Nightly cron:** `GET /api/cron/billing-renewals` at **07:00 UTC (02:00 COT)** via `vercel.json`. Auth: `Authorization: Bearer ${CRON_SECRET}` (fail-closed if unset/mismatch). Claims a `billing_renewal_attempts` row **before** calling Wompi (unique on subscription + period_end + attempt). Deterministic reference: `wompi_renew_{subscriptionId}_{YYYYMMDD}_{attempt}`. Pending attempts are reconciled via `GET /v1/transactions/{id}` — never double-charged.
+3. **Dunning:** attempts on day **0 / 1 / 3 / 5** after `current_period_end`. Final failure → status `canceled` (Free limits). `cancel_at_period_end` ends with **no charge**.
+4. **Entitlements:** `active` only while `current_period_end` is null/future **+ 1-day grace**; `past_due` keeps Premium through the 5-day dunning window (+ grace).
+5. **Emails (Resend):** renewal success, payment failed, upcoming renewal (~3 days, once per period), downgrade to Free. Failures never break billing.
+6. **Nequi:** API accepts `paymentType: NEQUI` and stores phone last4; UI is card-only for now (clean extension point). **3DS:** first charge may stay `PENDING` (webhook activates); recurrent MIT charges typically skip challenge when COF applies.
+7. **Migration:** `supabase/migrations/20261118120000_kan166_wompi_recurring.sql` (payment method columns, `billing_renewal_attempts`, `billing_email_events`). Do not apply blindly against production without review.
+
+**Go-live checklist:** set `CRON_SECRET`, `RESEND_*`, keep sandbox/production Wompi events URLs isolated, enable Vercel Cron on the project, apply migrations, switch `PAYMENT_GATEWAY=wompi` only when ready.
 
 Official docs: [Web Checkout](https://docs.wompi.co/en/docs/colombia/widget-checkout-web/), [Events](https://docs.wompi.co/en/docs/colombia/eventos/), [Transactions](https://docs.wompi.co/en/docs/colombia/transacciones/), [Payment sources](https://docs.wompi.co/docs/colombia/fuentes-de-pago/).
 

@@ -134,7 +134,12 @@ describe('BillingService plan visibility (KAN-164)', () => {
     const service = new BillingService(supabase as never, makeGateway());
 
     await expect(
-      service.createSubscription({ userId: 'user-existing', planId: 'plan_necessary_month' })
+      service.createSubscription({
+        userId: 'user-existing',
+        planId: 'plan_necessary_month',
+        // Visibility tests still exercise legacy Web Checkout path
+        paymentMethodToken: '__legacy_web_checkout__',
+      })
     ).resolves.toMatchObject({
       subscriptionId: 'sub-1',
       checkoutSession: expect.objectContaining({ provider: 'wompi' }),
@@ -162,7 +167,11 @@ describe('BillingService plan visibility (KAN-164)', () => {
     const service = new BillingService(supabase as never, makeGateway());
 
     await expect(
-      service.createSubscription({ userId: 'user-necessary', planId: 'plan_necessary_year' })
+      service.createSubscription({
+        userId: 'user-necessary',
+        planId: 'plan_necessary_year',
+        paymentMethodToken: '__legacy_web_checkout__',
+      })
     ).resolves.toMatchObject({
       subscriptionId: 'sub-1',
       checkoutSession: expect.objectContaining({ provider: 'wompi' }),

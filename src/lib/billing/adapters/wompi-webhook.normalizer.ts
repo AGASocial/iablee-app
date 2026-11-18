@@ -14,6 +14,7 @@ import type {
   Currency,
 } from '../types';
 import { parseWompiReference } from './wompi.adapter';
+import { parseWompiReference as parseWompiReferenceDetailed } from '../wompi-references';
 
 export interface WompiEventSignature {
   properties: string[];
@@ -184,9 +185,14 @@ export class WompiWebhookNormalizer implements WebhookNormalizer {
       : new Date(raw.timestamp * 1000).toISOString();
 
     const parsed = parseWompiReference(transaction.reference);
+    const detailed = parseWompiReferenceDetailed(transaction.reference);
     const eventId = `${transaction.id}-${status}`;
 
+    // Renewal PENDING is tracked via billing_renewal_attempts; skip noisy updates
     if (status === 'PENDING') {
+      if (detailed?.kind === 'renewal') {
+        return null;
+      }
       const subscriptionData = this.buildSubscriptionData(
         transaction,
         occurredAt,
@@ -210,7 +216,8 @@ export class WompiWebhookNormalizer implements WebhookNormalizer {
       transaction,
       status,
       occurredAt,
-      parsed
+      parsed,
+      detailed
     );
 
     return {
@@ -319,12 +326,20 @@ export class WompiWebhookNormalizer implements WebhookNormalizer {
     transaction: WompiTransactionPayload,
     status: Exclude<WompiFinalStatus, 'PENDING'>,
     occurredAt: string,
-    parsed: ReturnType<typeof parseWompiReference>
+    parsed: ReturnType<typeof parseWompiReference>,
+    detailed: ReturnType<typeof parseWompiReferenceDetailed>
   ): InvoiceEventData {
+    const renewalSubId =
+      detailed?.kind === 'renewal' ? detailed.subscriptionId : undefined;
+
     return {
       invoiceId: transaction.reference,
-      customerId: parsed?.userId || transaction.customer_email || 'wompi-anonymous',
-      subscriptionId: transaction.reference,
+      customerId:
+        parsed?.userId ||
+        renewalSubId ||
+        transaction.customer_email ||
+        'wompi-anonymous',
+      subscriptionId: renewalSubId || transaction.reference,
       amountCents: Number(transaction.amount_in_cents) || 0,
       currency: (transaction.currency || 'COP') as Currency,
       status: status === 'APPROVED' ? 'paid' : 'open',
@@ -333,6 +348,7 @@ export class WompiWebhookNormalizer implements WebhookNormalizer {
       userId: parsed?.userId,
       planId: parsed?.planId,
       rawStatus: transaction.status,
+      providerTransactionId: transaction.id,
     };
   }
 }

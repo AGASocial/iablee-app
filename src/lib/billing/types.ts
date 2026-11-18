@@ -186,6 +186,8 @@ export interface InvoiceEventData {
   userId?: string;
   planId?: string;
   rawStatus?: string;
+  /** Provider transaction id (e.g. Wompi transaction.id) */
+  providerTransactionId?: string;
 }
 
 export interface PaymentMethodEventData {
@@ -267,10 +269,77 @@ export class BillingError extends Error {
 }
 
 export class PaymentGatewayError extends BillingError {
-  constructor(message: string, provider: PaymentProvider, code = 'GATEWAY_ERROR') {
+  constructor(
+    message: string,
+    provider: PaymentProvider,
+    code = 'GATEWAY_ERROR',
+    public httpStatus?: number,
+    /** Raw provider error body / message when available */
+    public providerMessage?: string
+  ) {
     super(message, code, provider);
     this.name = 'PaymentGatewayError';
   }
+}
+
+/** Patterns that prove Wompi did not create a transaction (safe to finalize as error). */
+const DEFINITIVE_NO_TX_PATTERNS: RegExp[] = [
+  /invalid.*amount/i,
+  /amount_in_cents/i,
+  /payment_source/i,
+  /fuente de pago/i,
+  /source.*(invalid|unavailable|not available|not found)/i,
+  /installments/i,
+  /acceptance/i,
+  /token.*(invalid|expired)/i,
+  /currency/i,
+];
+
+/** Patterns that mean a transaction may already exist (keep claimed). */
+const INCONCLUSIVE_4XX_PATTERNS: RegExp[] = [
+  /referencia ya ha sido usada/i,
+  /reference.*(already|usada|duplicate|exists)/i,
+  /duplicate.*reference/i,
+  /ya ha sido usada/i,
+];
+
+function chargeErrorText(err: PaymentGatewayError): string {
+  return `${err.message} ${err.providerMessage || ''}`;
+}
+
+/**
+ * True only for known non-creating validation 4xx.
+ * 409 / 422 duplicate-reference / unrecognized 4xx → inconclusive (keep claimed).
+ */
+export function isDefinitiveWompiChargeRejection(err: unknown): boolean {
+  if (!(err instanceof PaymentGatewayError)) return false;
+  const status = err.httpStatus;
+  if (status == null || status < 400 || status >= 500) return false;
+
+  // Conflict / unprocessable often mean the reference already created a tx
+  if (status === 409) return false;
+
+  const text = chargeErrorText(err);
+  if (INCONCLUSIVE_4XX_PATTERNS.some(p => p.test(text))) return false;
+  if (status === 422) return false; // Wompi: duplicate reference and other ambiguities
+
+  // Only known non-creating validation errors are definitive
+  return DEFINITIVE_NO_TX_PATTERNS.some(p => p.test(text));
+}
+
+/** Exposed for unit tests */
+export function classifyWompiChargeHttpFailure(
+  httpStatus: number,
+  providerMessage = ''
+): 'definitive' | 'inconclusive' {
+  const err = new PaymentGatewayError(
+    `Wompi source transaction failed (${httpStatus})`,
+    'wompi',
+    'WOMPI_SOURCE_CHARGE_FAILED',
+    httpStatus,
+    providerMessage
+  );
+  return isDefinitiveWompiChargeRejection(err) ? 'definitive' : 'inconclusive';
 }
 
 export class WebhookVerificationError extends BillingError {

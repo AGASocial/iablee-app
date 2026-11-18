@@ -1,7 +1,7 @@
 /**
  * Wompi Adapter (Colombia)
- * Minimal PaymentGateway for Web Checkout (GET form) — renew-by-checkout model.
- * @see https://docs.wompi.co/en/docs/colombia/widget-checkout-web/
+ * Payment sources + recurrent charges (KAN-166) and legacy Web Checkout.
+ * @see https://docs.wompi.co/docs/colombia/fuentes-de-pago/
  */
 
 import crypto from 'crypto';
@@ -18,6 +18,11 @@ import type {
 } from '../types';
 import { PaymentGatewayError } from '../types';
 import { resolveWompiAmountInCents } from '../wompi-pricing';
+import {
+  buildWompiFirstReference,
+  buildWompiLegacyReference,
+  parseWompiReference as parseWompiReferenceFull,
+} from '../wompi-references';
 
 export interface WompiAdapterConfig {
   environment: 'sandbox' | 'production';
@@ -29,6 +34,32 @@ export interface WompiAdapterConfig {
   checkoutUrl?: string;
 }
 
+/** Hard cap so Wompi HTTP cannot outlive the charge lease (600s). */
+export const WOMPI_HTTP_TIMEOUT_MS = 30_000;
+
+async function fetchWithTimeout(
+  input: string,
+  init: RequestInit = {},
+  timeoutMs = WOMPI_HTTP_TIMEOUT_MS
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new PaymentGatewayError(
+        `Wompi HTTP timed out after ${timeoutMs}ms`,
+        'wompi',
+        'WOMPI_HTTP_TIMEOUT'
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export interface WompiTransactionLookup {
   id: string;
   status: string;
@@ -36,13 +67,93 @@ export interface WompiTransactionLookup {
   amountInCents: number;
   currency: string;
   customerEmail?: string | null;
+  paymentSourceId?: number | null;
 }
 
-const REFERENCE_PATTERN =
-  /^wompi_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})_(plan_[a-z0-9_]+)_(\d+)$/i;
+/**
+ * Discriminated result for undocumented GET /transactions?reference=…
+ * Callers must only abandon a claim on `empty` (200 + data:[]), never on `error`.
+ */
+export type WompiReferenceLookupResult =
+  | { kind: 'found'; transaction: WompiTransactionLookup }
+  | { kind: 'empty' }
+  | { kind: 'error'; httpStatus?: number; message: string };
+
+export interface WompiAcceptanceTokens {
+  acceptanceToken: string;
+  acceptancePermalink: string;
+  personalAuthToken: string;
+  personalAuthPermalink: string;
+}
+
+export interface WompiPaymentSourceResult {
+  id: number;
+  status: string;
+  type: 'CARD' | 'NEQUI' | string;
+  publicData: {
+    type?: string;
+    last_four?: string;
+    bin?: string;
+    phone_number?: string;
+    card_holder?: string;
+    [key: string]: unknown;
+  };
+}
+
+export interface CreateWompiPaymentSourceParams {
+  type: 'CARD' | 'NEQUI';
+  token: string;
+  customerEmail: string;
+  acceptanceToken: string;
+  acceptPersonalAuth: string;
+}
+
+export interface CreateWompiSourceChargeParams {
+  amountInCents: number;
+  currency?: string;
+  customerEmail: string;
+  reference: string;
+  paymentSourceId: number;
+  /** CARD only */
+  installments?: number;
+  /** Enable COF for Visa/MC on RBM */
+  recurrent?: boolean;
+}
+
+// Re-export reference helpers used by webhook + tests
+export {
+  buildWompiFirstReference,
+  buildWompiLegacyReference,
+  parseWompiReferenceFull as parseWompiReferenceDetailed,
+};
+
+/** Legacy Web Checkout reference builder (kept for adapter tests / old checkouts) */
+export function buildWompiReference(
+  userId: string,
+  planId: string,
+  timestamp = Date.now()
+): string {
+  return buildWompiLegacyReference(userId, planId, timestamp);
+}
+
+/** Parse first-charge refs into the shape older code expects */
+export function parseWompiReference(
+  reference: string
+): { userId: string; planId: string; timestamp: string } | null {
+  const parsed = parseWompiReferenceFull(reference);
+  if (!parsed) return null;
+  if (parsed.kind === 'first' || parsed.kind === 'legacy_first') {
+    return {
+      userId: parsed.userId,
+      planId: parsed.planId,
+      timestamp: parsed.timestamp || parsed.subscriptionId || '',
+    };
+  }
+  return null;
+}
 
 /**
- * Build SHA256 integrity signature for Web Checkout.
+ * Build SHA256 integrity signature for Web Checkout / API transactions.
  * Concat (no separators): reference + amountInCents + currency [+ expirationTime] + integritySecret
  */
 export function buildWompiIntegritySignature(params: {
@@ -66,29 +177,9 @@ export function buildWompiIntegritySignature(params: {
   return crypto.createHash('sha256').update(parts.join('')).digest('hex');
 }
 
-export function buildWompiReference(
-  userId: string,
-  planId: string,
-  timestamp = Date.now()
-): string {
-  return `wompi_${userId}_${planId}_${timestamp}`;
-}
-
-export function parseWompiReference(
-  reference: string
-): { userId: string; planId: string; timestamp: string } | null {
-  const match = REFERENCE_PATTERN.exec(reference);
-  if (!match) return null;
-  return {
-    userId: match[1],
-    planId: match[2],
-    timestamp: match[3],
-  };
-}
-
 export class WompiAdapter implements PaymentGateway {
   private readonly checkoutUrl: string;
-  private readonly apiBase: string;
+  readonly apiBase: string;
 
   constructor(private readonly config: WompiAdapterConfig) {
     const required = [
@@ -111,81 +202,300 @@ export class WompiAdapter implements PaymentGateway {
     return 'wompi';
   }
 
+  getPublicKey(): string {
+    return this.config.publicKey;
+  }
+
+  getEnvironment(): 'sandbox' | 'production' {
+    return this.config.environment;
+  }
+
   async createCustomer(): Promise<CustomerRef> {
     throw new PaymentGatewayError(
-      'Wompi Web Checkout does not support customer vaulting. Recurring via payment sources is a follow-up.',
+      'Wompi uses payment sources instead of a customer vault',
       'wompi'
     );
   }
 
   async getOrCreateCustomer(): Promise<CustomerRef> {
     throw new PaymentGatewayError(
-      'Wompi Web Checkout does not support customer vaulting. Recurring via payment sources is a follow-up.',
+      'Wompi uses payment sources instead of a customer vault',
       'wompi'
     );
   }
 
   async attachPaymentMethod(): Promise<PaymentMethodToken> {
     throw new PaymentGatewayError(
-      'Wompi Web Checkout does not support saving payment methods. Recurring via payment sources is a follow-up.',
+      'Use createPaymentSource for Wompi stored methods',
       'wompi'
     );
   }
 
   async setDefaultPaymentMethod(): Promise<void> {
-    throw new PaymentGatewayError(
-      'Wompi Web Checkout does not support saving payment methods. Recurring via payment sources is a follow-up.',
-      'wompi'
-    );
+    // Local DB is source of truth for default method
   }
 
   async detachPaymentMethod(): Promise<void> {
-    throw new PaymentGatewayError(
-      'Wompi Web Checkout does not support saving payment methods. Recurring via payment sources is a follow-up.',
-      'wompi'
-    );
+    // Prefer voidPaymentSource when a provider_payment_source_id is known
   }
 
   async createSubscription(): Promise<SubscriptionResult> {
     throw new PaymentGatewayError(
-      'Wompi has no native subscriptions; use Web Checkout renew-by-checkout (createCheckoutSession).',
+      'Wompi has no native subscriptions; use payment sources + renewals cron',
       'wompi'
     );
   }
 
   async updateSubscription(): Promise<SubscriptionResult> {
     throw new PaymentGatewayError(
-      'Wompi has no native subscriptions; renewals use Web Checkout.',
+      'Wompi has no native subscriptions; update locally',
       'wompi'
     );
   }
 
   async cancelSubscription(): Promise<void> {
-    throw new PaymentGatewayError(
-      'Canceling subscriptions is not supported through Wompi Web Checkout; cancel locally.',
-      'wompi'
-    );
+    // Cancel is local (cancel_at_period_end); no Wompi subscription object
   }
 
   async reactivateSubscription(): Promise<SubscriptionResult> {
     throw new PaymentGatewayError(
-      'Reactivating subscriptions is not supported through Wompi Web Checkout.',
+      'Reactivating subscriptions is local for Wompi',
       'wompi'
     );
   }
 
   async getInvoices(): Promise<InvoiceData[]> {
     throw new PaymentGatewayError(
-      'Wompi Web Checkout invoices are managed via webhook events',
+      'Wompi invoices are managed via webhook events',
       'wompi'
     );
   }
 
   async getInvoice(): Promise<InvoiceData> {
     throw new PaymentGatewayError(
-      'Wompi Web Checkout invoices are managed via webhook events',
+      'Wompi invoices are managed via webhook events',
       'wompi'
     );
+  }
+
+  /**
+   * Fetch merchant acceptance tokens (public key). Safe for authenticated users.
+   */
+  async getAcceptanceTokens(): Promise<WompiAcceptanceTokens> {
+    const response = await fetch(
+      `${this.apiBase}/merchants/${encodeURIComponent(this.config.publicKey)}`,
+      {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      }
+    );
+
+    if (!response.ok) {
+      throw new PaymentGatewayError(
+        `Wompi merchant lookup failed (${response.status})`,
+        'wompi',
+        'WOMPI_MERCHANT_LOOKUP_FAILED'
+      );
+    }
+
+    const body = (await response.json()) as {
+      data?: {
+        presigned_acceptance?: { acceptance_token?: string; permalink?: string };
+        presigned_personal_data_auth?: {
+          acceptance_token?: string;
+          permalink?: string;
+        };
+      };
+    };
+
+    const acceptance = body.data?.presigned_acceptance;
+    const personal = body.data?.presigned_personal_data_auth;
+
+    if (
+      !acceptance?.acceptance_token ||
+      !acceptance.permalink ||
+      !personal?.acceptance_token ||
+      !personal.permalink
+    ) {
+      throw new PaymentGatewayError(
+        'Wompi merchant response missing acceptance tokens',
+        'wompi',
+        'WOMPI_ACCEPTANCE_MISSING'
+      );
+    }
+
+    return {
+      acceptanceToken: acceptance.acceptance_token,
+      acceptancePermalink: acceptance.permalink,
+      personalAuthToken: personal.acceptance_token,
+      personalAuthPermalink: personal.permalink,
+    };
+  }
+
+  /**
+   * Create a payment source (PRIVATE key, server-side only).
+   */
+  async createPaymentSource(
+    params: CreateWompiPaymentSourceParams
+  ): Promise<WompiPaymentSourceResult> {
+    const response = await fetchWithTimeout(`${this.apiBase}/payment_sources`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.config.privateKey}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        type: params.type,
+        token: params.token,
+        customer_email: params.customerEmail,
+        acceptance_token: params.acceptanceToken,
+        accept_personal_auth: params.acceptPersonalAuth,
+      }),
+    });
+
+    const body = (await response.json().catch(() => ({}))) as {
+      data?: WompiPaymentSourceResult;
+      error?: { type?: string; reason?: string; messages?: unknown };
+    };
+
+    if (!response.ok || !body.data?.id) {
+      throw new PaymentGatewayError(
+        `Wompi payment source creation failed (${response.status})`,
+        'wompi',
+        'WOMPI_PAYMENT_SOURCE_FAILED'
+      );
+    }
+
+    return body.data;
+  }
+
+  /**
+   * Void a payment source (PUT /payment_sources/{id}/void).
+   */
+  async voidPaymentSource(paymentSourceId: number | string): Promise<void> {
+    const response = await fetchWithTimeout(
+      `${this.apiBase}/payment_sources/${encodeURIComponent(String(paymentSourceId))}/void`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${this.config.privateKey}`,
+          Accept: 'application/json',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      // Soft-fail: source may already be voided
+      console.warn(
+        `Wompi void payment source failed (${response.status}) for id=${paymentSourceId}`
+      );
+    }
+  }
+
+  /**
+   * Charge a stored payment source (PRIVATE key). Returns PENDING initially.
+   */
+  async createSourceTransaction(
+    params: CreateWompiSourceChargeParams
+  ): Promise<WompiTransactionLookup> {
+    const currency = params.currency || 'COP';
+    const signature = buildWompiIntegritySignature({
+      reference: params.reference,
+      amountInCents: params.amountInCents,
+      currency,
+      integritySecret: this.config.integritySecret,
+    });
+
+    const body: Record<string, unknown> = {
+      amount_in_cents: params.amountInCents,
+      currency,
+      customer_email: params.customerEmail,
+      reference: params.reference,
+      payment_source_id: params.paymentSourceId,
+      signature,
+    };
+
+    if (params.recurrent !== undefined) {
+      body.recurrent = params.recurrent;
+    }
+
+    // Cards require installments; Nequi must omit payment_method
+    if (params.installments != null) {
+      body.payment_method = { installments: params.installments };
+    }
+
+    const response = await fetchWithTimeout(`${this.apiBase}/transactions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.config.privateKey}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    const payload = (await response.json().catch(() => ({}))) as {
+      data?: {
+        id?: string;
+        status?: string;
+        reference?: string;
+        amount_in_cents?: number;
+        currency?: string;
+        customer_email?: string | null;
+        payment_source_id?: number;
+      };
+      error?: unknown;
+    };
+
+    if (!response.ok || !payload.data?.id) {
+      const providerMessage =
+        typeof payload.error === 'string'
+          ? payload.error
+          : payload.error
+            ? JSON.stringify(payload.error)
+            : undefined;
+      throw new PaymentGatewayError(
+        `Wompi source transaction failed (${response.status})`,
+        'wompi',
+        'WOMPI_SOURCE_CHARGE_FAILED',
+        response.status,
+        providerMessage
+      );
+    }
+
+    const data = payload.data;
+    return {
+      id: data.id!,
+      status: data.status || 'PENDING',
+      reference: data.reference || params.reference,
+      amountInCents: data.amount_in_cents ?? params.amountInCents,
+      currency: data.currency || currency,
+      customerEmail: data.customer_email,
+      paymentSourceId: data.payment_source_id ?? params.paymentSourceId,
+    };
+  }
+
+  /**
+   * Poll until transaction leaves PENDING or timeout.
+   */
+  async waitForTransactionStatus(
+    transactionId: string,
+    options: { timeoutMs?: number; intervalMs?: number } = {}
+  ): Promise<WompiTransactionLookup> {
+    const timeoutMs = options.timeoutMs ?? 8000;
+    const intervalMs = options.intervalMs ?? 1000;
+    const started = Date.now();
+    let last = await this.getTransaction(transactionId);
+
+    while (
+      last.status.toUpperCase() === 'PENDING' &&
+      Date.now() - started < timeoutMs
+    ) {
+      await new Promise(r => setTimeout(r, intervalMs));
+      last = await this.getTransaction(transactionId);
+    }
+    return last;
   }
 
   async createCheckoutSession(params: {
@@ -258,17 +568,106 @@ export class WompiAdapter implements PaymentGateway {
 
   async createPortalSession(): Promise<{ url: string }> {
     throw new PaymentGatewayError(
-      'Customer portal is not available for Wompi Web Checkout',
+      'Customer portal is not available for Wompi',
       'wompi'
     );
   }
 
   /**
+   * Lookup by merchant reference (private key).
+   * Undocumented but verified on sandbox: GET /v1/transactions?reference=…
+   * Returns a discriminated result so callers never treat lookup failure as
+   * "no transaction exists" (which would risk double-charging).
+   */
+  async findTransactionByReference(
+    reference: string
+  ): Promise<WompiReferenceLookupResult> {
+    let response: Response;
+    try {
+      response = await fetchWithTimeout(
+        `${this.apiBase}/transactions?reference=${encodeURIComponent(reference)}`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${this.config.privateKey}`,
+            Accept: 'application/json',
+          },
+        }
+      );
+    } catch (err) {
+      return {
+        kind: 'error',
+        message: err instanceof Error ? err.message : 'Network error',
+      };
+    }
+
+    if (!response.ok) {
+      return {
+        kind: 'error',
+        httpStatus: response.status,
+        message: `HTTP ${response.status}`,
+      };
+    }
+
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      return { kind: 'error', httpStatus: 200, message: 'Invalid JSON body' };
+    }
+
+    const data = (body as { data?: unknown })?.data;
+
+    // Contract: 200 + data: [] means no transaction for this reference
+    if (Array.isArray(data) && data.length === 0) {
+      return { kind: 'empty' };
+    }
+
+    const raw = Array.isArray(data) ? data[0] : data;
+    if (
+      !raw ||
+      typeof raw !== 'object' ||
+      !(raw as { id?: string }).id ||
+      !(raw as { status?: string }).status ||
+      !(raw as { reference?: string }).reference ||
+      (raw as { amount_in_cents?: number }).amount_in_cents == null
+    ) {
+      return {
+        kind: 'error',
+        httpStatus: 200,
+        message: 'Unexpected response shape',
+      };
+    }
+
+    const row = raw as {
+      id: string;
+      status: string;
+      reference: string;
+      amount_in_cents: number;
+      currency?: string;
+      customer_email?: string | null;
+      payment_source_id?: number | null;
+    };
+
+    return {
+      kind: 'found',
+      transaction: {
+        id: row.id,
+        status: row.status,
+        reference: row.reference,
+        amountInCents: row.amount_in_cents,
+        currency: row.currency || 'COP',
+        customerEmail: row.customer_email,
+        paymentSourceId: row.payment_source_id,
+      },
+    };
+  }
+
+  /**
    * Lookup a transaction by id (server-side only; private key Bearer).
-   * Informational — not the source of truth for subscription activation.
    */
   async getTransaction(transactionId: string): Promise<WompiTransactionLookup> {
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `${this.apiBase}/transactions/${encodeURIComponent(transactionId)}`,
       {
         method: 'GET',
@@ -295,6 +694,7 @@ export class WompiAdapter implements PaymentGateway {
         amount_in_cents?: number;
         currency?: string;
         customer_email?: string | null;
+        payment_source_id?: number | null;
       };
     };
 
@@ -314,6 +714,7 @@ export class WompiAdapter implements PaymentGateway {
       amountInCents: data.amount_in_cents,
       currency: data.currency || 'COP',
       customerEmail: data.customer_email,
+      paymentSourceId: data.payment_source_id,
     };
   }
 }

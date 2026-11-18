@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
@@ -8,6 +9,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 import type { Subscription, PlanDefinition, CheckoutSessionDetails } from '@/lib/billing/types';
+
+const WompiCardForm = dynamic(
+  () => import('@/components/billing/WompiCardForm'),
+  { ssr: false }
+);
 
 const PAYMENT_GATEWAY = process.env.NEXT_PUBLIC_PAYMENT_GATEWAY || 'payu';
 
@@ -45,6 +51,7 @@ export default function PlansPage() {
   const [currentSubscription, setCurrentSubscription] = useState<SubscriptionWithPlan | null>(null);
   // Prefer API-reported active gateway; fall back to public env (KAN-164).
   const [activeProvider, setActiveProvider] = useState(PAYMENT_GATEWAY);
+  const [wompiCheckoutPlanId, setWompiCheckoutPlanId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,8 +109,13 @@ export default function PlansPage() {
         return;
       }
 
-      const isHostedCheckout =
-        activeProvider === 'payu' || activeProvider === 'wompi';
+      // KAN-166: Wompi uses in-app tokenization + payment sources (not Web Checkout)
+      if (activeProvider === 'wompi') {
+        setWompiCheckoutPlanId(planId);
+        return;
+      }
+
+      const isHostedCheckout = activeProvider === 'payu';
 
       if (!isHostedCheckout) {
         // Check if user has a payment method
@@ -130,8 +142,7 @@ export default function PlansPage() {
                                       currentSubscription.planId !== 'plan_free' &&
                                       currentSubscription.id !== 'free';
 
-      // Hosted gateways (PayU / Wompi) renew and change plans via a new Web Checkout
-      // (POST), not Stripe-oriented PATCH/updateSubscription.
+      // PayU renews via Web Checkout (POST); Stripe uses PATCH for plan changes.
       let response;
       if (hasExistingSubscription && !isHostedCheckout) {
         response = await fetch('/api/billing/subscriptions', {
@@ -157,10 +168,7 @@ export default function PlansPage() {
         throw new Error(result.error || 'Failed to create subscription');
       }
 
-      if (
-        (activeProvider === 'payu' || activeProvider === 'wompi') &&
-        result.checkoutSession
-      ) {
+      if (activeProvider === 'payu' && result.checkoutSession) {
         startHostedCheckout(result.checkoutSession);
         return;
       }
@@ -294,6 +302,32 @@ export default function PlansPage() {
           </button>
         </div>
       </div>
+
+      {wompiCheckoutPlanId && (
+        <div className="max-w-lg mx-auto mb-10 p-6 border rounded-xl bg-muted/30">
+          <h2 className="text-xl font-semibold mb-2">{t('wompiCheckoutTitle')}</h2>
+          <p className="text-sm text-muted-foreground mb-4">{t('wompiCheckoutDescription')}</p>
+          <WompiCardForm
+            mode="subscribe"
+            planId={wompiCheckoutPlanId}
+            onSuccess={(result) => {
+              const status =
+                result && typeof result === 'object' && 'transactionStatus' in result
+                  ? String((result as { transactionStatus?: string }).transactionStatus)
+                  : '';
+              setWompiCheckoutPlanId(null);
+              setSubscribing(null);
+              if (status === 'APPROVED' || status === 'PENDING') {
+                router.push('/billing');
+              }
+            }}
+            onCancel={() => {
+              setWompiCheckoutPlanId(null);
+              setSubscribing(null);
+            }}
+          />
+        </div>
+      )}
 
       {/* Plan Cards — Free + Premium only (Necessary hidden via is_visible) */}
       <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto px-4 justify-center items-center">

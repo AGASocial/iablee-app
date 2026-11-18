@@ -25,10 +25,14 @@ describe('getSubscriptionStatus query groups', () => {
     };
 
     const subscriptionPromise = Promise.resolve({
-      data: {
-        status: 'active',
-        plan: { id: 'plan_pro', name: 'Pro', features: { max_assets: 50 } },
-      },
+      data: [
+        {
+          status: 'active',
+          provider: 'wompi',
+          current_period_end: new Date(Date.now() + 86400000).toISOString(),
+          plan: { id: 'plan_pro', name: 'Pro', features: { max_assets: 50 } },
+        },
+      ],
       error: null,
     });
 
@@ -38,8 +42,10 @@ describe('getSubscriptionStatus query groups', () => {
           return {
             select: () => ({
               eq: () => ({
-                eq: () => ({
-                  single: () => trackQuery(subscriptionPromise),
+                in: () => ({
+                  order: () => ({
+                    limit: () => trackQuery(subscriptionPromise),
+                  }),
                 }),
               }),
             }),
@@ -84,15 +90,21 @@ describe('getSubscriptionStatus query groups', () => {
           return {
             select: () => ({
               eq: () => ({
-                eq: () => ({
-                  single: () =>
-                    Promise.resolve({
-                      data: {
-                        status: 'active',
-                        plan: { id: 'plan_pro', name: 'Pro', features: { max_assets: 50 } },
-                      },
-                      error: null,
-                    }),
+                in: () => ({
+                  order: () => ({
+                    limit: () =>
+                      Promise.resolve({
+                        data: [
+                          {
+                            status: 'active',
+                            provider: 'wompi',
+                            current_period_end: new Date(Date.now() + 86400000).toISOString(),
+                            plan: { id: 'plan_pro', name: 'Pro', features: { max_assets: 50 } },
+                          },
+                        ],
+                        error: null,
+                      }),
+                  }),
                 }),
               }),
             }),
@@ -110,6 +122,165 @@ describe('getSubscriptionStatus query groups', () => {
     await getSubscriptionStatus(supabase as never, 'user-cached');
 
     expect(subscriptionCalls).toBe(1);
+  });
+
+  it('Stripe active with expired current_period_end still entitles (status-based)', async () => {
+    clearSubscriptionCache();
+    const expired = new Date(Date.now() - 10 * 86400000).toISOString();
+    const supabase = {
+      from: jest.fn((table: string) => {
+        if (table === 'billing_subscriptions') {
+          return {
+            select: () => ({
+              eq: () => ({
+                in: () => ({
+                  order: () => ({
+                    limit: () =>
+                      Promise.resolve({
+                        data: [
+                          {
+                            status: 'active',
+                            provider: 'stripe',
+                            current_period_end: expired,
+                            plan: {
+                              id: 'plan_premium_month',
+                              name: 'Premium',
+                              features: { max_assets: 50, max_beneficiaries: 10 },
+                            },
+                          },
+                        ],
+                        error: null,
+                      }),
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        return {
+          select: () => ({
+            eq: () => Promise.resolve({ count: 0, data: [], error: null }),
+          }),
+        };
+      }),
+    };
+
+    const result = await getSubscriptionStatus(supabase as never, 'stripe-user');
+    expect(result.hasSubscription).toBe(true);
+    expect(result.limits.maxAssets).toBe(50);
+  });
+
+  it('PayU active with expired current_period_end still entitles', async () => {
+    clearSubscriptionCache();
+    const expired = new Date(Date.now() - 86400000).toISOString();
+    const supabase = {
+      from: jest.fn((table: string) => {
+        if (table === 'billing_subscriptions') {
+          return {
+            select: () => ({
+              eq: () => ({
+                in: () => ({
+                  order: () => ({
+                    limit: () =>
+                      Promise.resolve({
+                        data: [
+                          {
+                            status: 'active',
+                            provider: 'payu',
+                            current_period_end: expired,
+                            plan: {
+                              id: 'plan_premium_month',
+                              name: 'Premium',
+                              features: { max_assets: -1 },
+                            },
+                          },
+                        ],
+                        error: null,
+                      }),
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        return {
+          select: () => ({
+            eq: () => Promise.resolve({ count: 0, data: [], error: null }),
+          }),
+        };
+      }),
+    };
+
+    const result = await getSubscriptionStatus(supabase as never, 'payu-user');
+    expect(result.hasSubscription).toBe(true);
+    expect(result.limits.maxAssets).toBe(-1);
+  });
+
+  it('Wompi active with expired period beyond grace loses entitlement', async () => {
+    clearSubscriptionCache();
+    const expired = new Date(Date.now() - 3 * 86400000).toISOString();
+    const supabase = {
+      from: jest.fn((table: string) => {
+        if (table === 'billing_subscriptions') {
+          return {
+            select: () => ({
+              eq: () => ({
+                in: () => ({
+                  order: () => ({
+                    limit: () =>
+                      Promise.resolve({
+                        data: [
+                          {
+                            status: 'active',
+                            provider: 'wompi',
+                            current_period_end: expired,
+                            plan: {
+                              id: 'plan_premium_month',
+                              name: 'Premium',
+                              features: { max_assets: 50 },
+                            },
+                          },
+                        ],
+                        error: null,
+                      }),
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === 'billing_plans') {
+          return {
+            select: () => ({
+              eq: () => ({
+                single: () =>
+                  Promise.resolve({
+                    data: {
+                      id: 'plan_free',
+                      features: {
+                        max_assets: 3,
+                        max_beneficiaries: 1,
+                        max_storage_mb: 50,
+                        max_file_size_mb: 10,
+                      },
+                    },
+                    error: null,
+                  }),
+              }),
+            }),
+          };
+        }
+        return {
+          select: () => ({
+            eq: () => Promise.resolve({ count: 0, data: [], error: null }),
+          }),
+        };
+      }),
+    };
+
+    const result = await getSubscriptionStatus(supabase as never, 'wompi-expired');
+    expect(result.hasSubscription).toBe(false);
+    expect(result.limits.maxAssets).toBe(3);
   });
 });
 
@@ -133,8 +304,10 @@ describe('KAN-164 Free and Premium limits', () => {
           return {
             select: () => ({
               eq: () => ({
-                eq: () => ({
-                  single: () => Promise.resolve({ data: null, error: null }),
+                in: () => ({
+                  order: () => ({
+                    limit: () => Promise.resolve({ data: [], error: null }),
+                  }),
                 }),
               }),
             }),
@@ -205,25 +378,31 @@ describe('KAN-164 Free and Premium limits', () => {
           return {
             select: () => ({
               eq: () => ({
-                eq: () => ({
-                  single: () =>
-                    Promise.resolve({
-                      data: {
-                        status: 'active',
-                        plan: {
-                          id: 'plan_premium_month',
-                          name: 'Premium',
-                          features: {
-                            max_assets: -1,
-                            max_beneficiaries: 10,
-                            max_storage_mb: 5000,
-                            max_file_size_mb: 100,
-                            max_video_assets: 5,
+                in: () => ({
+                  order: () => ({
+                    limit: () =>
+                      Promise.resolve({
+                        data: [
+                          {
+                            status: 'active',
+                            provider: 'wompi',
+                            current_period_end: new Date(Date.now() + 86400000).toISOString(),
+                            plan: {
+                              id: 'plan_premium_month',
+                              name: 'Premium',
+                              features: {
+                                max_assets: -1,
+                                max_beneficiaries: 10,
+                                max_storage_mb: 5000,
+                                max_file_size_mb: 100,
+                                max_video_assets: 5,
+                              },
+                            },
                           },
-                        },
-                      },
-                      error: null,
-                    }),
+                        ],
+                        error: null,
+                      }),
+                  }),
                 }),
               }),
             }),
