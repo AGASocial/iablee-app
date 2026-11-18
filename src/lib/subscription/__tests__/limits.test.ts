@@ -25,10 +25,13 @@ describe('getSubscriptionStatus query groups', () => {
     };
 
     const subscriptionPromise = Promise.resolve({
-      data: {
-        status: 'active',
-        plan: { id: 'plan_pro', name: 'Pro', features: { max_assets: 50 } },
-      },
+      data: [
+        {
+          status: 'active',
+          current_period_end: new Date(Date.now() + 86400000).toISOString(),
+          plan: { id: 'plan_pro', name: 'Pro', features: { max_assets: 50 } },
+        },
+      ],
       error: null,
     });
 
@@ -38,8 +41,10 @@ describe('getSubscriptionStatus query groups', () => {
           return {
             select: () => ({
               eq: () => ({
-                eq: () => ({
-                  single: () => trackQuery(subscriptionPromise),
+                in: () => ({
+                  order: () => ({
+                    limit: () => trackQuery(subscriptionPromise),
+                  }),
                 }),
               }),
             }),
@@ -84,15 +89,20 @@ describe('getSubscriptionStatus query groups', () => {
           return {
             select: () => ({
               eq: () => ({
-                eq: () => ({
-                  single: () =>
-                    Promise.resolve({
-                      data: {
-                        status: 'active',
-                        plan: { id: 'plan_pro', name: 'Pro', features: { max_assets: 50 } },
-                      },
-                      error: null,
-                    }),
+                in: () => ({
+                  order: () => ({
+                    limit: () =>
+                      Promise.resolve({
+                        data: [
+                          {
+                            status: 'active',
+                            current_period_end: new Date(Date.now() + 86400000).toISOString(),
+                            plan: { id: 'plan_pro', name: 'Pro', features: { max_assets: 50 } },
+                          },
+                        ],
+                        error: null,
+                      }),
+                  }),
                 }),
               }),
             }),
@@ -133,8 +143,10 @@ describe('KAN-164 Free and Premium limits', () => {
           return {
             select: () => ({
               eq: () => ({
-                eq: () => ({
-                  single: () => Promise.resolve({ data: null, error: null }),
+                in: () => ({
+                  order: () => ({
+                    limit: () => Promise.resolve({ data: [], error: null }),
+                  }),
                 }),
               }),
             }),
@@ -205,25 +217,30 @@ describe('KAN-164 Free and Premium limits', () => {
           return {
             select: () => ({
               eq: () => ({
-                eq: () => ({
-                  single: () =>
-                    Promise.resolve({
-                      data: {
-                        status: 'active',
-                        plan: {
-                          id: 'plan_premium_month',
-                          name: 'Premium',
-                          features: {
-                            max_assets: -1,
-                            max_beneficiaries: 10,
-                            max_storage_mb: 5000,
-                            max_file_size_mb: 100,
-                            max_video_assets: 5,
+                in: () => ({
+                  order: () => ({
+                    limit: () =>
+                      Promise.resolve({
+                        data: [
+                          {
+                            status: 'active',
+                            current_period_end: new Date(Date.now() + 86400000).toISOString(),
+                            plan: {
+                              id: 'plan_premium_month',
+                              name: 'Premium',
+                              features: {
+                                max_assets: -1,
+                                max_beneficiaries: 10,
+                                max_storage_mb: 5000,
+                                max_file_size_mb: 100,
+                                max_video_assets: 5,
+                              },
+                            },
                           },
-                        },
-                      },
-                      error: null,
-                    }),
+                        ],
+                        error: null,
+                      }),
+                  }),
                 }),
               }),
             }),

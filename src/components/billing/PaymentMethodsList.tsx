@@ -10,10 +10,15 @@ import { toast } from 'sonner';
 
 const StripeProvider = dynamic(() => import('./StripeProvider'), { ssr: false });
 const AddPaymentMethodForm = dynamic(() => import('./AddPaymentMethodForm'), { ssr: false });
+const WompiCardForm = dynamic(() => import('./WompiCardForm'), { ssr: false });
+
+const PAYMENT_GATEWAY = process.env.NEXT_PUBLIC_PAYMENT_GATEWAY || 'payu';
 
 interface PaymentMethod {
   id: string;
   type: string;
+  brand?: string;
+  last4?: string;
   card?: {
     brand: string;
     last4: string;
@@ -23,8 +28,14 @@ interface PaymentMethod {
   isDefault: boolean;
 }
 
-export default function PaymentMethodsList() {
+export default function PaymentMethodsList({
+  provider: providerProp,
+}: {
+  provider?: string | null;
+} = {}) {
   const t = useTranslations();
+  const provider = providerProp || PAYMENT_GATEWAY;
+  const isWompi = provider === 'wompi';
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -164,13 +175,23 @@ export default function PaymentMethodsList() {
       <CardContent className="space-y-4">
         {showAddForm && (
           <div className="p-4 border rounded-lg bg-muted/50">
-            <h3 className="font-semibold mb-4">{t('addPaymentMethod')}</h3>
-            <StripeProvider>
-              <AddPaymentMethodForm
+            <h3 className="font-semibold mb-4">
+              {isWompi ? t('replacePaymentMethod') : t('addPaymentMethod')}
+            </h3>
+            {isWompi ? (
+              <WompiCardForm
+                mode="replace"
                 onSuccess={handleAddSuccess}
                 onCancel={() => setShowAddForm(false)}
               />
-            </StripeProvider>
+            ) : (
+              <StripeProvider>
+                <AddPaymentMethodForm
+                  onSuccess={handleAddSuccess}
+                  onCancel={() => setShowAddForm(false)}
+                />
+              </StripeProvider>
+            )}
           </div>
         )}
 
@@ -178,7 +199,11 @@ export default function PaymentMethodsList() {
           <p className="text-muted-foreground text-center py-8">{t('noPaymentMethods')}</p>
         ) : (
           <div className="space-y-3">
-            {paymentMethods.map((pm) => (
+            {paymentMethods.map((pm) => {
+              const brand = (pm.card?.brand || pm.brand || pm.type || 'CARD').toUpperCase();
+              const last4 = pm.card?.last4 || pm.last4 || '••••';
+              const isNequi = (pm.type || '').toLowerCase() === 'nequi';
+              return (
               <div
                 key={pm.id}
                 className="flex items-center justify-between p-4 border rounded-lg"
@@ -187,11 +212,15 @@ export default function PaymentMethodsList() {
                   <CreditCard className="h-8 w-8 text-muted-foreground" />
                   <div>
                     <p className="font-semibold">
-                      {pm.card?.brand.toUpperCase()} {t('cardEnding')} {pm.card?.last4}
+                      {isNequi
+                        ? `${t('wompiNequi')} •••• ${last4}`
+                        : `${brand} •••• ${last4}`}
                     </p>
-                    <p className="text-sm text-muted-foreground">
-                      {t('expires')} {pm.card?.expMonth}/{pm.card?.expYear}
-                    </p>
+                    {!isNequi && pm.card?.expMonth && pm.card?.expYear ? (
+                      <p className="text-sm text-muted-foreground">
+                        {t('expires')} {pm.card.expMonth}/{pm.card.expYear}
+                      </p>
+                    ) : null}
                     {pm.isDefault && (
                       <span className="text-xs bg-primary text-primary-foreground px-2 py-1 rounded">
                         {t('defaultPaymentMethod')}
@@ -200,7 +229,16 @@ export default function PaymentMethodsList() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {!pm.isDefault && (
+                  {isWompi && pm.isDefault && !showAddForm && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowAddForm(true)}
+                    >
+                      {t('replacePaymentMethod')}
+                    </Button>
+                  )}
+                  {!isWompi && !pm.isDefault && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -209,7 +247,7 @@ export default function PaymentMethodsList() {
                       {t('setAsDefault')}
                     </Button>
                   )}
-                  {!pm.isDefault && (
+                  {!isWompi && !pm.isDefault && (
                     <Button
                       variant="ghost"
                       size="sm"
@@ -221,7 +259,8 @@ export default function PaymentMethodsList() {
                   )}
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
         )}
       </CardContent>

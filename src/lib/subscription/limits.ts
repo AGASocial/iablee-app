@@ -3,6 +3,7 @@
  */
 
 import { SupabaseClient } from '@supabase/supabase-js';
+import { hasPaidEntitlement } from '@/lib/billing/dunning';
 
 export interface SubscriptionLimits {
   maxAssets: number;
@@ -31,6 +32,7 @@ interface PlanRecord {
 
 interface SubscriptionRecord {
   status: string;
+  current_period_end?: string | null;
   plan: PlanRecord | PlanRecord[] | null;
 }
 
@@ -50,18 +52,39 @@ function setCache(userId: string, subscription: SubscriptionRecord | null, limit
   requestCache.set(userId, { subscription, limits, ts: Date.now() });
 }
 
+/**
+ * Fetch the subscription that currently grants paid entitlements.
+ * Considers active (with period end + grace) and past_due (during dunning).
+ */
 async function fetchActiveSubscription(
   supabase: SupabaseClient,
   userId: string
 ): Promise<SubscriptionRecord | null> {
-  const { data: subscription } = await supabase
+  const { data: subscriptions } = await supabase
     .from('billing_subscriptions')
-    .select(`status, plan:billing_plans(id, name, features)`)
+    .select(`status, current_period_end, plan:billing_plans(id, name, features)`)
     .eq('user_id', userId)
-    .eq('status', 'active')
-    .single();
+    .in('status', ['active', 'past_due', 'trialing'])
+    .order('updated_at', { ascending: false })
+    .limit(5);
 
-  return subscription as SubscriptionRecord | null;
+  if (!subscriptions?.length) {
+    return null;
+  }
+
+  for (const row of subscriptions) {
+    const sub = row as SubscriptionRecord;
+    if (
+      hasPaidEntitlement({
+        status: sub.status,
+        currentPeriodEnd: sub.current_period_end,
+      })
+    ) {
+      return sub;
+    }
+  }
+
+  return null;
 }
 
 function limitsFromPlan(plan: PlanRecord | null): SubscriptionLimits {

@@ -186,6 +186,8 @@ export interface InvoiceEventData {
   userId?: string;
   planId?: string;
   rawStatus?: string;
+  /** Provider transaction id (e.g. Wompi transaction.id) */
+  providerTransactionId?: string;
 }
 
 export interface PaymentMethodEventData {
