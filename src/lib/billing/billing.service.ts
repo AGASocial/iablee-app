@@ -797,6 +797,7 @@ export class BillingService {
     if (!atPeriodEnd) {
       updates.status = 'canceled';
       updates.canceled_at = new Date().toISOString();
+      updates.canceled_reason = 'user';
     } else if (!subscription.current_period_end) {
       // If current_period_end is not set (e.g. PayU subscriptions), compute it
       // based on the plan's billing interval from the most recent invoice paid_at or creation date

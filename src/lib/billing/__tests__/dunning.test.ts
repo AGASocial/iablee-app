@@ -11,6 +11,8 @@ import {
   DUNNING_ATTEMPT_OFFSET_DAYS,
   daysInUtcMonth,
   clampUtcMonthDay,
+  sameInstant,
+  toEpochMs,
 } from '../dunning';
 
 describe('dunning schedule', () => {
@@ -161,5 +163,21 @@ describe('hasStatusBasedEntitlement (Stripe/PayU)', () => {
   it('past_due and canceled do not (status-only path)', () => {
     expect(hasStatusBasedEntitlement('past_due')).toBe(false);
     expect(hasStatusBasedEntitlement('canceled')).toBe(false);
+  });
+});
+
+describe('sameInstant / toEpochMs', () => {
+  it('equates PostgREST +00:00 with toISOString .000Z', () => {
+    expect(
+      sameInstant('2026-11-10T07:00:00.000Z', '2026-11-10T07:00:00+00:00')
+    ).toBe(true);
+    expect(toEpochMs('2026-11-10T07:00:00.000Z')).toBe(
+      toEpochMs('2026-11-10T07:00:00+00:00')
+    );
+  });
+
+  it('returns false for null / invalid', () => {
+    expect(sameInstant(null, '2026-11-10T07:00:00.000Z')).toBe(false);
+    expect(toEpochMs('not-a-date')).toBeNull();
   });
 });

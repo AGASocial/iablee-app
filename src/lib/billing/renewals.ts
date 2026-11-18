@@ -21,6 +21,7 @@ import {
   getDueDunningAttempt,
   isPastFinalDunningDay,
   MAX_DUNNING_ATTEMPTS,
+  sameInstant,
   UPCOMING_RENEWAL_DAYS,
 } from './dunning';
 import {
@@ -346,7 +347,7 @@ async function casApplyPeriodExtension(
 
   if (
     current?.current_period_end &&
-    current.current_period_end !== periodEnd
+    !sameInstant(current.current_period_end, periodEnd)
   ) {
     return {
       applied: false,
@@ -504,15 +505,18 @@ export async function healApprovedRenewalAttempt(
   const plan = await getPlanMeta(supabase, sub.plan_id as string);
   const planInterval = plan?.interval || 'month';
   const periodEnd = attempt.period_end as string;
+  const liveEnd = sub.current_period_end as string | null;
+  // CAS must use the exact DB timestamptz string, not a re-serialized form
+  const casPeriodEnd =
+    liveEnd && sameInstant(liveEnd, periodEnd) ? liveEnd : periodEnd;
   const anchor =
     (sub.billing_anchor_day as number | null) ??
-    new Date(periodEnd).getUTCDate();
+    new Date(casPeriodEnd).getUTCDate();
   const expectedNewEnd = extendPeriodEnd(
-    periodEnd,
+    casPeriodEnd,
     planInterval,
     anchor
   ).toISOString();
-  const liveEnd = sub.current_period_end as string | null;
   const nowIso = new Date().toISOString();
   const amountCents =
     params.amountCents || (attempt.amount_cents as number) || 0;
@@ -521,11 +525,11 @@ export async function healApprovedRenewalAttempt(
     (attempt.wompi_transaction_id as string) ||
     params.reference;
 
-  if (liveEnd === periodEnd) {
+  if (sameInstant(liveEnd, periodEnd)) {
     const periodResult = await casApplyPeriodExtension(
       supabase,
       sub as SubRow,
-      periodEnd,
+      casPeriodEnd,
       planInterval
     );
     if (periodResult.applied) {
@@ -612,7 +616,7 @@ export async function healApprovedRenewalAttempt(
   }
 
   // Already extended to the expected next period by this attempt (or equivalent)
-  if (liveEnd === expectedNewEnd) {
+  if (sameInstant(liveEnd, expectedNewEnd)) {
     await markAttemptAppliedAt(supabase, params.reference);
     await persistPaidRenewalInvoice(
       supabase,
@@ -882,8 +886,12 @@ async function markAttemptFailed(
   });
 }
 
-async function setPastDue(supabase: SupabaseClient, subscriptionId: string): Promise<void> {
-  await supabase
+async function setPastDue(
+  supabase: SupabaseClient,
+  subscriptionId: string,
+  periodEnd?: string
+): Promise<void> {
+  let q = supabase
     .from('billing_subscriptions')
     .update({
       status: 'past_due',
@@ -891,6 +899,11 @@ async function setPastDue(supabase: SupabaseClient, subscriptionId: string): Pro
     })
     .eq('id', subscriptionId)
     .in('status', ['active', 'past_due', 'incomplete']);
+  // When known, CAS on the exact live period so a concurrent extend cannot be clobbered
+  if (periodEnd) {
+    q = q.eq('current_period_end', periodEnd);
+  }
+  await q;
 }
 
 async function downgradeToFree(
@@ -901,7 +914,8 @@ async function downgradeToFree(
   periodEnd: string
 ): Promise<void> {
   const nowIso = new Date().toISOString();
-  await supabase
+  // CAS: only downgrade live chargeable rows still on this period
+  const { data: downgraded } = await supabase
     .from('billing_subscriptions')
     .update({
       status: 'canceled',
@@ -911,7 +925,14 @@ async function downgradeToFree(
       updated_at: nowIso,
     })
     .eq('id', sub.id)
-    .neq('status', 'canceled');
+    .eq('current_period_end', periodEnd)
+    .in('status', ['active', 'past_due'])
+    .select('id')
+    .maybeSingle();
+
+  if (!downgraded?.id) {
+    return;
+  }
 
   const user = await getUserEmail(supabase, sub.user_id);
   if (user) {
@@ -1074,7 +1095,11 @@ export async function applyWompiRenewalFailure(
 
   if (!sub) return false;
 
-  await setPastDue(supabase, sub.id as string);
+  await setPastDue(
+    supabase,
+    sub.id as string,
+    attempt.period_end as string
+  );
 
   const plan = await getPlanMeta(supabase, sub.plan_id as string);
   const user = await getUserEmail(supabase, sub.user_id as string);
@@ -1251,29 +1276,6 @@ async function processOneSubscription(
   }
 
   const periodEnd = sub.current_period_end;
-  const periodEndDate = new Date(periodEnd);
-
-  if (sub.cancel_at_period_end && periodEndDate.getTime() <= now.getTime()) {
-    const nowIso = now.toISOString();
-    await supabase
-      .from('billing_subscriptions')
-      .update({
-        status: 'canceled',
-        canceled_at: nowIso,
-        canceled_reason: 'user',
-        updated_at: nowIso,
-      })
-      .eq('id', sub.id)
-      .neq('status', 'canceled');
-    summary.canceledAtPeriodEnd++;
-    return;
-  }
-
-  if (sub.cancel_at_period_end) {
-    summary.skipped++;
-    return;
-  }
-
   const leaseHolder = `renew:${sub.id}:${periodEnd}`;
   const leased = await acquireChargeLease(supabase, sub.user_id, leaseHolder);
   if (!leased) {
@@ -1282,14 +1284,76 @@ async function processOneSubscription(
   }
 
   try {
+    // Live re-read under lease before cancel-at-period-end or charge
+    const { data: live } = await supabase
+      .from('billing_subscriptions')
+      .select(
+        'id, user_id, plan_id, status, cancel_at_period_end, current_period_end, current_period_start, billing_anchor_day, provider, canceled_reason'
+      )
+      .eq('id', sub.id)
+      .maybeSingle();
+
+    if (!live) {
+      summary.skipped++;
+      return;
+    }
+
+    const livePeriodEnd = live.current_period_end as string | null;
+    if (!livePeriodEnd) {
+      summary.skipped++;
+      return;
+    }
+
+    // Already terminal / not chargeable — never cancel-or-charge from a stale batch row
+    if (live.status !== 'active' && live.status !== 'past_due') {
+      summary.skipped++;
+      return;
+    }
+
+    const livePeriodMs = new Date(livePeriodEnd).getTime();
+    if (
+      live.cancel_at_period_end === true &&
+      livePeriodMs <= now.getTime()
+    ) {
+      const nowIso = now.toISOString();
+      // CAS: only cancel if still CAPE + matching period + still entitled status
+      const { data: canceled } = await supabase
+        .from('billing_subscriptions')
+        .update({
+          status: 'canceled',
+          canceled_at: nowIso,
+          canceled_reason: 'user',
+          updated_at: nowIso,
+        })
+        .eq('id', live.id)
+        .eq('cancel_at_period_end', true)
+        .eq('current_period_end', livePeriodEnd)
+        .in('status', ['active', 'past_due'])
+        .select('id')
+        .maybeSingle();
+
+      if (canceled?.id) {
+        summary.canceledAtPeriodEnd++;
+      } else {
+        // User resumed (CAPE cleared) or row already moved — no-op
+        summary.skipped++;
+      }
+      return;
+    }
+
+    if (live.cancel_at_period_end === true) {
+      summary.skipped++;
+      return;
+    }
+
     await processOneSubscriptionLocked(
       supabase,
       wompi,
-      sub,
+      live as SubRow,
       now,
       summary,
       emailSender,
-      periodEnd,
+      livePeriodEnd,
       leaseHolder
     );
   } finally {
@@ -1371,10 +1435,12 @@ async function processOneSubscriptionLocked(
     summary.skipped++;
     return;
   }
-  if (sub.current_period_end !== periodEnd) {
+  // Use exact live DB period string for subsequent CAS; compare by instant
+  if (!sameInstant(sub.current_period_end, periodEnd)) {
     summary.skipped++;
     return;
   }
+  const livePeriodEnd = (sub.current_period_end as string) || periodEnd;
 
   // Must still be the user's only chargeable sub
   const { data: chargeablePeers } = await supabase
@@ -1390,9 +1456,9 @@ async function processOneSubscriptionLocked(
     return;
   }
 
-  await retryRequiresRefundFlagPending(supabase, sub.id, periodEnd);
+  await retryRequiresRefundFlagPending(supabase, sub.id, livePeriodEnd);
 
-  const dueAttempt = getDueDunningAttempt(periodEnd, now);
+  const dueAttempt = getDueDunningAttempt(livePeriodEnd, now);
   if (dueAttempt == null) {
     summary.skipped++;
     return;
@@ -1408,7 +1474,7 @@ async function processOneSubscriptionLocked(
     .from('billing_renewal_attempts')
     .select('*')
     .eq('subscription_id', sub.id)
-    .eq('period_end', periodEnd)
+    .eq('period_end', livePeriodEnd)
     .in('status', ['claimed', 'pending']);
 
   if (pendingAttempts && pendingAttempts.length > 0) {
@@ -1434,12 +1500,12 @@ async function processOneSubscriptionLocked(
     }
   }
 
-  // Exists fully-applied entitlement approval (ignore refunds + unapplied)
+  // Any APPROVED for this period (refund-flagged or not) — never open attempt N+1
   const { data: approvedRows } = await supabase
     .from('billing_renewal_attempts')
     .select('id, requires_refund, applied_at, wompi_reference, wompi_transaction_id, amount_cents')
     .eq('subscription_id', sub.id)
-    .eq('period_end', periodEnd)
+    .eq('period_end', livePeriodEnd)
     .eq('status', 'approved')
     .limit(5);
 
@@ -1452,7 +1518,7 @@ async function processOneSubscriptionLocked(
     return;
   }
 
-  // Heal approved-but-unapplied before charging again
+  // Heal approved-but-unapplied before hard-stop
   for (const row of approvedRows || []) {
     if (row.requires_refund === true || row.applied_at) continue;
     const heal = await healApprovedRenewalAttempt(supabase, {
@@ -1472,11 +1538,17 @@ async function processOneSubscriptionLocked(
     }
   }
 
+  // Hard-stop: any APPROVED (including requires_refund) blocks further charges
+  if (approvedRows && approvedRows.length > 0) {
+    summary.skipped++;
+    return;
+  }
+
   const { data: priorAttempts } = await supabase
     .from('billing_renewal_attempts')
     .select('attempt_number, status')
     .eq('subscription_id', sub.id)
-    .eq('period_end', periodEnd)
+    .eq('period_end', livePeriodEnd)
     .order('attempt_number', { ascending: false });
 
   const highestDone = priorAttempts?.[0]?.attempt_number ?? 0;
@@ -1484,7 +1556,7 @@ async function processOneSubscriptionLocked(
   // Day-5+: run the final dunning attempt first; only downgrade after it has
   // finalized as declined/error (or on a later run if no new attempt is due).
   if (dueAttempt <= highestDone) {
-    if (isPastFinalDunningDay(periodEnd, now) && highestDone >= MAX_DUNNING_ATTEMPTS) {
+    if (isPastFinalDunningDay(livePeriodEnd, now) && highestDone >= MAX_DUNNING_ATTEMPTS) {
       const final = priorAttempts?.find(
         a => a.attempt_number === MAX_DUNNING_ATTEMPTS
       );
@@ -1492,7 +1564,7 @@ async function processOneSubscriptionLocked(
         final &&
         (final.status === 'declined' || final.status === 'error')
       ) {
-        await downgradeToFree(supabase, sub, plan.name, emailSender, periodEnd);
+        await downgradeToFree(supabase, sub, plan.name, emailSender, livePeriodEnd);
         summary.downgraded++;
       } else {
         // Final attempt still claimed/pending (or missing) — wait / reconcile
@@ -1509,12 +1581,12 @@ async function processOneSubscriptionLocked(
     sub.plan_id,
     plan.provider_price_map?.wompi
   );
-  const reference = buildWompiRenewalReference(sub.id, periodEnd, attemptNumber);
+  const reference = buildWompiRenewalReference(sub.id, livePeriodEnd, attemptNumber);
 
   const { error: claimError } = await supabase.from('billing_renewal_attempts').insert({
     subscription_id: sub.id,
     user_id: sub.user_id,
-    period_end: periodEnd,
+    period_end: livePeriodEnd,
     attempt_number: attemptNumber,
     status: 'claimed',
     wompi_reference: reference,
@@ -1530,10 +1602,10 @@ async function processOneSubscriptionLocked(
   const pm = await getDefaultPaymentSource(supabase, sub.user_id);
   if (!pm) {
     await markAttemptFailed(supabase, reference, 'error', null, 'No payment method');
-    await setPastDue(supabase, sub.id);
+    await setPastDue(supabase, sub.id, livePeriodEnd);
     summary.failed++;
-    if (attemptNumber >= MAX_DUNNING_ATTEMPTS || isPastFinalDunningDay(periodEnd, now)) {
-      await downgradeToFree(supabase, sub, plan.name, emailSender, periodEnd);
+    if (attemptNumber >= MAX_DUNNING_ATTEMPTS || isPastFinalDunningDay(livePeriodEnd, now)) {
+      await downgradeToFree(supabase, sub, plan.name, emailSender, livePeriodEnd);
       summary.downgraded++;
     }
     return;
@@ -1617,7 +1689,7 @@ async function processOneSubscriptionLocked(
       const ok = await applyApprovedRenewal(
         supabase,
         sub,
-        periodEnd,
+        livePeriodEnd,
         settled.amountInCents || amountInCents,
         reference,
         settled.id,
@@ -1653,14 +1725,14 @@ async function processOneSubscriptionLocked(
       return;
     }
 
-    await setPastDue(supabase, sub.id);
+    await setPastDue(supabase, sub.id, livePeriodEnd);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Charge failed';
 
     if (isDefinitiveWompiChargeRejection(err)) {
       // 4xx validation — no transaction created; safe to finalize as error
       await markAttemptFailed(supabase, reference, 'error', null, message);
-      await setPastDue(supabase, sub.id);
+      await setPastDue(supabase, sub.id, livePeriodEnd);
       summary.failed++;
       summary.errors.push({ subscriptionId: sub.id, message });
       await sendBillingEmailOnce(supabase, emailSender, 'payment_failed', {
@@ -1668,12 +1740,12 @@ async function processOneSubscriptionLocked(
         subscriptionId: sub.id,
         email: user.email,
         locale: user.locale,
-        periodKey: `${toPeriodEndYmd(periodEnd)}:fail:${attemptNumber}`,
+        periodKey: `${toPeriodEndYmd(livePeriodEnd)}:fail:${attemptNumber}`,
         planName: plan.name,
         amountLabel: formatCop(amountInCents),
       });
       if (attemptNumber >= MAX_DUNNING_ATTEMPTS) {
-        await downgradeToFree(supabase, sub, plan.name, emailSender, periodEnd);
+        await downgradeToFree(supabase, sub, plan.name, emailSender, livePeriodEnd);
         summary.downgraded++;
       }
       return;
@@ -1683,7 +1755,7 @@ async function processOneSubscriptionLocked(
     await casAttemptStatus(supabase, reference, ['claimed'], {
       error_message: message,
     });
-    await setPastDue(supabase, sub.id);
+    await setPastDue(supabase, sub.id, livePeriodEnd);
     summary.errors.push({
       subscriptionId: sub.id,
       message: `Charge inconclusive (kept claimed): ${message}`,

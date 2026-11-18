@@ -156,44 +156,58 @@ describe('processWompiRenewals selection', () => {
 
   it('skips cancel_at_period_end by canceling without charge', async () => {
     const updates: unknown[] = [];
+    const capeSub = {
+      id: subId,
+      user_id: userId,
+      plan_id: 'plan_premium_month',
+      status: 'active',
+      cancel_at_period_end: true,
+      current_period_end: periodEnd,
+      current_period_start: '2026-10-10T07:00:00.000Z',
+      provider: 'wompi',
+    };
     const supabase = {
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
           return {
-            select: () => ({
-              eq: () => ({
-                in: () => ({
-                  lte: () => ({
-                    order: () => ({
-                      order: () => ({
-                        limit: async () => ({
-                          data: [
-                            {
-                              id: subId,
-                              user_id: userId,
-                              plan_id: 'plan_premium_month',
-                              status: 'active',
-                              cancel_at_period_end: true,
-                              current_period_end: periodEnd,
-                              current_period_start: '2026-10-10T07:00:00.000Z',
-                              provider: 'wompi',
-                            },
-                          ],
-                          error: null,
-                        }),
-                      }),
-                    }),
-                  }),
-                }),
-              }),
-            }),
+            select: () => {
+              const node: Record<string, unknown> = {};
+              const self = () => node;
+              let afterNeq = false;
+              node.eq = jest.fn(self);
+              node.in = jest.fn(self);
+              node.lte = jest.fn(self);
+              node.or = jest.fn(self);
+              node.neq = jest.fn(() => {
+                afterNeq = true;
+                return node;
+              });
+              node.order = jest.fn(self);
+              node.limit = jest.fn(async () => {
+                if (afterNeq) {
+                  afterNeq = false;
+                  return { data: [], error: null };
+                }
+                return { data: [capeSub], error: null };
+              });
+              node.maybeSingle = jest.fn(async () => ({
+                data: capeSub,
+                error: null,
+              }));
+              return node;
+            },
             update: (payload: unknown) => {
               updates.push(payload);
-              return {
-                eq: () => ({
-                  neq: async () => ({ error: null }),
-                }),
-              };
+              const node: Record<string, unknown> = {};
+              const self = () => node;
+              node.eq = jest.fn(self);
+              node.in = jest.fn(self);
+              node.select = jest.fn(self);
+              node.maybeSingle = jest.fn(async () => ({
+                data: { id: subId },
+                error: null,
+              }));
+              return node;
             },
           };
         }
@@ -215,6 +229,7 @@ describe('processWompiRenewals selection', () => {
           }),
         };
       }),
+      rpc: jest.fn(async () => ({ data: true, error: null })),
     };
 
     const wompi = {
@@ -232,6 +247,7 @@ describe('processWompiRenewals selection', () => {
 
     expect(summary.canceledAtPeriodEnd).toBe(1);
     expect(wompi.createSourceTransaction).not.toHaveBeenCalled();
+    expect((updates[0] as Record<string, unknown>).canceled_reason).toBe('user');
   });
 
   it('recovers claimed-without-tx after timeout via reference lookup', async () => {
@@ -868,12 +884,16 @@ describe('day-5 final dunning attempt before downgrade', () => {
             select: makeLiveSubSelect(liveSub),
             update: (payload: Record<string, unknown>) => {
               if (payload.status === 'canceled') downgraded = true;
-              return {
-                eq: () => ({
-                  neq: async () => ({ error: null }),
-                  in: async () => ({ error: null }),
-                }),
-              };
+              const node: Record<string, unknown> = {};
+              const self = () => node;
+              node.eq = jest.fn(self);
+              node.in = jest.fn(self);
+              node.select = jest.fn(self);
+              node.maybeSingle = jest.fn(async () => ({
+                data: { id: subId },
+                error: null,
+              }));
+              return node;
             },
           };
         }

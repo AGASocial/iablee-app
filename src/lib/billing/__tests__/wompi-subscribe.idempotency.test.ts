@@ -795,10 +795,12 @@ describe('findBlockingSubscription', () => {
               return {
                 eq: () => ({
                   eq: () => ({
-                    select: () => ({
-                      maybeSingle: async () => ({
-                        data: { id: subId },
-                        error: null,
+                    eq: () => ({
+                      select: () => ({
+                        maybeSingle: async () => ({
+                          data: { id: subId },
+                          error: null,
+                        }),
                       }),
                     }),
                   }),

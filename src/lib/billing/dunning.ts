@@ -31,6 +31,26 @@ export const UPCOMING_RENEWAL_DAYS = 3;
 export const CLAIM_STALE_MS = 15 * 60 * 1000;
 
 /**
+ * Epoch ms for a timestamptz / Date. Prefer this over string === for period equality
+ * (PostgREST may return `+00:00` while `toISOString()` writes `.000Z`).
+ */
+export function toEpochMs(value: Date | string | null | undefined): number | null {
+  if (value == null) return null;
+  const ms = typeof value === 'string' ? new Date(value).getTime() : value.getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/** True when both timestamps denote the same instant. */
+export function sameInstant(
+  a: Date | string | null | undefined,
+  b: Date | string | null | undefined
+): boolean {
+  const am = toEpochMs(a);
+  const bm = toEpochMs(b);
+  return am != null && bm != null && am === bm;
+}
+
+/**
  * Which attempt number (1-based) is due now for a subscription whose
  * period ended at `periodEnd`, given current time `now`.
  */

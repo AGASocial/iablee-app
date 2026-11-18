@@ -194,6 +194,7 @@ export async function findBlockingSubscription(
     }
 
     const nowIso = new Date().toISOString();
+    // CAS on live status + period so a concurrent renewal cannot race the tombstone
     const { data: tombstoned } = await supabase
       .from('billing_subscriptions')
       .update({
@@ -205,6 +206,7 @@ export async function findBlockingSubscription(
       })
       .eq('id', row.id)
       .eq('status', 'active')
+      .eq('current_period_end', row.current_period_end as string)
       .select('id')
       .maybeSingle();
 
