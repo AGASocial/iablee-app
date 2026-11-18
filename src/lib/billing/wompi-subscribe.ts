@@ -33,6 +33,15 @@ import {
   refreshChargeLease,
   releaseChargeLease,
 } from './charge-leases';
+import { notifyRequiresRefundAlert } from './refund-alerts';
+
+/** Statuses that can still be promoted to active on first-charge heal. */
+const FIRST_CHARGE_PROMOTABLE = new Set([
+  'incomplete',
+  'past_due',
+  'trialing',
+  'unpaid',
+]);
 
 export interface WompiTokenMeta {
   brand?: string;
@@ -985,6 +994,7 @@ async function activateFirstChargeLocked(
       `[billing] First-charge APPROVED but sub already active — manual refund required`,
       { reference: params.reference, subscriptionId: params.subscriptionId }
     );
+    void notifyRequiresRefundAlert(supabase, { reference: params.reference });
     return { activated: false };
   }
 
@@ -1024,7 +1034,7 @@ async function activateFirstChargeLocked(
   }
 
   // Refuse promote when another chargeable Wompi sub already exists
-  const { data: chargeablePeers } = await supabase
+  const { data: chargeablePeers, error: peersError } = await supabase
     .from('billing_subscriptions')
     .select('id, status')
     .eq('user_id', params.userId)
@@ -1032,6 +1042,16 @@ async function activateFirstChargeLocked(
     .in('status', ['active', 'past_due'])
     .neq('id', params.subscriptionId)
     .limit(1);
+
+  if (peersError) {
+    // Fail closed / retryable — do not promote or refund-flag on read errors
+    console.error(
+      '[billing] First-charge chargeable peers read failed (retryable)',
+      { reference: params.reference, message: peersError.message }
+    );
+    await persistPaidInvoice(supabase, params);
+    return { activated: false, retryable: true };
+  }
 
   if (chargeablePeers && chargeablePeers.length > 0) {
     const nowIso = new Date().toISOString();
@@ -1049,6 +1069,7 @@ async function activateFirstChargeLocked(
       `[billing] First-charge APPROVED but another chargeable sub exists — manual refund required`,
       { reference: params.reference, subscriptionId: params.subscriptionId }
     );
+    void notifyRequiresRefundAlert(supabase, { reference: params.reference });
     return { activated: false };
   }
 
@@ -1103,11 +1124,20 @@ async function activateFirstChargeLocked(
 
   if (!activated && (casOk || alreadyApproved)) {
     // Re-read — another path may have activated concurrently
-    const { data: live } = await supabase
+    const { data: live, error: liveError } = await supabase
       .from('billing_subscriptions')
-      .select('status, current_period_end')
+      .select('status, current_period_end, canceled_reason')
       .eq('id', params.subscriptionId)
       .maybeSingle();
+
+    if (liveError) {
+      await persistPaidInvoice(supabase, params);
+      console.error(
+        '[billing] First-charge post-activate re-read failed (retryable)',
+        { reference: params.reference, message: liveError.message }
+      );
+      return { activated: false, retryable: true };
+    }
 
     if (
       live?.status === 'active' &&
@@ -1115,6 +1145,42 @@ async function activateFirstChargeLocked(
       new Date(live.current_period_end as string).getTime() > Date.now()
     ) {
       await persistPaidInvoice(supabase, params);
+      return { activated: false };
+    }
+
+    const expiredActive =
+      live?.status === 'active' &&
+      (!live.current_period_end ||
+        new Date(live.current_period_end as string).getTime() <= Date.now());
+
+    const stillPromotable =
+      !!live &&
+      (FIRST_CHARGE_PROMOTABLE.has(live.status as string) || expiredActive);
+
+    if (!stillPromotable) {
+      // Permanently non-promotable (canceled / superseded / missing / tombstoned)
+      const nowIso = new Date().toISOString();
+      const reason = `First-charge APPROVED but subscription permanently non-promotable (status=${live?.status ?? 'missing'}, canceled_reason=${live?.canceled_reason ?? 'n/a'})`;
+      await supabase
+        .from('billing_renewal_attempts')
+        .update({
+          requires_refund: true,
+          refund_reason: reason,
+          updated_at: nowIso,
+        })
+        .eq('wompi_reference', params.reference)
+        .eq('status', 'approved');
+      await persistPaidInvoice(supabase, params);
+      console.error(
+        `[billing] First-charge APPROVED but subscription non-promotable — manual refund required`,
+        {
+          reference: params.reference,
+          subscriptionId: params.subscriptionId,
+          status: live?.status ?? 'missing',
+        }
+      );
+      void notifyRequiresRefundAlert(supabase, { reference: params.reference });
+      // Not retryable → webhook returns 200 (handled)
       return { activated: false };
     }
 

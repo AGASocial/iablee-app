@@ -215,8 +215,30 @@ Wompi has **no native subscriptions**. iablee uses the same renew-by-checkout mo
 5. **Emails (Resend):** renewal success, payment failed, upcoming renewal (~3 days, once per period), downgrade to Free. Failures never break billing.
 6. **Nequi:** API accepts `paymentType: NEQUI` and stores phone last4; UI is card-only for now (clean extension point). **3DS:** first charge may stay `PENDING` (webhook activates); recurrent MIT charges typically skip challenge when COF applies.
 7. **Migration:** `supabase/migrations/20261118120000_kan166_wompi_recurring.sql` (payment method columns, `billing_renewal_attempts`, `billing_email_events`). Do not apply blindly against production without review.
+8. **requires_refund ops alerts (KAN-167):** migration `supabase/migrations/20261118153000_kan167_wompi_refund_alerts.sql` adds `refund_alerted_at` / `refund_resolved_at` / `refund_resolution_note` on `billing_renewal_attempts` and extends `billing_email_events.email_type` with `refund_summary`. Set `BILLING_ALERT_EMAIL` (comma-separated) in `.env`. When an attempt is flagged `requires_refund`, an admin alert is sent once (CAS on `refund_alerted_at`; send failure clears the claim for retry). If `BILLING_ALERT_EMAIL` is unset, a CRITICAL log is emitted and `refund_alerted_at` stays null (so configuring the env later still alerts; nightly logs one CRITICAL with count to avoid spam). Nightly cron includes unresolved refund count + ids in the JSON summary and sends one daily summary email (`email_type=refund_summary`, `period_key=refund_summary_YYYYMMDD` UTC). Email failures never break billing.
 
-**Go-live checklist:** set `CRON_SECRET`, `RESEND_*`, keep sandbox/production Wompi events URLs isolated, enable Vercel Cron on the project, apply migrations, switch `PAYMENT_GATEWAY=wompi` only when ready.
+#### Manual refund resolution (no admin UI)
+
+After refunding in the Wompi dashboard:
+
+```sql
+-- List unresolved requires_refund attempts
+SELECT id, subscription_id, user_id, wompi_reference, wompi_transaction_id,
+       amount_cents, currency, refund_reason, refund_alerted_at, created_at
+FROM billing_renewal_attempts
+WHERE requires_refund = true
+  AND refund_resolved_at IS NULL
+ORDER BY created_at ASC;
+
+-- Mark one resolved after manual Wompi refund
+UPDATE billing_renewal_attempts
+SET refund_resolved_at = now(),
+    refund_resolution_note = 'Refunded in Wompi dashboard by <ops>',
+    updated_at = now()
+WHERE id = '<attempt-uuid>';
+```
+
+**Go-live checklist:** set `CRON_SECRET`, `RESEND_*`, `BILLING_ALERT_EMAIL`, keep sandbox/production Wompi events URLs isolated, enable Vercel Cron on the project, apply migrations, switch `PAYMENT_GATEWAY=wompi` only when ready.
 
 Official docs: [Web Checkout](https://docs.wompi.co/en/docs/colombia/widget-checkout-web/), [Events](https://docs.wompi.co/en/docs/colombia/eventos/), [Transactions](https://docs.wompi.co/en/docs/colombia/transacciones/), [Payment sources](https://docs.wompi.co/docs/colombia/fuentes-de-pago/).
 
