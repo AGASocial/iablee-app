@@ -26,12 +26,12 @@ describe('resolveWompiAmountInCents', () => {
     );
   });
 
-  it('keeps paid-plan COP amounts positive and matches confirmed prices', () => {
+  it('keeps official Premium COP amounts and legacy Necessary fallbacks', () => {
     expect(WOMPI_PLAN_AMOUNT_COP_CENTS).toEqual({
       plan_necessary_month: 4_000_000,
       plan_necessary_year: 40_000_000,
-      plan_premium_month: 8_000_000,
-      plan_premium_year: 80_000_000,
+      plan_premium_month: 990_000,
+      plan_premium_year: 9_900_000,
     });
     for (const [planId, amount] of Object.entries(WOMPI_PLAN_AMOUNT_COP_CENTS)) {
       expect(amount).toBeGreaterThan(0);

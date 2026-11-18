@@ -23,10 +23,10 @@ PayPal remains a type placeholder only.
   - `billing_payment_methods` - Stored payment methods
   - `billing_invoices` - Invoice records
   - `billing_webhook_events` - Webhook event log for idempotency
-- **3 initial plans seeded**:
-  - Free Plan: $0/month (3 assets, 2 beneficiaries)
-  - Necessary Plan: $9.99/month or $99.99/year (50 assets, 10 beneficiaries)
-  - Premium Plan: $19.99/month or $199.99/year (unlimited assets & beneficiaries)
+- **Plans seeded** (KAN-164 visible catalog = Free + Premium only):
+  - Free (`plan_free`): $0/month — 3 assets, **1 beneficiary**
+  - Premium (`plan_premium_month` / `plan_premium_year`): unlimited assets, **10 beneficiaries**, **5 GB** storage, **100 MB** files, **5 videos**
+  - Necessary (`plan_necessary_*`): remains in DB for existing subscribers but **hidden** (`is_visible=false`); not offered for new purchases. No marketing-site "pago único" / one-time plan in the app.
 
 ### 2. Domain Layer ✅
 - **Provider-agnostic interfaces**:
@@ -128,9 +128,9 @@ supabase db push
 
 1. **Create Products and Prices in Stripe Dashboard**:
    - Go to Products → Add Product
-   - Create products matching your plans:
-     - Necessary (Monthly & Yearly)
+   - Create products matching visible plans (KAN-164):
      - Premium (Monthly & Yearly)
+     - (Necessary is hidden; keep Stripe prices only if existing subscribers need them)
    - Copy the Price IDs
 
 2. **Update Plan Price IDs**:
@@ -143,9 +143,9 @@ supabase db push
      '{stripe}',
      '"price_your_actual_stripe_price_id"'
    )
-   WHERE id = 'plan_necessary_month';
+   WHERE id = 'plan_premium_month';
 
-   -- Repeat for other plans
+   -- Repeat for plan_premium_year (and legacy Necessary only if needed for renewals)
    ```
 
 3. **Set up Stripe Webhook**:
@@ -198,10 +198,10 @@ Wompi has **no native subscriptions**. iablee uses the same renew-by-checkout mo
    - **Never** point sandbox commerce at the production events URL, and **never** point production commerce at a sandbox/preview URL. Wompi requires a separate events URL per environment.
    - Commerce may be awaiting approval while production is already enabled; still keep sandbox and production isolated.
 3. Fill `WOMPI_*` vars from `.env.example`. Keep `PAYMENT_GATEWAY=payu` in production until go-live.
-4. **COP pricing**: plans are USD in `billing_plans.amount_cents`. Wompi charges COP only. Official COP amounts (confirmed 2026-11-13, KAN-139) come from:
-   - `src/lib/billing/wompi-pricing.ts` (`WOMPI_PLAN_AMOUNT_COP_CENTS`), or
-   - numeric `provider_price_map.wompi` (amount-in-cents string), via migration `supabase/migrations/20261113140000_wompi_cop_placeholder_prices.sql` (filename kept for history; prices are official)
-   - Necessary monthly/yearly: `4000000` / `40000000`; Premium monthly/yearly: `8000000` / `80000000`. Migration is **not** auto-applied — run when deploying Wompi.
+4. **COP pricing**: plans are USD in `billing_plans.amount_cents`. Wompi charges COP only. Do not treat USD cents as COP cents.
+   - **Official Premium** (confirmed 2026-11-17, KAN-164): month **9.900 COP** (`990000` cents), year **99.000 COP** (`9900000` cents) — in `src/lib/billing/wompi-pricing.ts` and migration `supabase/migrations/20261118000000_kan164_free_premium_visibility.sql`.
+   - The earlier 40k/80k figures in `20261113140000_wompi_cop_placeholder_prices.sql` were **unconfirmed placeholders** (incorrectly labeled confirmed 2026-11-13 / KAN-139). Necessary amounts there remain **legacy hidden-plan fallbacks** only.
+   - Migrations are **not** auto-applied — run when deploying.
 5. **Provider ID uniqueness (do not apply until reviewed):** migration `supabase/migrations/20261113150000_billing_provider_id_unique.sql` adds UNIQUE indexes on `billing_invoices.provider_invoice_id` and `billing_subscriptions.provider_subscription_id`. Application code uses select-then-update/insert so paid webhooks work before this lands. Next `supabase db push` would apply it.
 
 #### Recurring follow-up (not implemented)
@@ -229,7 +229,7 @@ const response = await fetch('/api/billing/subscriptions', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    planId: 'plan_necessary_month',
+    planId: 'plan_premium_month',
     paymentMethodToken: 'pm_...', // From Stripe Elements
   }),
 });
@@ -315,7 +315,7 @@ src/
 │       ├── billing.service.ts                # BillingService orchestration
 │       ├── server.ts                         # Server-side utilities
 │       ├── index.ts                          # Public exports
-│       ├── wompi-pricing.ts                  # Official COP amounts (KAN-139)
+│       ├── wompi-pricing.ts                  # Official Premium COP amounts (KAN-164); legacy Necessary fallbacks
 │       └── adapters/
 │           ├── stripe.adapter.ts
 │           ├── stripe-webhook.normalizer.ts

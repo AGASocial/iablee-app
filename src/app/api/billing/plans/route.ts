@@ -1,6 +1,7 @@
 /**
  * GET /api/billing/plans
- * Get all available billing plans
+ * Get visible billing plans (is_visible=true). Hidden plans (e.g. Necessary) stay
+ * in the DB for existing subscribers but are not returned here (KAN-164).
  */
 
 import { errorResponse, successResponse, getBillingService } from '@/lib/billing/server';
@@ -13,6 +14,7 @@ export async function GET() {
     const { data: plans, error } = await supabase
       .from('billing_plans')
       .select('*')
+      .eq('is_visible', true)
       .order('amount_cents', { ascending: true });
 
     if (error) {
@@ -28,6 +30,7 @@ export async function GET() {
       interval: plan.interval,
       features: plan.features,
       providerPriceMap: plan.provider_price_map,
+      isVisible: plan.is_visible !== false,
     }));
 
     return successResponse({ plans: transformedPlans || [] }, 200, {

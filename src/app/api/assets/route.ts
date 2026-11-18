@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedContext } from '@/lib/auth-context';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { canCreateAsset } from '@/lib/subscription/limits';
+import {
+  canCreateAsset,
+  canCreateVideoAsset,
+  isVideoAssetType,
+} from '@/lib/subscription/limits';
 import { parsePaginationParams, buildPaginatedResponse } from '@/lib/pagination';
 import { withTiming } from '@/lib/observability';
 
@@ -61,14 +65,6 @@ export const POST = withTiming('POST /api/assets', async (request: Request) => {
     const { supabase, user } = auth.ctx;
 
     try {
-        const limitCheck = await canCreateAsset(supabase, user.id);
-        if (!limitCheck.allowed) {
-            return NextResponse.json(
-                { error: 'LIMIT_REACHED', message: limitCheck.reason, limit: limitCheck.limit, current: limitCheck.current },
-                { status: 403 }
-            );
-        }
-
         const body = await request.json();
         const {
             asset_type, asset_name, email, password, website,
@@ -77,6 +73,24 @@ export const POST = withTiming('POST /api/assets', async (request: Request) => {
 
         if (!asset_name || !asset_type) {
             return NextResponse.json({ error: 'asset_name and asset_type are required' }, { status: 400 });
+        }
+
+        const limitCheck = await canCreateAsset(supabase, user.id);
+        if (!limitCheck.allowed) {
+            return NextResponse.json(
+                { error: 'LIMIT_REACHED', message: limitCheck.reason, limit: limitCheck.limit, current: limitCheck.current },
+                { status: 403 }
+            );
+        }
+
+        if (await isVideoAssetType(supabase, asset_type)) {
+            const videoCheck = await canCreateVideoAsset(supabase, user.id);
+            if (!videoCheck.allowed) {
+                return NextResponse.json(
+                    { error: 'LIMIT_REACHED', message: videoCheck.reason, limit: videoCheck.limit, current: videoCheck.current },
+                    { status: 403 }
+                );
+            }
         }
 
         const { data, error } = await supabaseAdmin

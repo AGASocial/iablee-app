@@ -20,12 +20,13 @@ describe('/api/billing/plans', () => {
 
   function mockBillingQuery(plans: unknown[] | null, error: { message: string } | null = null) {
     const mockOrder = jest.fn().mockResolvedValue({ data: plans, error });
-    const mockFrom = jest.fn().mockReturnValue({
-      select: jest.fn().mockReturnValue({ order: mockOrder }),
-    });
+    const mockEq = jest.fn().mockReturnValue({ order: mockOrder });
+    const mockSelect = jest.fn().mockReturnValue({ eq: mockEq });
+    const mockFrom = jest.fn().mockReturnValue({ select: mockSelect });
     mockGetBillingService.mockResolvedValue({
       getSupabaseClient: () => ({ from: mockFrom }),
     });
+    return { mockFrom, mockSelect, mockEq, mockOrder };
   }
 
   it('should return plans successfully with cache headers', async () => {
@@ -38,6 +39,7 @@ describe('/api/billing/plans', () => {
         interval: 'month',
         features: ['feature1'],
         provider_price_map: { stripe: 'price_123' },
+        is_visible: true,
       },
     ]);
 
@@ -55,7 +57,44 @@ describe('/api/billing/plans', () => {
       interval: 'month',
       features: ['feature1'],
       providerPriceMap: { stripe: 'price_123' },
+      isVisible: true,
     });
+  });
+
+  it('filters to is_visible=true so hidden plans are not returned', async () => {
+    const { mockEq } = mockBillingQuery([
+      {
+        id: 'plan_free',
+        name: 'Free',
+        currency: 'USD',
+        amount_cents: 0,
+        interval: 'month',
+        features: {},
+        provider_price_map: {},
+        is_visible: true,
+      },
+      {
+        id: 'plan_premium_month',
+        name: 'Premium',
+        currency: 'USD',
+        amount_cents: 1999,
+        interval: 'month',
+        features: {},
+        provider_price_map: { wompi: '990000' },
+        is_visible: true,
+      },
+    ]);
+
+    const response = await GET();
+    const data = await response.json();
+
+    expect(mockEq).toHaveBeenCalledWith('is_visible', true);
+    expect(response.status).toBe(200);
+    expect(data.plans.map((p: { id: string }) => p.id)).toEqual([
+      'plan_free',
+      'plan_premium_month',
+    ]);
+    expect(data.plans.every((p: { isVisible: boolean }) => p.isVisible)).toBe(true);
   });
 
   it('should handle database errors', async () => {

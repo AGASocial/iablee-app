@@ -29,6 +29,8 @@ export interface PlanDefinition {
   interval: BillingInterval;
   features: PlanFeatures;
   providerPriceMap?: Partial<Record<PaymentProvider, string>>;
+  /** When false, plan is hidden from catalogs and blocked for new purchases (KAN-164). */
+  isVisible?: boolean;
 }
 
 /**
@@ -40,9 +42,11 @@ export interface PlanFeatures {
   max_beneficiaries: number;
   max_file_size_mb: number;
   max_storage_mb: number;
+  /** Max video assets; omit or -1 = no separate video cap (KAN-164 Premium = 5). */
+  max_video_assets?: number;
   priority_support: boolean;
   advanced_security: boolean;
-  [key: string]: number | boolean;
+  [key: string]: number | boolean | undefined;
 }
 
 /**
@@ -287,5 +291,12 @@ export class PlanNotFoundError extends BillingError {
   constructor(planId: string) {
     super(`Plan not found: ${planId}`, 'PLAN_NOT_FOUND');
     this.name = 'PlanNotFoundError';
+  }
+}
+
+export class PlanNotPurchasableError extends BillingError {
+  constructor(planId: string) {
+    super(`Plan is not available for purchase: ${planId}`, 'PLAN_NOT_PURCHASABLE');
+    this.name = 'PlanNotPurchasableError';
   }
 }

@@ -190,6 +190,7 @@ export type Database = {
           interval: string
           features: Record<string, unknown>
           provider_price_map: Record<string, unknown> | null
+          is_visible: boolean
           created_at: string
           updated_at: string
         }
@@ -201,6 +202,7 @@ export type Database = {
           interval: string
           features?: Record<string, unknown>
           provider_price_map?: Record<string, unknown> | null
+          is_visible?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -212,6 +214,7 @@ export type Database = {
           interval?: string
           features?: Record<string, unknown>
           provider_price_map?: Record<string, unknown> | null
+          is_visible?: boolean
           created_at?: string
           updated_at?: string
         }

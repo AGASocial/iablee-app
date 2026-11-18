@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getAuthenticatedContext } from '@/lib/auth-context';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { canCreateAsset, canCreateBeneficiary } from '@/lib/subscription/limits';
+import {
+  canCreateAsset,
+  canCreateBeneficiary,
+  canCreateVideoAsset,
+  isVideoAssetType,
+} from '@/lib/subscription/limits';
 import { maybeSendBeneficiaryVerificationEmail } from '@/lib/beneficiary-verification-flow';
 
 type WizardAssetInput = {
@@ -147,6 +152,16 @@ export async function POST(request: Request) {
         { error: 'LIMIT_REACHED', message: beneficiaryLimit.reason, type: 'beneficiary', limit: beneficiaryLimit.limit, current: beneficiaryLimit.current },
         { status: 403 },
       );
+    }
+
+    if (asset.assetType && (await isVideoAssetType(supabase, asset.assetType))) {
+      const videoLimit = await canCreateVideoAsset(supabase, user.id);
+      if (!videoLimit.allowed) {
+        return NextResponse.json(
+          { error: 'LIMIT_REACHED', message: videoLimit.reason, type: 'video', limit: videoLimit.limit, current: videoLimit.current },
+          { status: 403 },
+        );
+      }
     }
 
     const txAttempt = await supabaseAdmin.rpc('complete_wizard_transaction', {

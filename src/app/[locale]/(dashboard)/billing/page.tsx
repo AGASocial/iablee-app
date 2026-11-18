@@ -15,8 +15,12 @@ interface PlanFeatures {
   max_assets: number;
   max_beneficiaries: number;
   max_storage_mb: number;
+  max_file_size_mb?: number;
+  max_video_assets?: number;
   priority_support: boolean;
 }
+
+const PAYMENT_GATEWAY = process.env.NEXT_PUBLIC_PAYMENT_GATEWAY || 'payu';
 
 interface Subscription {
   id: string;
@@ -30,6 +34,7 @@ interface Subscription {
     currency: string;
     interval: string;
     features: PlanFeatures;
+    providerPriceMap?: Partial<Record<string, string>>;
   };
 }
 
@@ -181,11 +186,33 @@ export default function BillingPage() {
     }
   };
 
-  const formatPrice = (amountCents: number, currency: string) => {
+  const formatPrice = (
+    amountCents: number,
+    currency: string,
+    providerPriceMap?: Partial<Record<string, string>>
+  ) => {
+    if (PAYMENT_GATEWAY === 'wompi') {
+      const wompiRaw = providerPriceMap?.wompi;
+      if (wompiRaw && /^\d+$/.test(wompiRaw.trim())) {
+        const copPesos = Number.parseInt(wompiRaw.trim(), 10) / 100;
+        return new Intl.NumberFormat('es-CO', {
+          style: 'currency',
+          currency: 'COP',
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0,
+        }).format(copPesos);
+      }
+    }
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: currency || 'USD',
     }).format(amountCents / 100);
+  };
+
+  const formatStorage = (mb?: number) => {
+    if (mb == null) return '—';
+    if (mb >= 1000 && mb % 1000 === 0) return `${mb / 1000} GB`;
+    return `${mb} MB`;
   };
 
   const getStatusColor = (status: string) => {
@@ -243,7 +270,7 @@ export default function BillingPage() {
               <p className="text-muted-foreground">
                 {isFreePlan
                   ? t('freeForever')
-                  : `${formatPrice(subscription?.plan?.amountCents || 0, subscription?.plan?.currency || '')} / ${subscription?.plan?.interval === 'month' ? t('perMonth') : t('perYear')}`
+                  : `${formatPrice(subscription?.plan?.amountCents || 0, subscription?.plan?.currency || '', subscription?.plan?.providerPriceMap)} / ${subscription?.plan?.interval === 'month' ? t('perMonth') : t('perYear')}`
                 }
               </p>
             </div>
@@ -355,9 +382,18 @@ export default function BillingPage() {
               <div className="flex justify-between p-2 bg-muted rounded">
                 <span>{t('maxStorage')}</span>
                 <span className="font-semibold">
-                  {subscription?.plan?.features?.max_storage_mb} MB
+                  {formatStorage(subscription?.plan?.features?.max_storage_mb)}
                 </span>
               </div>
+              {typeof subscription?.plan?.features?.max_video_assets === 'number' &&
+                subscription.plan.features.max_video_assets > 0 && (
+                <div className="flex justify-between p-2 bg-muted rounded">
+                  <span>{t('maxVideoAssets')}</span>
+                  <span className="font-semibold">
+                    {subscription.plan.features.max_video_assets}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between p-2 bg-muted rounded">
                 <span>{t('prioritySupport')}</span>
                 <span className="font-semibold">

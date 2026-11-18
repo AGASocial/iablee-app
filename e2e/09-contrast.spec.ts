@@ -169,9 +169,9 @@ test.describe("09 contrast WCAG AA", () => {
     });
     expect(verifyPin.status()).toBe(200);
 
-    // Free-trial default maxBeneficiaries is 2 — fill to the limit for this throwaway only.
+    // Free-trial default maxBeneficiaries is 1 (KAN-164) — fill to the limit for this throwaway only.
     const stamp = Date.now();
-    for (let i = 0; i < 2; i += 1) {
+    for (let i = 0; i < 1; i += 1) {
       const create = await page.request.post("/api/beneficiaries", {
         data: { full_name: `Limit Ben ${stamp}-${i}` },
       });
