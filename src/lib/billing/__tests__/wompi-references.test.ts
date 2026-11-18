@@ -15,19 +15,32 @@ describe('wompi references', () => {
   const planId = 'plan_premium_month';
   const subId = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
 
-  it('builds deterministic first-charge references (no Date.now)', () => {
+  it('builds deterministic first-charge references with attempt counter (no Date.now)', () => {
     const ref = buildWompiFirstReference(userId, planId, subId);
-    expect(ref).toBe(`wompi_first_${userId}_${planId}_${subId}`);
+    expect(ref).toBe(`wompi_first_${userId}_${planId}_${subId}_1`);
     expect(parseWompiReference(ref)).toEqual({
       kind: 'first',
       userId,
       planId,
       subscriptionId: subId,
+      attemptNumber: 1,
     });
     expect(isWompiFirstChargeReference(ref)).toBe(true);
+
+    const retry = buildWompiFirstReference(userId, planId, subId, 2);
+    expect(retry).toBe(`wompi_first_${userId}_${planId}_${subId}_2`);
+    expect(parseWompiReference(retry)?.attemptNumber).toBe(2);
   });
 
-  it('parses legacy timestamp first-charge and web-checkout refs', () => {
+  it('parses legacy first refs without attempt and web-checkout refs', () => {
+    const noAttempt = `wompi_first_${userId}_${planId}_${subId}`;
+    expect(parseWompiReference(noAttempt)).toEqual({
+      kind: 'first',
+      userId,
+      planId,
+      subscriptionId: subId,
+      attemptNumber: 1,
+    });
     const firstTs = `wompi_first_${userId}_${planId}_1769218748365`;
     expect(parseWompiReference(firstTs)?.kind).toBe('first');
     const legacy = `wompi_${userId}_${planId}_1769218748365`;

@@ -24,7 +24,10 @@ export const DUNNING_WINDOW_DAYS = 5;
 
 export const UPCOMING_RENEWAL_DAYS = 3;
 
-/** Claimed attempts without a tx id older than this are recovered / marked error. */
+/**
+ * Claimed attempts without a tx id older than this may be reconciled via
+ * reference lookup. Abandon (mark error) only when lookup returns empty.
+ */
 export const CLAIM_STALE_MS = 15 * 60 * 1000;
 
 /**

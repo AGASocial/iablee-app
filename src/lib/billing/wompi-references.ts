@@ -2,11 +2,11 @@
  * Wompi transaction reference helpers (KAN-166).
  *
  * Formats:
- * - First charge:  wompi_first_{userId}_{planId}_{subscriptionId} (deterministic)
- * - Legacy first:  wompi_first_{userId}_{planId}_{timestamp} | wompi_{userId}_{planId}_{timestamp}
+ * - First charge:  wompi_first_{userId}_{planId}_{subscriptionId}_{attempt}
+ * - Legacy first:  wompi_first_{userId}_{planId}_{subscriptionId} (no attempt)
+ *                  wompi_first_{userId}_{planId}_{timestamp}
+ *                  wompi_{userId}_{planId}_{timestamp}
  * - Renewal:       wompi_renew_{subscriptionId}_{periodEndYmd}_{attempt}
- *
- * Wompi rejects reused references — keep them deterministic for idempotency.
  */
 
 const UUID =
@@ -16,6 +16,10 @@ const PLAN = 'plan_[a-z0-9_]+';
 /** Sentinel period_end for first-charge rows in billing_renewal_attempts */
 export const FIRST_CHARGE_PERIOD_SENTINEL = '1970-01-01T00:00:00.000Z';
 
+const FIRST_WITH_ATTEMPT_PATTERN = new RegExp(
+  `^wompi_first_(${UUID})_(${PLAN})_(${UUID})_(\\d+)$`,
+  'i'
+);
 const FIRST_DETERMINISTIC_PATTERN = new RegExp(
   `^wompi_first_(${UUID})_(${PLAN})_(${UUID})$`,
   'i'
@@ -39,8 +43,8 @@ export interface ParsedWompiFirstReference {
   kind: 'first' | 'legacy_first';
   userId: string;
   planId: string;
-  /** Subscription id when deterministic; timestamp string for legacy */
   subscriptionId?: string;
+  attemptNumber?: number;
   timestamp?: string;
 }
 
@@ -56,15 +60,16 @@ export type ParsedWompiReference =
   | ParsedWompiRenewalReference;
 
 /**
- * Deterministic first-charge reference keyed by subscription id
- * (claim-before-charge; no Date.now()).
+ * Deterministic first-charge reference keyed by subscription + attempt.
+ * attemptNumber lets DECLINED retries use a fresh Wompi reference.
  */
 export function buildWompiFirstReference(
   userId: string,
   planId: string,
-  subscriptionId: string
+  subscriptionId: string,
+  attemptNumber = 1
 ): string {
-  return `wompi_first_${userId}_${planId}_${subscriptionId}`;
+  return `wompi_first_${userId}_${planId}_${subscriptionId}_${attemptNumber}`;
 }
 
 /** @deprecated Web Checkout era */
@@ -76,9 +81,6 @@ export function buildWompiLegacyReference(
   return `wompi_${userId}_${planId}_${timestamp}`;
 }
 
-/**
- * Deterministic renewal reference for claim-before-charge idempotency.
- */
 export function buildWompiRenewalReference(
   subscriptionId: string,
   periodEnd: Date | string,
@@ -99,6 +101,17 @@ export function toPeriodEndYmd(periodEnd: Date | string): string {
 export function parseWompiReference(
   reference: string
 ): ParsedWompiReference | null {
+  const withAttempt = FIRST_WITH_ATTEMPT_PATTERN.exec(reference);
+  if (withAttempt) {
+    return {
+      kind: 'first',
+      userId: withAttempt[1],
+      planId: withAttempt[2],
+      subscriptionId: withAttempt[3],
+      attemptNumber: Number(withAttempt[4]),
+    };
+  }
+
   const deterministic = FIRST_DETERMINISTIC_PATTERN.exec(reference);
   if (deterministic) {
     return {
@@ -106,6 +119,7 @@ export function parseWompiReference(
       userId: deterministic[1],
       planId: deterministic[2],
       subscriptionId: deterministic[3],
+      attemptNumber: 1,
     };
   }
 

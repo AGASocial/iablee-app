@@ -1102,19 +1102,41 @@ export class BillingService {
 
   private async handleWompiFirstChargePaid(
     data: InvoiceEventData,
-    parsed: { userId: string; planId: string }
+    parsed: { userId: string; planId: string; subscriptionId?: string }
   ): Promise<void> {
     const userId = data.userId || parsed.userId;
     const planId = data.planId || parsed.planId;
 
-    const { data: sub } = await this.supabase
-      .from('billing_subscriptions')
-      .select('id, status, current_period_end')
-      .eq('user_id', userId)
-      .eq('provider', 'wompi')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    // Prefer the subscription id embedded in the deterministic reference —
+    // never activate "latest by created_at" (DECLINED retries can leave orphans).
+    type SubSnap = {
+      id: string;
+      status: string;
+      current_period_end: string | null;
+    };
+    let sub: SubSnap | null = null;
+
+    if (parsed.subscriptionId) {
+      const { data: byId } = await this.supabase
+        .from('billing_subscriptions')
+        .select('id, status, current_period_end')
+        .eq('id', parsed.subscriptionId)
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (byId) sub = byId as SubSnap;
+    }
+
+    if (!sub) {
+      const { data: latest } = await this.supabase
+        .from('billing_subscriptions')
+        .select('id, status, current_period_end')
+        .eq('user_id', userId)
+        .eq('provider', 'wompi')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (latest) sub = latest as SubSnap;
+    }
 
     // Idempotent: already active with a future period
     if (

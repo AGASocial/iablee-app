@@ -172,11 +172,12 @@ async function applyApprovedRenewal(
   planName: string,
   emailSender: BillingEmailSender
 ): Promise<boolean> {
-  // CAS attempt → approved first (exactly-once period extension gate)
+  // CAS attempt → approved first (exactly-once period extension gate).
+  // Include `error` so a late APPROVED can heal a false-negative stale recovery.
   const casOk = await casAttemptStatus(
     supabase,
     reference,
-    ['claimed', 'pending'],
+    ['claimed', 'pending', 'error'],
     {
       status: 'approved',
       wompi_transaction_id: transactionId,
@@ -468,60 +469,72 @@ async function reconcilePendingAttempt(
       return 'pending';
     }
 
-    try {
-      const found = await wompi.findTransactionByReference(attempt.wompi_reference);
-      if (found) {
-        await casAttemptStatus(
+    const lookup = await wompi.findTransactionByReference(attempt.wompi_reference);
+
+    if (lookup.kind === 'found') {
+      const found = lookup.transaction;
+      await casAttemptStatus(
+        supabase,
+        attempt.wompi_reference,
+        ['claimed', 'pending', 'error'],
+        {
+          status: 'pending',
+          wompi_transaction_id: found.id,
+        }
+      );
+      txId = found.id;
+      const status = found.status.toUpperCase();
+      if (status === 'APPROVED') {
+        await applyApprovedRenewal(
           supabase,
+          sub,
+          attempt.period_end,
+          found.amountInCents || attempt.amount_cents || 0,
           attempt.wompi_reference,
-          ['claimed', 'pending'],
-          {
-            status: 'pending',
-            wompi_transaction_id: found.id,
-          }
+          found.id,
+          planInterval,
+          planName,
+          emailSender
         );
-        txId = found.id;
-        const status = found.status.toUpperCase();
-        if (status === 'APPROVED') {
-          await applyApprovedRenewal(
-            supabase,
-            sub,
-            attempt.period_end,
-            found.amountInCents || attempt.amount_cents || 0,
-            attempt.wompi_reference,
-            found.id,
-            planInterval,
-            planName,
-            emailSender
-          );
-          return 'approved';
-        }
-        if (status === 'DECLINED' || status === 'ERROR' || status === 'VOIDED') {
-          await applyWompiRenewalFailure(
-            supabase,
-            {
-              reference: attempt.wompi_reference,
-              transactionId: found.id,
-              status: status === 'ERROR' ? 'error' : 'declined',
-              message: `Wompi status ${status}`,
-            },
-            emailSender
-          );
-          return 'failed';
-        }
-        return 'pending';
+        return 'approved';
       }
-    } catch (err) {
-      console.warn('Reference lookup failed for stale claim', err);
+      if (status === 'DECLINED' || status === 'ERROR' || status === 'VOIDED') {
+        await applyWompiRenewalFailure(
+          supabase,
+          {
+            reference: attempt.wompi_reference,
+            transactionId: found.id,
+            status: status === 'ERROR' || status === 'VOIDED' ? 'error' : 'declined',
+            message: `Wompi status ${status}`,
+          },
+          emailSender
+        );
+        return 'failed';
+      }
+      return 'pending';
     }
 
-    // No tx found after timeout — free the slot for the next dunning attempt
+    if (lookup.kind === 'error') {
+      // Undocumented endpoint / network / unexpected shape — keep claim open;
+      // never open a new charge while a Wompi tx may still exist.
+      console.warn(
+        'Reference lookup inconclusive for stale claim; keeping attempt open',
+        {
+          reference: attempt.wompi_reference,
+          httpStatus: lookup.httpStatus,
+          message: lookup.message,
+        }
+      );
+      return 'pending';
+    }
+
+    // kind === 'empty': HTTP 200 + data:[] and claim past stale threshold → safe to abandon
     await markAttemptFailed(
       supabase,
       attempt.wompi_reference,
       'error',
       null,
-      'Stale claim without transaction after timeout'
+      'Stale claim: reference lookup returned empty'
     );
     return 'recovered_error';
   }
@@ -654,12 +667,6 @@ async function processOneSubscription(
     return;
   }
 
-  if (isPastFinalDunningDay(periodEnd, now) && dueAttempt >= MAX_DUNNING_ATTEMPTS) {
-    await downgradeToFree(supabase, sub, plan.name, emailSender, periodEnd);
-    summary.downgraded++;
-    return;
-  }
-
   const { data: priorAttempts } = await supabase
     .from('billing_renewal_attempts')
     .select('attempt_number, status')
@@ -668,13 +675,24 @@ async function processOneSubscription(
     .order('attempt_number', { ascending: false });
 
   const highestDone = priorAttempts?.[0]?.attempt_number ?? 0;
+
+  // Day-5+: run the final dunning attempt first; only downgrade after it has
+  // finalized as declined/error (or on a later run if no new attempt is due).
   if (dueAttempt <= highestDone) {
-    if (
-      isPastFinalDunningDay(periodEnd, now) &&
-      !priorAttempts?.some(a => a.status === 'approved')
-    ) {
-      await downgradeToFree(supabase, sub, plan.name, emailSender, periodEnd);
-      summary.downgraded++;
+    if (isPastFinalDunningDay(periodEnd, now) && highestDone >= MAX_DUNNING_ATTEMPTS) {
+      const final = priorAttempts?.find(
+        a => a.attempt_number === MAX_DUNNING_ATTEMPTS
+      );
+      if (
+        final &&
+        (final.status === 'declined' || final.status === 'error')
+      ) {
+        await downgradeToFree(supabase, sub, plan.name, emailSender, periodEnd);
+        summary.downgraded++;
+      } else {
+        // Final attempt still claimed/pending (or missing) — wait / reconcile
+        summary.skipped++;
+      }
     } else {
       summary.skipped++;
     }

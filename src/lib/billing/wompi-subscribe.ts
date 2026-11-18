@@ -256,26 +256,32 @@ export async function createWompiSourceAndSubscribe(
     params.plan.id
   );
 
-  const reference = buildWompiFirstReference(
-    params.userId,
-    params.plan.id,
-    subscription.id
-  );
-
-  // Existing in-flight / approved first-charge attempt?
-  const { data: existingAttempt } = await supabase
+  // Latest first-charge attempt for this incomplete subscription (attempt counter)
+  const { data: priorFirstAttempts } = await supabase
     .from('billing_renewal_attempts')
     .select('*')
     .eq('subscription_id', subscription.id)
     .eq('period_end', FIRST_CHARGE_PERIOD_SENTINEL)
-    .eq('attempt_number', 1)
-    .maybeSingle();
+    .order('attempt_number', { ascending: false })
+    .limit(1);
+
+  const existingAttempt = priorFirstAttempts?.[0] ?? null;
+  let nextAttemptNumber = 1;
 
   if (existingAttempt) {
+    const attemptRef =
+      (existingAttempt.wompi_reference as string) ||
+      buildWompiFirstReference(
+        params.userId,
+        params.plan.id,
+        subscription.id,
+        existingAttempt.attempt_number as number
+      );
+
     if (existingAttempt.status === 'approved') {
       return {
         subscriptionId: subscription.id,
-        providerSubscriptionId: reference,
+        providerSubscriptionId: attemptRef,
         status: 'active',
         transactionStatus: 'APPROVED',
         transactionId: existingAttempt.wompi_transaction_id as string | undefined,
@@ -287,7 +293,7 @@ export async function createWompiSourceAndSubscribe(
       existingAttempt.status === 'claimed' ||
       existingAttempt.status === 'pending'
     ) {
-      // Reconcile in-flight; never create a second charge
+      // Reconcile in-flight; never create a second charge for the same attempt
       if (existingAttempt.wompi_transaction_id) {
         const tx = await wompi.getTransaction(
           existingAttempt.wompi_transaction_id as string
@@ -298,7 +304,7 @@ export async function createWompiSourceAndSubscribe(
             userId: params.userId,
             subscriptionId: subscription.id,
             plan: params.plan,
-            reference,
+            reference: attemptRef,
             transactionId: tx.id,
             amountInCents: tx.amountInCents || amountInCents,
             email: params.email,
@@ -307,48 +313,61 @@ export async function createWompiSourceAndSubscribe(
           });
           return {
             subscriptionId: subscription.id,
-            providerSubscriptionId: reference,
+            providerSubscriptionId: attemptRef,
             status: 'active',
             transactionStatus: 'APPROVED',
             transactionId: tx.id,
           };
         }
-        return {
-          subscriptionId: subscription.id,
-          providerSubscriptionId: reference,
-          status: 'incomplete',
-          transactionStatus: tx.status,
-          transactionId: tx.id,
-        };
-      }
-
-      const claimedAt = new Date(
-        (existingAttempt.claimed_at as string) || Date.now()
-      ).getTime();
-      if (Date.now() - claimedAt < CLAIM_STALE_MS) {
-        return {
-          subscriptionId: subscription.id,
-          providerSubscriptionId: reference,
-          status: 'incomplete',
-          transactionStatus: 'PENDING',
-        };
-      }
-
-      // Stale claim without tx — try lookup by reference, else mark error and continue
-      try {
-        const found = await wompi.findTransactionByReference(reference);
-        if (found) {
-          await markAttemptStatus(supabase, reference, ['claimed', 'pending'], {
-            status: 'pending',
-            wompi_transaction_id: found.id,
+        if (mapped === 'declined' || mapped === 'error') {
+          await markAttemptStatus(supabase, attemptRef, ['claimed', 'pending'], {
+            status: mapped === 'error' ? 'error' : 'declined',
+            wompi_transaction_id: tx.id,
+            finalized_at: new Date().toISOString(),
           });
+          nextAttemptNumber = (existingAttempt.attempt_number as number) + 1;
+        } else {
+          return {
+            subscriptionId: subscription.id,
+            providerSubscriptionId: attemptRef,
+            status: 'incomplete',
+            transactionStatus: tx.status,
+            transactionId: tx.id,
+          };
+        }
+      } else {
+        const claimedAt = new Date(
+          (existingAttempt.claimed_at as string) || Date.now()
+        ).getTime();
+        if (Date.now() - claimedAt < CLAIM_STALE_MS) {
+          return {
+            subscriptionId: subscription.id,
+            providerSubscriptionId: attemptRef,
+            status: 'incomplete',
+            transactionStatus: 'PENDING',
+          };
+        }
+
+        const lookup = await wompi.findTransactionByReference(attemptRef);
+
+        if (lookup.kind === 'found') {
+          const found = lookup.transaction;
+          await markAttemptStatus(
+            supabase,
+            attemptRef,
+            ['claimed', 'pending', 'error'],
+            {
+              status: 'pending',
+              wompi_transaction_id: found.id,
+            }
+          );
           const mapped = mapTxStatus(found.status);
           if (mapped === 'active') {
             await activateFirstCharge(supabase, {
               userId: params.userId,
               subscriptionId: subscription.id,
               plan: params.plan,
-              reference,
+              reference: attemptRef,
               transactionId: found.id,
               amountInCents: found.amountInCents || amountInCents,
               email: params.email,
@@ -357,75 +376,66 @@ export async function createWompiSourceAndSubscribe(
             });
             return {
               subscriptionId: subscription.id,
-              providerSubscriptionId: reference,
+              providerSubscriptionId: attemptRef,
               status: 'active',
               transactionStatus: 'APPROVED',
               transactionId: found.id,
             };
           }
+          if (mapped === 'declined' || mapped === 'error') {
+            await markAttemptStatus(supabase, attemptRef, ['claimed', 'pending'], {
+              status: mapped === 'error' ? 'error' : 'declined',
+              wompi_transaction_id: found.id,
+              finalized_at: new Date().toISOString(),
+            });
+            nextAttemptNumber = (existingAttempt.attempt_number as number) + 1;
+          } else {
+            return {
+              subscriptionId: subscription.id,
+              providerSubscriptionId: attemptRef,
+              status: 'incomplete',
+              transactionStatus: found.status,
+              transactionId: found.id,
+            };
+          }
+        } else if (lookup.kind === 'error') {
+          console.warn(
+            'First-charge reference lookup inconclusive; keeping attempt open',
+            {
+              reference: attemptRef,
+              httpStatus: lookup.httpStatus,
+              message: lookup.message,
+            }
+          );
           return {
             subscriptionId: subscription.id,
-            providerSubscriptionId: reference,
+            providerSubscriptionId: attemptRef,
             status: 'incomplete',
-            transactionStatus: found.status,
-            transactionId: found.id,
+            transactionStatus: 'PENDING',
           };
+        } else {
+          // empty + past stale threshold → safe to abandon this attempt
+          await markAttemptStatus(supabase, attemptRef, ['claimed', 'pending'], {
+            status: 'error',
+            error_message: 'Stale claim: reference lookup returned empty',
+            finalized_at: new Date().toISOString(),
+          });
+          nextAttemptNumber = (existingAttempt.attempt_number as number) + 1;
         }
-      } catch (err) {
-        console.warn('First-charge reference lookup failed', err);
       }
-
-      await markAttemptStatus(supabase, reference, ['claimed', 'pending'], {
-        status: 'error',
-        error_message: 'Stale claim without transaction',
-        finalized_at: new Date().toISOString(),
-      });
-      // Fall through to create a NEW incomplete sub + new attempt after error
-      // (unique on subscription+sentinel+1 is taken) — create fresh incomplete row
-      const { data: fresh } = await supabase
-        .from('billing_subscriptions')
-        .insert({
-          user_id: params.userId,
-          plan_id: params.plan.id,
-          status: 'incomplete',
-          provider: 'wompi',
-          provider_subscription_id: `wompi_pending_${params.userId}_${Date.now()}`,
-          cancel_at_period_end: false,
-        })
-        .select('id, status, current_period_end, plan_id, billing_anchor_day')
-        .single();
-
-      if (!fresh) {
-        throw new BillingError(
-          'Failed to recreate subscription after stale claim',
-          'CREATE_SUBSCRIPTION_FAILED'
-        );
-      }
-      Object.assign(subscription, fresh);
-    }
-    // declined/error → allow new attempt only via new subscription (handled above for stale)
-    if (existingAttempt.status === 'declined' || existingAttempt.status === 'error') {
-      // Unique constraint blocks same sub — create new incomplete
-      const { data: fresh } = await supabase
-        .from('billing_subscriptions')
-        .insert({
-          user_id: params.userId,
-          plan_id: params.plan.id,
-          status: 'incomplete',
-          provider: 'wompi',
-          provider_subscription_id: `wompi_pending_${params.userId}_${Date.now()}`,
-          cancel_at_period_end: false,
-        })
-        .select('id, status, current_period_end, plan_id, billing_anchor_day')
-        .single();
-      if (fresh) Object.assign(subscription, fresh);
+    } else if (
+      existingAttempt.status === 'declined' ||
+      existingAttempt.status === 'error'
+    ) {
+      nextAttemptNumber = (existingAttempt.attempt_number as number) + 1;
     }
   }
 
   const finalReference = buildWompiFirstReference(
     params.userId,
     params.plan.id,
-    subscription.id
+    subscription.id,
+    nextAttemptNumber
   );
 
   // Claim BEFORE payment source / charge
@@ -433,7 +443,7 @@ export async function createWompiSourceAndSubscribe(
     subscription_id: subscription.id,
     user_id: params.userId,
     period_end: FIRST_CHARGE_PERIOD_SENTINEL,
-    attempt_number: 1,
+    attempt_number: nextAttemptNumber,
     status: 'claimed',
     wompi_reference: finalReference,
     amount_cents: amountInCents,
@@ -441,7 +451,14 @@ export async function createWompiSourceAndSubscribe(
   });
 
   if (claimError) {
-    // Concurrent claim — return in-flight state
+    // Concurrent claim on this attempt number — surface as error, not fake PENDING
+    // when we expected a fresh row after declined/error.
+    if (existingAttempt?.status === 'declined' || existingAttempt?.status === 'error') {
+      throw new BillingError(
+        'Failed to open a fresh first-charge attempt after prior decline',
+        'FIRST_CHARGE_RETRY_CLAIM_FAILED'
+      );
+    }
     return {
       subscriptionId: subscription.id,
       providerSubscriptionId: finalReference,
@@ -627,21 +644,26 @@ export async function activateFirstCharge(
     sub.current_period_end &&
     new Date(sub.current_period_end as string).getTime() > Date.now()
   ) {
-    // Still mark attempt approved if needed (CAS)
-    await markAttemptStatus(supabase, params.reference, ['claimed', 'pending'], {
-      status: 'approved',
-      wompi_transaction_id: params.transactionId,
-      finalized_at: new Date().toISOString(),
-    });
+    // Still mark attempt approved if needed (CAS); heal error → approved
+    await markAttemptStatus(
+      supabase,
+      params.reference,
+      ['claimed', 'pending', 'error'],
+      {
+        status: 'approved',
+        wompi_transaction_id: params.transactionId,
+        finalized_at: new Date().toISOString(),
+      }
+    );
     await persistPaidInvoice(supabase, params);
     return { activated: false };
   }
 
-  // CAS attempt first — period extension exactly once
+  // CAS attempt first — period extension exactly once (heal error → approved)
   const casOk = await markAttemptStatus(
     supabase,
     params.reference,
-    ['claimed', 'pending'],
+    ['claimed', 'pending', 'error'],
     {
       status: 'approved',
       wompi_transaction_id: params.transactionId,
@@ -704,6 +726,13 @@ export async function activateFirstCharge(
 
   await persistPaidInvoice(supabase, params);
 
+  // Quiet orphan incomplete rows left by older declined-retry paths
+  await cancelOrphanIncompleteSubscriptions(
+    supabase,
+    params.userId,
+    params.subscriptionId
+  );
+
   const sender = params.emailSender ?? getBillingEmailSender();
   if (params.email) {
     await sendBillingEmailOnce(supabase, sender, 'renewal_success', {
@@ -717,6 +746,25 @@ export async function activateFirstCharge(
   }
 
   return { activated: true };
+}
+
+async function cancelOrphanIncompleteSubscriptions(
+  supabase: SupabaseClient,
+  userId: string,
+  keepSubscriptionId: string
+): Promise<void> {
+  const nowIso = new Date().toISOString();
+  await supabase
+    .from('billing_subscriptions')
+    .update({
+      status: 'canceled',
+      canceled_at: nowIso,
+      updated_at: nowIso,
+    })
+    .eq('user_id', userId)
+    .eq('provider', 'wompi')
+    .eq('status', 'incomplete')
+    .neq('id', keepSubscriptionId);
 }
 
 async function persistPaidInvoice(

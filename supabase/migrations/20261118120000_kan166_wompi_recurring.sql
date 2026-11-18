@@ -37,7 +37,7 @@ COMMENT ON COLUMN public.billing_subscriptions.billing_anchor_day IS
 -- ---------------------------------------------------------------------------
 -- billing_renewal_attempts: claim-before-charge idempotency for cron renewals
 -- Unique (subscription_id, period_end, attempt_number) prevents double charges.
--- First-charge uses period_end = 1970-01-01 sentinel + attempt_number = 1.
+-- First-charge uses period_end = 1970-01-01 sentinel + attempt_number (increments on DECLINED retry).
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.billing_renewal_attempts (
   id uuid not null default gen_random_uuid(),

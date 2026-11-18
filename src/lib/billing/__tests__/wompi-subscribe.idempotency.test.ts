@@ -86,13 +86,13 @@ describe('createWompiSourceAndSubscribe first-charge idempotency', () => {
   });
 
   it('does not double-charge when first-charge attempt is already in-flight', async () => {
-    const reference = `wompi_first_${userId}_${planId}_${subId}`;
+    const reference = `wompi_first_${userId}_${planId}_${subId}_1`;
     let insertAttempts = 0;
 
     const chain = (terminal: { data?: unknown; error?: unknown }) => {
       const api: Record<string, unknown> = {};
       const self = () => api;
-      for (const m of ['select', 'eq', 'in', 'order', 'limit', 'update', 'insert', 'is']) {
+      for (const m of ['select', 'eq', 'in', 'order', 'limit', 'update', 'insert', 'is', 'neq']) {
         api[m] = jest.fn(self);
       }
       api.maybeSingle = jest.fn(async () => terminal);
@@ -132,12 +132,15 @@ describe('createWompiSourceAndSubscribe first-charge idempotency', () => {
           return {
             select: () =>
               chain({
-                data: {
-                  status: 'pending',
-                  wompi_transaction_id: 'tx-inflight',
-                  wompi_reference: reference,
-                  claimed_at: new Date().toISOString(),
-                },
+                data: [
+                  {
+                    status: 'pending',
+                    attempt_number: 1,
+                    wompi_transaction_id: 'tx-inflight',
+                    wompi_reference: reference,
+                    claimed_at: new Date().toISOString(),
+                  },
+                ],
                 error: null,
               }),
             insert: () => {
@@ -183,6 +186,335 @@ describe('createWompiSourceAndSubscribe first-charge idempotency', () => {
     expect(insertAttempts).toBe(0);
     expect(wompi.createSourceTransaction).not.toHaveBeenCalled();
     expect(FIRST_CHARGE_PERIOD_SENTINEL).toBe('1970-01-01T00:00:00.000Z');
+  });
+
+  it('DECLINED first charge → retry uses fresh reference with attempt counter', async () => {
+    const declinedRef = `wompi_first_${userId}_${planId}_${subId}_1`;
+    const retryRef = `wompi_first_${userId}_${planId}_${subId}_2`;
+    let claimedAttemptNumber: number | null = null;
+    let claimedReference: string | null = null;
+
+    const chain = (terminal: { data?: unknown; error?: unknown }) => {
+      const api: Record<string, unknown> = {};
+      const self = () => api;
+      for (const m of [
+        'select',
+        'eq',
+        'in',
+        'order',
+        'limit',
+        'update',
+        'insert',
+        'is',
+        'neq',
+        'lt',
+      ]) {
+        api[m] = jest.fn(self);
+      }
+      api.maybeSingle = jest.fn(async () => terminal);
+      api.single = jest.fn(async () => terminal);
+      (api as { then?: unknown }).then = (
+        resolve: (v: unknown) => unknown,
+        reject?: (e: unknown) => unknown
+      ) => Promise.resolve(terminal).then(resolve, reject);
+      return api;
+    };
+
+    let subSelect = 0;
+    const supabase = {
+      from: jest.fn((table: string) => {
+        if (table === 'billing_subscriptions') {
+          return {
+            select: () => {
+              subSelect++;
+              if (subSelect === 1) {
+                return chain({ data: [], error: null });
+              }
+              return chain({
+                data: {
+                  id: subId,
+                  status: 'incomplete',
+                  current_period_end: null,
+                  plan_id: planId,
+                },
+                error: null,
+              });
+            },
+            update: () => chain({ data: { id: subId }, error: null }),
+            insert: () => chain({ data: null, error: null }),
+          };
+        }
+        if (table === 'billing_renewal_attempts') {
+          return {
+            select: () =>
+              chain({
+                data: [
+                  {
+                    status: 'declined',
+                    attempt_number: 1,
+                    wompi_transaction_id: 'tx-declined',
+                    wompi_reference: declinedRef,
+                    claimed_at: new Date().toISOString(),
+                  },
+                ],
+                error: null,
+              }),
+            insert: (row: Record<string, unknown>) => {
+              claimedAttemptNumber = row.attempt_number as number;
+              claimedReference = row.wompi_reference as string;
+              return Promise.resolve({ error: null });
+            },
+            update: () => chain({ data: { id: 'a' }, error: null }),
+          };
+        }
+        if (table === 'billing_payment_methods') {
+          return {
+            update: () => chain({ data: null, error: null }),
+            insert: () =>
+              chain({ data: { id: 'pm-1' }, error: null }),
+          };
+        }
+        if (table === 'billing_invoices') {
+          return {
+            insert: async () => ({ error: null }),
+            update: () => chain({ data: null, error: null }),
+            select: () => chain({ data: null, error: null }),
+            upsert: async () => ({ error: null }),
+          };
+        }
+        if (table === 'billing_email_events') {
+          return {
+            insert: () =>
+              chain({ data: { id: 'e' }, error: null }),
+            delete: () => chain({ data: null, error: null }),
+          };
+        }
+        return chain({ data: null, error: null });
+      }),
+    };
+
+    const wompi = {
+      createPaymentSource: jest.fn(async () => ({
+        id: 99,
+        status: 'AVAILABLE',
+        type: 'CARD',
+        publicData: { last_four: '4242' },
+      })),
+      createSourceTransaction: jest.fn(async () => ({
+        id: 'tx-retry',
+        status: 'APPROVED',
+        reference: retryRef,
+        amountInCents: 990000,
+        currency: 'COP',
+      })),
+      getTransaction: jest.fn(),
+      findTransactionByReference: jest.fn(),
+      waitForTransactionStatus: jest.fn(async () => ({
+        id: 'tx-retry',
+        status: 'APPROVED',
+        reference: retryRef,
+        amountInCents: 990000,
+        currency: 'COP',
+      })),
+    };
+
+    const result = await createWompiSourceAndSubscribe(
+      supabase as never,
+      wompi as never,
+      {
+        userId,
+        plan,
+        email: 'a@b.com',
+        paymentType: 'CARD',
+        paymentToken: 'tok_test',
+        acceptanceToken: 'acc',
+        acceptPersonalAuth: 'pers',
+        emailSender: { send: jest.fn(async () => ({ sent: true })) },
+      }
+    );
+
+    expect(claimedAttemptNumber).toBe(2);
+    expect(claimedReference).toBe(retryRef);
+    expect(wompi.createSourceTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({ reference: retryRef })
+    );
+    expect(result.transactionStatus).toBe('APPROVED');
+  });
+
+  it('surfaces claim failure after DECLINED as error, not fake PENDING', async () => {
+    const declinedRef = `wompi_first_${userId}_${planId}_${subId}_1`;
+
+    const chain = (terminal: { data?: unknown; error?: unknown }) => {
+      const api: Record<string, unknown> = {};
+      const self = () => api;
+      for (const m of ['select', 'eq', 'in', 'order', 'limit', 'update', 'insert', 'is', 'neq']) {
+        api[m] = jest.fn(self);
+      }
+      api.maybeSingle = jest.fn(async () => terminal);
+      api.single = jest.fn(async () => terminal);
+      (api as { then?: unknown }).then = (
+        resolve: (v: unknown) => unknown,
+        reject?: (e: unknown) => unknown
+      ) => Promise.resolve(terminal).then(resolve, reject);
+      return api;
+    };
+
+    let subSelect = 0;
+    const supabase = {
+      from: jest.fn((table: string) => {
+        if (table === 'billing_subscriptions') {
+          return {
+            select: () => {
+              subSelect++;
+              if (subSelect === 1) {
+                return chain({ data: [], error: null });
+              }
+              return chain({
+                data: {
+                  id: subId,
+                  status: 'incomplete',
+                  current_period_end: null,
+                  plan_id: planId,
+                },
+                error: null,
+              });
+            },
+            update: () => chain({ data: null, error: null }),
+          };
+        }
+        if (table === 'billing_renewal_attempts') {
+          return {
+            select: () =>
+              chain({
+                data: [
+                  {
+                    status: 'declined',
+                    attempt_number: 1,
+                    wompi_transaction_id: 'tx-declined',
+                    wompi_reference: declinedRef,
+                  },
+                ],
+                error: null,
+              }),
+            insert: async () => ({ error: { code: '23505', message: 'unique' } }),
+          };
+        }
+        return chain({ data: null, error: null });
+      }),
+    };
+
+    const wompi = {
+      createPaymentSource: jest.fn(),
+      createSourceTransaction: jest.fn(),
+    };
+
+    await expect(
+      createWompiSourceAndSubscribe(supabase as never, wompi as never, {
+        userId,
+        plan,
+        email: 'a@b.com',
+        paymentType: 'CARD',
+        paymentToken: 'tok_test',
+        acceptanceToken: 'acc',
+        acceptPersonalAuth: 'pers',
+      })
+    ).rejects.toMatchObject({ code: 'FIRST_CHARGE_RETRY_CLAIM_FAILED' });
+    expect(wompi.createSourceTransaction).not.toHaveBeenCalled();
+  });
+
+  it('keeps stale claim open when reference lookup is inconclusive', async () => {
+    const reference = `wompi_first_${userId}_${planId}_${subId}_1`;
+    const stale = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+
+    const chain = (terminal: { data?: unknown; error?: unknown }) => {
+      const api: Record<string, unknown> = {};
+      const self = () => api;
+      for (const m of ['select', 'eq', 'in', 'order', 'limit', 'update', 'insert', 'is', 'neq']) {
+        api[m] = jest.fn(self);
+      }
+      api.maybeSingle = jest.fn(async () => terminal);
+      api.single = jest.fn(async () => terminal);
+      (api as { then?: unknown }).then = (
+        resolve: (v: unknown) => unknown,
+        reject?: (e: unknown) => unknown
+      ) => Promise.resolve(terminal).then(resolve, reject);
+      return api;
+    };
+
+    let subSelect = 0;
+    const supabase = {
+      from: jest.fn((table: string) => {
+        if (table === 'billing_subscriptions') {
+          return {
+            select: () => {
+              subSelect++;
+              if (subSelect === 1) {
+                return chain({ data: [], error: null });
+              }
+              return chain({
+                data: {
+                  id: subId,
+                  status: 'incomplete',
+                  current_period_end: null,
+                  plan_id: planId,
+                },
+                error: null,
+              });
+            },
+            update: () => chain({ data: null, error: null }),
+          };
+        }
+        if (table === 'billing_renewal_attempts') {
+          return {
+            select: () =>
+              chain({
+                data: [
+                  {
+                    status: 'claimed',
+                    attempt_number: 1,
+                    wompi_transaction_id: null,
+                    wompi_reference: reference,
+                    claimed_at: stale,
+                  },
+                ],
+                error: null,
+              }),
+            insert: jest.fn(async () => {
+              throw new Error('must not open new claim');
+            }),
+            update: () => chain({ data: { id: 'a' }, error: null }),
+          };
+        }
+        return chain({ data: null, error: null });
+      }),
+    };
+
+    const wompi = {
+      createPaymentSource: jest.fn(),
+      createSourceTransaction: jest.fn(),
+      findTransactionByReference: jest.fn(async () => ({
+        kind: 'error' as const,
+        httpStatus: 500,
+        message: 'HTTP 500',
+      })),
+    };
+
+    const result = await createWompiSourceAndSubscribe(
+      supabase as never,
+      wompi as never,
+      {
+        userId,
+        plan,
+        email: 'a@b.com',
+        paymentType: 'CARD',
+        paymentToken: 'tok_test',
+        acceptanceToken: 'acc',
+        acceptPersonalAuth: 'pers',
+      }
+    );
+
+    expect(result.transactionStatus).toBe('PENDING');
+    expect(wompi.createSourceTransaction).not.toHaveBeenCalled();
   });
 });
 
