@@ -24,6 +24,7 @@ export {
 } from './wompi-references';
 export * from './billing-emails';
 export * from './charge-leases';
+export * from './refund-alerts';
 export * from './renewals';
 export * from './wompi-subscribe';
 

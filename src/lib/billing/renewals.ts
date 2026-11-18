@@ -34,9 +34,43 @@ import {
   refreshChargeLease,
   releaseChargeLease,
 } from './charge-leases';
+import {
+  notifyRequiresRefundAlert,
+  processRequiresRefundAlerts,
+} from './refund-alerts';
 
 /** Durable marker when approved but requires_refund flag write failed */
 export const REQUIRES_REFUND_FLAG_PENDING = 'REQUIRES_REFUND_FLAG_PENDING';
+
+/**
+ * Abandon a claimed attempt that never reached Wompi (lease lost before fetch).
+ * DELETE only while status='claimed' AND wompi_transaction_id IS NULL so the
+ * same attempt_number / wompi_reference can be reused on the next run.
+ * Safe because the reference was never sent — Wompi rejects reused refs only
+ * after a createTransaction call; an unsent ref may be retried as-is.
+ */
+export async function abandonUnsentClaim(
+  supabase: SupabaseClient,
+  reference: string
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('billing_renewal_attempts')
+    .delete()
+    .eq('wompi_reference', reference)
+    .eq('status', 'claimed')
+    .is('wompi_transaction_id', null)
+    .select('id')
+    .maybeSingle();
+
+  if (error) {
+    console.error('[billing] abandonUnsentClaim failed', {
+      reference,
+      message: error.message,
+    });
+    return false;
+  }
+  return !!data?.id;
+}
 
 export interface RenewalRunSummary {
   scanned: number;
@@ -49,6 +83,9 @@ export interface RenewalRunSummary {
   upcomingEmails: number;
   skipped: number;
   batches: number;
+  refundAlertsSent: number;
+  unresolvedRefundCount: number;
+  unresolvedRefundIds: string[];
   errors: Array<{ subscriptionId: string; message: string }>;
 }
 
@@ -380,6 +417,11 @@ async function approveAttemptRequiresRefundDurable(
   reason: string,
   nowIso: string
 ): Promise<boolean> {
+  const succeed = async (): Promise<true> => {
+    void notifyRequiresRefundAlert(supabase, { reference });
+    return true;
+  };
+
   for (let attempt = 0; attempt < 3; attempt++) {
     const casOk = await casAttemptStatus(
       supabase,
@@ -393,7 +435,7 @@ async function approveAttemptRequiresRefundDurable(
         refund_reason: reason,
       }
     );
-    if (casOk) return true;
+    if (casOk) return succeed();
 
     const { data: row } = await supabase
       .from('billing_renewal_attempts')
@@ -402,7 +444,7 @@ async function approveAttemptRequiresRefundDurable(
       .maybeSingle();
 
     if (row?.status === 'approved' && row.requires_refund === true) {
-      return true;
+      return succeed();
     }
 
     if (row?.status === 'approved') {
@@ -418,7 +460,7 @@ async function approveAttemptRequiresRefundDurable(
         .eq('status', 'approved')
         .select('id, requires_refund')
         .maybeSingle();
-      if (flagged?.requires_refund === true) return true;
+      if (flagged?.requires_refund === true) return succeed();
     }
   }
 
@@ -1285,7 +1327,7 @@ async function processOneSubscription(
 
   try {
     // Live re-read under lease before cancel-at-period-end or charge
-    const { data: live } = await supabase
+    const { data: live, error: liveError } = await supabase
       .from('billing_subscriptions')
       .select(
         'id, user_id, plan_id, status, cancel_at_period_end, current_period_end, current_period_start, billing_anchor_day, provider, canceled_reason'
@@ -1293,12 +1335,26 @@ async function processOneSubscription(
       .eq('id', sub.id)
       .maybeSingle();
 
+    if (liveError) {
+      console.error('[billing] Live subscription re-read failed (fail-closed)', {
+        subscriptionId: sub.id,
+        message: liveError.message,
+      });
+      summary.skipped++;
+      summary.errors.push({
+        subscriptionId: sub.id,
+        message: `Live re-read failed: ${liveError.message}`,
+      });
+      return;
+    }
+
     if (!live) {
       summary.skipped++;
       return;
     }
 
-    const livePeriodEnd = live.current_period_end as string | null;
+    let chargeSub = live as SubRow;
+    let livePeriodEnd = live.current_period_end as string | null;
     if (!livePeriodEnd) {
       summary.skipped++;
       return;
@@ -1334,14 +1390,46 @@ async function processOneSubscription(
 
       if (canceled?.id) {
         summary.canceledAtPeriodEnd++;
-      } else {
-        // User resumed (CAPE cleared) or row already moved — no-op
-        summary.skipped++;
+        return;
       }
-      return;
-    }
 
-    if (live.cancel_at_period_end === true) {
+      // CAS miss (user resumed between live read and update): re-read and
+      // fall through to the locked charge path when CAPE is false and still due.
+      const { data: afterMiss, error: afterMissError } = await supabase
+        .from('billing_subscriptions')
+        .select(
+          'id, user_id, plan_id, status, cancel_at_period_end, current_period_end, current_period_start, billing_anchor_day, provider, canceled_reason'
+        )
+        .eq('id', live.id)
+        .maybeSingle();
+
+      if (afterMissError) {
+        console.error(
+          '[billing] CAPE CAS-miss re-read failed (fail-closed)',
+          { subscriptionId: live.id, message: afterMissError.message }
+        );
+        summary.skipped++;
+        summary.errors.push({
+          subscriptionId: live.id as string,
+          message: `CAPE CAS-miss re-read failed: ${afterMissError.message}`,
+        });
+        return;
+      }
+
+      if (
+        !afterMiss ||
+        afterMiss.cancel_at_period_end === true ||
+        (afterMiss.status !== 'active' && afterMiss.status !== 'past_due') ||
+        !afterMiss.current_period_end ||
+        new Date(afterMiss.current_period_end as string).getTime() > now.getTime()
+      ) {
+        summary.skipped++;
+        return;
+      }
+
+      chargeSub = afterMiss as SubRow;
+      livePeriodEnd = afterMiss.current_period_end as string;
+    } else if (live.cancel_at_period_end === true) {
       summary.skipped++;
       return;
     }
@@ -1349,7 +1437,7 @@ async function processOneSubscription(
     await processOneSubscriptionLocked(
       supabase,
       wompi,
-      live as SubRow,
+      chargeSub,
       now,
       summary,
       emailSender,
@@ -1394,6 +1482,9 @@ async function retryRequiresRefundFlagPending(
         `[billing] Retried requires_refund flag successfully`,
         { reference: row.wompi_reference }
       );
+      void notifyRequiresRefundAlert(supabase, {
+        reference: row.wompi_reference as string,
+      });
     }
   }
 }
@@ -1412,13 +1503,26 @@ async function processOneSubscriptionLocked(
   leaseHolder: string
 ): Promise<void> {
   // Re-validate live row under lease
-  const { data: live } = await supabase
+  const { data: live, error: liveLockedError } = await supabase
     .from('billing_subscriptions')
     .select(
       'id, user_id, plan_id, status, cancel_at_period_end, current_period_end, current_period_start, billing_anchor_day, provider, canceled_reason'
     )
     .eq('id', batchSub.id)
     .maybeSingle();
+
+  if (liveLockedError) {
+    console.error('[billing] Locked live re-read failed (fail-closed)', {
+      subscriptionId: batchSub.id,
+      message: liveLockedError.message,
+    });
+    summary.skipped++;
+    summary.errors.push({
+      subscriptionId: batchSub.id,
+      message: `Locked live re-read failed: ${liveLockedError.message}`,
+    });
+    return;
+  }
 
   if (!live) {
     summary.skipped++;
@@ -1443,7 +1547,7 @@ async function processOneSubscriptionLocked(
   const livePeriodEnd = (sub.current_period_end as string) || periodEnd;
 
   // Must still be the user's only chargeable sub
-  const { data: chargeablePeers } = await supabase
+  const { data: chargeablePeers, error: peersError } = await supabase
     .from('billing_subscriptions')
     .select('id')
     .eq('user_id', sub.user_id)
@@ -1451,6 +1555,18 @@ async function processOneSubscriptionLocked(
     .in('status', ['active', 'past_due'])
     .neq('id', sub.id)
     .limit(1);
+  if (peersError) {
+    console.error('[billing] Chargeable peers read failed (fail-closed)', {
+      subscriptionId: sub.id,
+      message: peersError.message,
+    });
+    summary.skipped++;
+    summary.errors.push({
+      subscriptionId: sub.id,
+      message: `Chargeable peers read failed: ${peersError.message}`,
+    });
+    return;
+  }
   if (chargeablePeers && chargeablePeers.length > 0) {
     summary.skipped++;
     return;
@@ -1470,12 +1586,25 @@ async function processOneSubscriptionLocked(
     return;
   }
 
-  const { data: pendingAttempts } = await supabase
+  const { data: pendingAttempts, error: pendingError } = await supabase
     .from('billing_renewal_attempts')
     .select('*')
     .eq('subscription_id', sub.id)
     .eq('period_end', livePeriodEnd)
     .in('status', ['claimed', 'pending']);
+
+  if (pendingError) {
+    console.error('[billing] Pending attempts read failed (fail-closed)', {
+      subscriptionId: sub.id,
+      message: pendingError.message,
+    });
+    summary.skipped++;
+    summary.errors.push({
+      subscriptionId: sub.id,
+      message: `Pending attempts read failed: ${pendingError.message}`,
+    });
+    return;
+  }
 
   if (pendingAttempts && pendingAttempts.length > 0) {
     let stillBlocked = false;
@@ -1501,13 +1630,26 @@ async function processOneSubscriptionLocked(
   }
 
   // Any APPROVED for this period (refund-flagged or not) — never open attempt N+1
-  const { data: approvedRows } = await supabase
+  const { data: approvedRows, error: approvedError } = await supabase
     .from('billing_renewal_attempts')
     .select('id, requires_refund, applied_at, wompi_reference, wompi_transaction_id, amount_cents')
     .eq('subscription_id', sub.id)
     .eq('period_end', livePeriodEnd)
     .eq('status', 'approved')
     .limit(5);
+
+  if (approvedError) {
+    console.error('[billing] Approved attempts read failed (fail-closed)', {
+      subscriptionId: sub.id,
+      message: approvedError.message,
+    });
+    summary.skipped++;
+    summary.errors.push({
+      subscriptionId: sub.id,
+      message: `Approved attempts read failed: ${approvedError.message}`,
+    });
+    return;
+  }
 
   const hasAppliedEntitlement = (approvedRows || []).some(
     a => a.requires_refund !== true && a.applied_at
@@ -1544,12 +1686,25 @@ async function processOneSubscriptionLocked(
     return;
   }
 
-  const { data: priorAttempts } = await supabase
+  const { data: priorAttempts, error: priorError } = await supabase
     .from('billing_renewal_attempts')
     .select('attempt_number, status')
     .eq('subscription_id', sub.id)
     .eq('period_end', livePeriodEnd)
     .order('attempt_number', { ascending: false });
+
+  if (priorError) {
+    console.error('[billing] Prior attempts read failed (fail-closed)', {
+      subscriptionId: sub.id,
+      message: priorError.message,
+    });
+    summary.skipped++;
+    summary.errors.push({
+      subscriptionId: sub.id,
+      message: `Prior attempts read failed: ${priorError.message}`,
+    });
+    return;
+  }
 
   const highestDone = priorAttempts?.[0]?.attempt_number ?? 0;
 
@@ -1626,7 +1781,19 @@ async function processOneSubscriptionLocked(
     leaseHolder
   );
   if (!leaseBeforeCharge) {
+    // No Wompi call yet — abandon claim so attempt_number/reference can retry.
+    const abandoned = await abandonUnsentClaim(supabase, reference);
+    console.error(
+      '[billing] Lease lost before Wompi charge — abandoned unsent claim',
+      { subscriptionId: sub.id, reference, abandoned }
+    );
     summary.skipped++;
+    summary.errors.push({
+      subscriptionId: sub.id,
+      message: abandoned
+        ? 'Lease lost before Wompi charge — claim abandoned for retry'
+        : 'Lease lost before Wompi charge — claim abandon failed (stale reconcile)',
+    });
     return;
   }
 
@@ -1879,6 +2046,9 @@ export async function processWompiRenewals(
     upcomingEmails: 0,
     skipped: 0,
     batches: 0,
+    refundAlertsSent: 0,
+    unresolvedRefundCount: 0,
+    unresolvedRefundIds: [],
     errors: [],
   };
 
@@ -2017,6 +2187,25 @@ export async function processWompiRenewals(
     }
   }
 
+  // Ops: retry unalerted requires_refund + daily unresolved summary (never throws)
+  try {
+    const alerts = await processRequiresRefundAlerts(supabase, {
+      now,
+      limit: batchSize,
+    });
+    summary.refundAlertsSent = alerts.alertsSent;
+    summary.unresolvedRefundCount = alerts.unresolvedCount;
+    summary.unresolvedRefundIds = alerts.unresolvedIds;
+  } catch (err) {
+    summary.errors.push({
+      subscriptionId: '-',
+      message:
+        err instanceof Error
+          ? `Refund alerts: ${err.message}`
+          : 'Refund alerts failed',
+    });
+  }
+
   return summary;
 }
 
@@ -2130,6 +2319,9 @@ export async function chargeWompiPastDueNow(
     upcomingEmails: 0,
     skipped: 0,
     batches: 1,
+    refundAlertsSent: 0,
+    unresolvedRefundCount: 0,
+    unresolvedRefundIds: [],
     errors: [],
   };
 
