@@ -1158,7 +1158,8 @@ export class BillingService {
       subscriptionId: sub.id as string,
       plan,
       reference: data.invoiceId,
-      transactionId: data.subscriptionId || data.invoiceId,
+      transactionId:
+        data.providerTransactionId || data.subscriptionId || data.invoiceId,
       amountInCents: data.amountCents,
       email: (user?.email as string) || '',
     });

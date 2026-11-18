@@ -2,8 +2,8 @@
  * Wompi transaction reference helpers (KAN-166).
  *
  * Formats:
- * - First charge:  wompi_first_{userId}_{planId}_{timestamp}
- * - Legacy first:  wompi_{userId}_{planId}_{timestamp}  (Web Checkout era)
+ * - First charge:  wompi_first_{userId}_{planId}_{subscriptionId} (deterministic)
+ * - Legacy first:  wompi_first_{userId}_{planId}_{timestamp} | wompi_{userId}_{planId}_{timestamp}
  * - Renewal:       wompi_renew_{subscriptionId}_{periodEndYmd}_{attempt}
  *
  * Wompi rejects reused references — keep them deterministic for idempotency.
@@ -13,7 +13,14 @@ const UUID =
   '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const PLAN = 'plan_[a-z0-9_]+';
 
-const FIRST_PATTERN = new RegExp(
+/** Sentinel period_end for first-charge rows in billing_renewal_attempts */
+export const FIRST_CHARGE_PERIOD_SENTINEL = '1970-01-01T00:00:00.000Z';
+
+const FIRST_DETERMINISTIC_PATTERN = new RegExp(
+  `^wompi_first_(${UUID})_(${PLAN})_(${UUID})$`,
+  'i'
+);
+const FIRST_LEGACY_TS_PATTERN = new RegExp(
   `^wompi_first_(${UUID})_(${PLAN})_(\\d+)$`,
   'i'
 );
@@ -32,7 +39,9 @@ export interface ParsedWompiFirstReference {
   kind: 'first' | 'legacy_first';
   userId: string;
   planId: string;
-  timestamp: string;
+  /** Subscription id when deterministic; timestamp string for legacy */
+  subscriptionId?: string;
+  timestamp?: string;
 }
 
 export interface ParsedWompiRenewalReference {
@@ -46,15 +55,19 @@ export type ParsedWompiReference =
   | ParsedWompiFirstReference
   | ParsedWompiRenewalReference;
 
+/**
+ * Deterministic first-charge reference keyed by subscription id
+ * (claim-before-charge; no Date.now()).
+ */
 export function buildWompiFirstReference(
   userId: string,
   planId: string,
-  timestamp = Date.now()
+  subscriptionId: string
 ): string {
-  return `wompi_first_${userId}_${planId}_${timestamp}`;
+  return `wompi_first_${userId}_${planId}_${subscriptionId}`;
 }
 
-/** @deprecated Prefer buildWompiFirstReference for new purchases */
+/** @deprecated Web Checkout era */
 export function buildWompiLegacyReference(
   userId: string,
   planId: string,
@@ -65,7 +78,6 @@ export function buildWompiLegacyReference(
 
 /**
  * Deterministic renewal reference for claim-before-charge idempotency.
- * periodEnd should be the subscription's current_period_end being billed.
  */
 export function buildWompiRenewalReference(
   subscriptionId: string,
@@ -87,13 +99,23 @@ export function toPeriodEndYmd(periodEnd: Date | string): string {
 export function parseWompiReference(
   reference: string
 ): ParsedWompiReference | null {
-  const first = FIRST_PATTERN.exec(reference);
-  if (first) {
+  const deterministic = FIRST_DETERMINISTIC_PATTERN.exec(reference);
+  if (deterministic) {
     return {
       kind: 'first',
-      userId: first[1],
-      planId: first[2],
-      timestamp: first[3],
+      userId: deterministic[1],
+      planId: deterministic[2],
+      subscriptionId: deterministic[3],
+    };
+  }
+
+  const firstTs = FIRST_LEGACY_TS_PATTERN.exec(reference);
+  if (firstTs) {
+    return {
+      kind: 'first',
+      userId: firstTs[1],
+      planId: firstTs[2],
+      timestamp: firstTs[3],
     };
   }
 

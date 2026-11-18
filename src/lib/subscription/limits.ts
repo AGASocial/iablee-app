@@ -3,7 +3,10 @@
  */
 
 import { SupabaseClient } from '@supabase/supabase-js';
-import { hasPaidEntitlement } from '@/lib/billing/dunning';
+import {
+  hasPaidEntitlement,
+  hasStatusBasedEntitlement,
+} from '@/lib/billing/dunning';
 
 export interface SubscriptionLimits {
   maxAssets: number;
@@ -32,6 +35,7 @@ interface PlanRecord {
 
 interface SubscriptionRecord {
   status: string;
+  provider?: string | null;
   current_period_end?: string | null;
   plan: PlanRecord | PlanRecord[] | null;
 }
@@ -54,7 +58,8 @@ function setCache(userId: string, subscription: SubscriptionRecord | null, limit
 
 /**
  * Fetch the subscription that currently grants paid entitlements.
- * Considers active (with period end + grace) and past_due (during dunning).
+ * Wompi: period end + grace / past_due dunning window.
+ * Stripe/PayU: status-based only (ignore current_period_end) — pre-KAN-166.
  */
 async function fetchActiveSubscription(
   supabase: SupabaseClient,
@@ -62,7 +67,9 @@ async function fetchActiveSubscription(
 ): Promise<SubscriptionRecord | null> {
   const { data: subscriptions } = await supabase
     .from('billing_subscriptions')
-    .select(`status, current_period_end, plan:billing_plans(id, name, features)`)
+    .select(
+      `status, provider, current_period_end, plan:billing_plans(id, name, features)`
+    )
     .eq('user_id', userId)
     .in('status', ['active', 'past_due', 'trialing'])
     .order('updated_at', { ascending: false })
@@ -74,12 +81,20 @@ async function fetchActiveSubscription(
 
   for (const row of subscriptions) {
     const sub = row as SubscriptionRecord;
-    if (
-      hasPaidEntitlement({
-        status: sub.status,
-        currentPeriodEnd: sub.current_period_end,
-      })
-    ) {
+    if (sub.provider === 'wompi') {
+      if (
+        hasPaidEntitlement({
+          status: sub.status,
+          currentPeriodEnd: sub.current_period_end,
+        })
+      ) {
+        return sub;
+      }
+      continue;
+    }
+
+    // Stripe / PayU / others: status-based only (do not apply period-end lockout)
+    if (hasStatusBasedEntitlement(sub.status)) {
       return sub;
     }
   }

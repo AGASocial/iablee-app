@@ -1,6 +1,7 @@
 /**
  * Billing notification emails via Resend (KAN-166).
  * Failures never throw into billing logic — callers treat send as best-effort.
+ * Idempotency: claim row, send, delete claim on failure (retryable).
  */
 
 import { Resend } from 'resend';
@@ -9,8 +10,15 @@ import { getAuthRedirectOrigin } from '@/lib/app-url';
 
 type EmailLocale = 'en' | 'es';
 
-function resolveEmailLocale(locale?: string | null): EmailLocale {
-  return locale === 'es' ? 'es' : 'en';
+/**
+ * Resolve locale for billing emails.
+ * Prefer explicit user/locale preference; default ES for Wompi/Colombia.
+ */
+export function resolveBillingEmailLocale(locale?: string | null): EmailLocale {
+  if (locale === 'en' || locale === 'es') {
+    return locale;
+  }
+  return 'es';
 }
 
 export type BillingEmailType =
@@ -49,7 +57,7 @@ function copyFor(
   payload: BillingEmailPayload
 ): { subject: string; html: string } {
   const url = billingUrl(locale);
-  const plan = payload.planName || (locale === 'es' ? 'Premium' : 'Premium');
+  const plan = payload.planName || 'Premium';
   const amount = payload.amountLabel || '';
 
   if (locale === 'es') {
@@ -117,7 +125,7 @@ export class ResendBillingEmailSender implements BillingEmailSender {
       return { sent: false, error: 'Email service not configured' };
     }
 
-    const locale = resolveEmailLocale(payload.locale);
+    const locale = resolveBillingEmailLocale(payload.locale);
     const { subject, html } = copyFor(type, locale, payload);
 
     try {
@@ -143,7 +151,8 @@ export class ResendBillingEmailSender implements BillingEmailSender {
 }
 
 /**
- * Claim idempotency row then send. Never throws; returns whether email was sent.
+ * Claim idempotency row, send, delete claim on failure so retries work.
+ * Never throws.
  */
 export async function sendBillingEmailOnce(
   supabase: SupabaseClient,
@@ -152,7 +161,7 @@ export async function sendBillingEmailOnce(
   payload: BillingEmailPayload,
   provider: string | null = 'wompi'
 ): Promise<{ sent: boolean; skipped?: boolean; error?: string }> {
-  const { error: insertError } = await supabase.from('billing_email_events').insert({
+  const row = {
     user_id: payload.userId,
     subscription_id: payload.subscriptionId || null,
     email_type: type,
@@ -162,10 +171,15 @@ export async function sendBillingEmailOnce(
       planName: payload.planName,
       amountLabel: payload.amountLabel,
     },
-  });
+  };
+
+  const { data: claimed, error: insertError } = await supabase
+    .from('billing_email_events')
+    .insert(row)
+    .select('id')
+    .maybeSingle();
 
   if (insertError) {
-    // Unique violation → already sent
     if (
       insertError.code === '23505' ||
       /duplicate|unique/i.test(insertError.message || '')
@@ -173,12 +187,24 @@ export async function sendBillingEmailOnce(
       return { sent: false, skipped: true };
     }
     console.error('Failed to claim billing email event:', insertError.message);
-    // Still try to send — better duplicate than silent miss
+    // Fall through without claim — still try send once
   }
 
   try {
-    return await sender.send(type, payload);
+    const result = await sender.send(type, {
+      ...payload,
+      locale: resolveBillingEmailLocale(payload.locale),
+    });
+
+    if (!result.sent && claimed?.id) {
+      await supabase.from('billing_email_events').delete().eq('id', claimed.id);
+    }
+
+    return result;
   } catch (err) {
+    if (claimed?.id) {
+      await supabase.from('billing_email_events').delete().eq('id', claimed.id);
+    }
     console.error('Billing email sender threw:', err);
     return {
       sent: false,

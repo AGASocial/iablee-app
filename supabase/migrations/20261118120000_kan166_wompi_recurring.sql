@@ -1,5 +1,6 @@
 -- KAN-166: Wompi payment sources + renewal attempts + billing email idempotency
 -- DO NOT auto-apply; review before supabase db push (env may point at production).
+-- Re-runnable: DROP POLICY/TRIGGER IF EXISTS before CREATE.
 
 -- ---------------------------------------------------------------------------
 -- billing_payment_methods: support Wompi payment sources (CARD / NEQUI)
@@ -25,9 +26,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS billing_payment_methods_wompi_source_uidx
   ON public.billing_payment_methods (provider, provider_payment_source_id)
   WHERE provider_payment_source_id IS NOT NULL;
 
+-- Original billing day-of-month (1–31) for leap/month-end-safe period extension
+ALTER TABLE public.billing_subscriptions
+  ADD COLUMN IF NOT EXISTS billing_anchor_day integer NULL
+    CHECK (billing_anchor_day IS NULL OR (billing_anchor_day >= 1 AND billing_anchor_day <= 31));
+
+COMMENT ON COLUMN public.billing_subscriptions.billing_anchor_day IS
+  'UTC day-of-month for period extension clamping (Wompi recurring).';
+
 -- ---------------------------------------------------------------------------
 -- billing_renewal_attempts: claim-before-charge idempotency for cron renewals
 -- Unique (subscription_id, period_end, attempt_number) prevents double charges.
+-- First-charge uses period_end = 1970-01-01 sentinel + attempt_number = 1.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.billing_renewal_attempts (
   id uuid not null default gen_random_uuid(),
@@ -70,6 +80,8 @@ CREATE INDEX IF NOT EXISTS billing_renewal_attempts_pending_tx_idx
 
 ALTER TABLE public.billing_renewal_attempts ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own renewal attempts"
+  ON public.billing_renewal_attempts;
 CREATE POLICY "Users can view their own renewal attempts"
   ON public.billing_renewal_attempts
   FOR SELECT
@@ -77,6 +89,8 @@ CREATE POLICY "Users can view their own renewal attempts"
 
 -- Writes via service role only (no INSERT/UPDATE/DELETE policies for authenticated)
 
+DROP TRIGGER IF EXISTS set_billing_renewal_attempts_updated_at
+  ON public.billing_renewal_attempts;
 CREATE TRIGGER set_billing_renewal_attempts_updated_at
   BEFORE UPDATE ON public.billing_renewal_attempts
   FOR EACH ROW
@@ -116,6 +130,8 @@ CREATE INDEX IF NOT EXISTS billing_email_events_user_idx
 
 ALTER TABLE public.billing_email_events ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own billing email events"
+  ON public.billing_email_events;
 CREATE POLICY "Users can view their own billing email events"
   ON public.billing_email_events
   FOR SELECT

@@ -24,11 +24,12 @@ export const DUNNING_WINDOW_DAYS = 5;
 
 export const UPCOMING_RENEWAL_DAYS = 3;
 
+/** Claimed attempts without a tx id older than this are recovered / marked error. */
+export const CLAIM_STALE_MS = 15 * 60 * 1000;
+
 /**
  * Which attempt number (1-based) is due now for a subscription whose
  * period ended at `periodEnd`, given current time `now`.
- * Returns null if no attempt should run yet, or if past the final day
- * without a new attempt slot (caller should downgrade if still unpaid).
  */
 export function getDueDunningAttempt(
   periodEnd: Date | string,
@@ -65,29 +66,81 @@ export function isPastFinalDunningDay(
   return daysSinceEnd >= DUNNING_WINDOW_DAYS;
 }
 
+/** Last UTC day of a given year/month (month 0-based). */
+export function daysInUtcMonth(year: number, monthIndex: number): number {
+  return new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+}
+
+/**
+ * Build a UTC date clamping `day` to the last day of the target month,
+ * preserving time-of-day from `timeSource`.
+ */
+export function clampUtcMonthDay(
+  year: number,
+  monthIndex: number,
+  day: number,
+  timeSource: Date
+): Date {
+  const last = daysInUtcMonth(year, monthIndex);
+  const clampedDay = Math.min(Math.max(1, day), last);
+  return new Date(
+    Date.UTC(
+      year,
+      monthIndex,
+      clampedDay,
+      timeSource.getUTCHours(),
+      timeSource.getUTCMinutes(),
+      timeSource.getUTCSeconds(),
+      timeSource.getUTCMilliseconds()
+    )
+  );
+}
+
 /**
  * Extend a period end by plan interval, starting from the previous period end
  * (not from "now") so delayed renewals do not drift.
+ *
+ * `billingAnchorDay` (1–31) is the original billing day-of-month; when omitted,
+ * uses the previous period end's UTC date. Month-end and leap days clamp to the
+ * last valid day of the target month (Jan 31 → Feb 28/29 → Mar 31).
  */
 export function extendPeriodEnd(
   previousPeriodEnd: Date | string,
-  interval: 'month' | 'year'
+  interval: 'month' | 'year',
+  billingAnchorDay?: number | null
 ): Date {
-  const base =
+  const prev =
     typeof previousPeriodEnd === 'string'
       ? new Date(previousPeriodEnd)
       : new Date(previousPeriodEnd.getTime());
 
+  const anchor =
+    billingAnchorDay && billingAnchorDay >= 1 && billingAnchorDay <= 31
+      ? billingAnchorDay
+      : prev.getUTCDate();
+
   if (interval === 'year') {
-    base.setUTCFullYear(base.getUTCFullYear() + 1);
-  } else {
-    base.setUTCMonth(base.getUTCMonth() + 1);
+    return clampUtcMonthDay(
+      prev.getUTCFullYear() + 1,
+      prev.getUTCMonth(),
+      anchor,
+      prev
+    );
   }
-  return base;
+
+  let year = prev.getUTCFullYear();
+  let month = prev.getUTCMonth() + 1;
+  if (month > 11) {
+    month = 0;
+    year += 1;
+  }
+  return clampUtcMonthDay(year, month, anchor, prev);
 }
 
 /**
- * Whether a subscription still grants paid entitlements.
+ * Whether a Wompi subscription still grants paid entitlements
+ * (period end + grace / past_due dunning window).
+ * Stripe/PayU must NOT use this — they stay status-based.
  */
 export function hasPaidEntitlement(params: {
   status: string;
@@ -105,8 +158,8 @@ export function hasPaidEntitlement(params: {
       typeof currentPeriodEnd === 'string'
         ? new Date(currentPeriodEnd)
         : currentPeriodEnd;
-    // Keep Premium through the dunning window (+ grace)
-    const cutoff = end.getTime() + DUNNING_WINDOW_DAYS * 24 * 60 * 60 * 1000 + graceMs;
+    const cutoff =
+      end.getTime() + DUNNING_WINDOW_DAYS * 24 * 60 * 60 * 1000 + graceMs;
     return now.getTime() <= cutoff;
   }
 
@@ -123,4 +176,12 @@ export function hasPaidEntitlement(params: {
       ? new Date(currentPeriodEnd)
       : currentPeriodEnd;
   return now.getTime() <= end.getTime() + graceMs;
+}
+
+/**
+ * Status-only entitlement for Stripe/PayU (pre-KAN-166 behavior).
+ * Ignores current_period_end entirely.
+ */
+export function hasStatusBasedEntitlement(status: string): boolean {
+  return status === 'active' || status === 'trialing';
 }

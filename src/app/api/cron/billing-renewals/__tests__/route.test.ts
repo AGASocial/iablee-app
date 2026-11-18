@@ -48,7 +48,7 @@ describe('GET /api/cron/billing-renewals', () => {
     expect(res.status).toBe(500);
   });
 
-  it('returns 401 when Authorization mismatches', async () => {
+  it('returns 401 when Authorization mismatches (timing-safe path)', async () => {
     const { GET } = await loadRoute();
     const res = await GET(
       new Request('http://localhost/api/cron/billing-renewals', {
@@ -58,7 +58,15 @@ describe('GET /api/cron/billing-renewals', () => {
     expect(res.status).toBe(401);
   });
 
-  it('runs renewals when authorized and gateway is wompi', async () => {
+  it('returns 401 for empty Authorization', async () => {
+    const { GET } = await loadRoute();
+    const res = await GET(
+      new Request('http://localhost/api/cron/billing-renewals')
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('runs renewals with time budget when authorized and gateway is wompi', async () => {
     getPaymentGateway.mockReturnValue({
       getName: () => 'wompi',
     });
@@ -72,6 +80,7 @@ describe('GET /api/cron/billing-renewals', () => {
       upcomingEmails: 0,
       reconciled: 0,
       skipped: 0,
+      batches: 1,
       errors: [],
     });
 
@@ -84,7 +93,11 @@ describe('GET /api/cron/billing-renewals', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.ok).toBe(true);
-    expect(processWompiRenewals).toHaveBeenCalled();
+    expect(processWompiRenewals).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ timeBudgetMs: 240_000 })
+    );
   });
 
   it('skips when gateway is not wompi', async () => {

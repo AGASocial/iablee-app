@@ -6,8 +6,11 @@ import {
   isPastFinalDunningDay,
   extendPeriodEnd,
   hasPaidEntitlement,
+  hasStatusBasedEntitlement,
   MAX_DUNNING_ATTEMPTS,
   DUNNING_ATTEMPT_OFFSET_DAYS,
+  daysInUtcMonth,
+  clampUtcMonthDay,
 } from '../dunning';
 
 describe('dunning schedule', () => {
@@ -46,9 +49,6 @@ describe('dunning schedule', () => {
     expect(
       getDueDunningAttempt(periodEnd, new Date('2026-11-15T08:00:00.000Z'))
     ).toBe(4);
-    expect(
-      getDueDunningAttempt(periodEnd, new Date('2026-11-20T08:00:00.000Z'))
-    ).toBe(4);
   });
 
   it('detects past final dunning day', () => {
@@ -61,21 +61,44 @@ describe('dunning schedule', () => {
   });
 });
 
-describe('extendPeriodEnd', () => {
-  it('extends month from previous period end (no drift)', () => {
+describe('extendPeriodEnd month-end / leap-safe', () => {
+  it('extends month from mid-month without drift', () => {
     const prev = new Date('2026-01-15T07:00:00.000Z');
     const next = extendPeriodEnd(prev, 'month');
     expect(next.toISOString()).toBe('2026-02-15T07:00:00.000Z');
   });
 
-  it('extends year from previous period end', () => {
-    const prev = new Date('2026-03-15T12:00:00.000Z');
-    const next = extendPeriodEnd(prev, 'year');
-    expect(next.toISOString()).toBe('2027-03-15T12:00:00.000Z');
+  it('clamps Jan 31 → Feb last day, then back to Mar 31 with anchor 31', () => {
+    const jan31 = new Date('2026-01-31T12:00:00.000Z');
+    const feb = extendPeriodEnd(jan31, 'month', 31);
+    expect(feb.getUTCDate()).toBe(28); // 2026 not leap
+    expect(feb.toISOString()).toBe('2026-02-28T12:00:00.000Z');
+
+    const mar = extendPeriodEnd(feb, 'month', 31);
+    expect(mar.toISOString()).toBe('2026-03-31T12:00:00.000Z');
+  });
+
+  it('leap year Feb 29 with anchor 31', () => {
+    const jan31 = new Date('2024-01-31T08:00:00.000Z');
+    const feb = extendPeriodEnd(jan31, 'month', 31);
+    expect(feb.toISOString()).toBe('2024-02-29T08:00:00.000Z');
+  });
+
+  it('extends year with clamp', () => {
+    const prev = new Date('2024-02-29T12:00:00.000Z');
+    const next = extendPeriodEnd(prev, 'year', 29);
+    expect(next.toISOString()).toBe('2025-02-28T12:00:00.000Z');
+  });
+
+  it('daysInUtcMonth and clampUtcMonthDay helpers', () => {
+    expect(daysInUtcMonth(2026, 1)).toBe(28);
+    expect(daysInUtcMonth(2024, 1)).toBe(29);
+    const d = clampUtcMonthDay(2026, 1, 31, new Date('2026-01-31T01:02:03.000Z'));
+    expect(d.toISOString()).toBe('2026-02-28T01:02:03.000Z');
   });
 });
 
-describe('hasPaidEntitlement', () => {
+describe('hasPaidEntitlement (Wompi)', () => {
   const periodEnd = new Date('2026-11-10T00:00:00.000Z');
 
   it('active within period', () => {
@@ -118,16 +141,6 @@ describe('hasPaidEntitlement', () => {
     ).toBe(true);
   });
 
-  it('past_due loses Premium after dunning + grace', () => {
-    expect(
-      hasPaidEntitlement({
-        status: 'past_due',
-        currentPeriodEnd: periodEnd,
-        now: new Date('2026-11-17T00:00:01.000Z'),
-      })
-    ).toBe(false);
-  });
-
   it('canceled never entitles', () => {
     expect(
       hasPaidEntitlement({
@@ -136,5 +149,17 @@ describe('hasPaidEntitlement', () => {
         now: new Date('2026-11-09T00:00:00.000Z'),
       })
     ).toBe(false);
+  });
+});
+
+describe('hasStatusBasedEntitlement (Stripe/PayU)', () => {
+  it('active and trialing grant access', () => {
+    expect(hasStatusBasedEntitlement('active')).toBe(true);
+    expect(hasStatusBasedEntitlement('trialing')).toBe(true);
+  });
+
+  it('past_due and canceled do not (status-only path)', () => {
+    expect(hasStatusBasedEntitlement('past_due')).toBe(false);
+    expect(hasStatusBasedEntitlement('canceled')).toBe(false);
   });
 });

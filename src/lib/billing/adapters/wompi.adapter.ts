@@ -101,7 +101,7 @@ export function buildWompiReference(
   return buildWompiLegacyReference(userId, planId, timestamp);
 }
 
-/** Parse legacy or first-charge refs into the shape older code expects */
+/** Parse first-charge refs into the shape older code expects */
 export function parseWompiReference(
   reference: string
 ): { userId: string; planId: string; timestamp: string } | null {
@@ -111,7 +111,7 @@ export function parseWompiReference(
     return {
       userId: parsed.userId,
       planId: parsed.planId,
-      timestamp: parsed.timestamp,
+      timestamp: parsed.timestamp || parsed.subscriptionId || '',
     };
   }
   return null;
@@ -528,6 +528,75 @@ export class WompiAdapter implements PaymentGateway {
       'Customer portal is not available for Wompi',
       'wompi'
     );
+  }
+
+  /**
+   * Lookup a transaction by merchant reference (private key).
+   * Used to recover claimed attempts that never stored a transaction id.
+   * GET /v1/transactions?reference=...
+   */
+  async findTransactionByReference(
+    reference: string
+  ): Promise<WompiTransactionLookup | null> {
+    const response = await fetch(
+      `${this.apiBase}/transactions?reference=${encodeURIComponent(reference)}`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${this.config.privateKey}`,
+          Accept: 'application/json',
+        },
+      }
+    );
+
+    if (response.status === 404) {
+      return null;
+    }
+
+    if (!response.ok) {
+      throw new PaymentGatewayError(
+        `Wompi transaction reference lookup failed (${response.status})`,
+        'wompi',
+        'WOMPI_TRANSACTION_REF_LOOKUP_FAILED'
+      );
+    }
+
+    const body = (await response.json()) as {
+      data?:
+        | {
+            id?: string;
+            status?: string;
+            reference?: string;
+            amount_in_cents?: number;
+            currency?: string;
+            customer_email?: string | null;
+            payment_source_id?: number | null;
+          }
+        | Array<{
+            id?: string;
+            status?: string;
+            reference?: string;
+            amount_in_cents?: number;
+            currency?: string;
+            customer_email?: string | null;
+            payment_source_id?: number | null;
+          }>;
+    };
+
+    const raw = Array.isArray(body.data) ? body.data[0] : body.data;
+    if (!raw?.id || !raw.status || !raw.reference || raw.amount_in_cents == null) {
+      return null;
+    }
+
+    return {
+      id: raw.id,
+      status: raw.status,
+      reference: raw.reference,
+      amountInCents: raw.amount_in_cents,
+      currency: raw.currency || 'COP',
+      customerEmail: raw.customer_email,
+      paymentSourceId: raw.payment_source_id,
+    };
   }
 
   /**
