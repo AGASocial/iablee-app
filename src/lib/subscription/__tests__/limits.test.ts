@@ -3,6 +3,9 @@
  */
 import {
   getSubscriptionStatus,
+  getFreeTrialLimits,
+  canCreateVideoAsset,
+  canCreateBeneficiary,
   clearSubscriptionCache,
 } from '@/lib/subscription/limits';
 
@@ -107,5 +110,204 @@ describe('getSubscriptionStatus query groups', () => {
     await getSubscriptionStatus(supabase as never, 'user-cached');
 
     expect(subscriptionCalls).toBe(1);
+  });
+});
+
+describe('KAN-164 Free and Premium limits', () => {
+  beforeEach(() => {
+    clearSubscriptionCache();
+  });
+
+  it('getFreeTrialLimits uses 1 beneficiary (not 2)', () => {
+    expect(getFreeTrialLimits()).toMatchObject({
+      maxAssets: 3,
+      maxBeneficiaries: 1,
+      maxVideoAssets: -1,
+    });
+  });
+
+  function freePlanSupabase(beneficiaryCount: number) {
+    return {
+      from: jest.fn((table: string) => {
+        if (table === 'billing_subscriptions') {
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  single: () => Promise.resolve({ data: null, error: null }),
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === 'billing_plans') {
+          return {
+            select: () => ({
+              eq: () => ({
+                single: () =>
+                  Promise.resolve({
+                    data: {
+                      id: 'plan_free',
+                      features: {
+                        max_assets: 3,
+                        max_beneficiaries: 1,
+                        max_storage_mb: 50,
+                        max_file_size_mb: 10,
+                      },
+                    },
+                    error: null,
+                  }),
+              }),
+            }),
+          };
+        }
+        if (table === 'beneficiaries') {
+          return {
+            select: () => ({
+              eq: () => Promise.resolve({ count: beneficiaryCount, data: null, error: null }),
+            }),
+          };
+        }
+        return {
+          select: () => ({
+            eq: () => Promise.resolve({ count: 0, data: [], error: null }),
+          }),
+        };
+      }),
+    };
+  }
+
+  it('canCreateBeneficiary blocks Free at 1', async () => {
+    const result = await canCreateBeneficiary(freePlanSupabase(1) as never, 'free-user');
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe('beneficiaryLimitReached');
+    expect(result.limit).toBe(1);
+    expect(result.current).toBe(1);
+  });
+
+  it('grandfathers Free user over beneficiary cap: usage 2 / limit 1 denies create only', async () => {
+    // Production may have Free users with 2 beneficiaries from the prior cap.
+    // Do not delete; only block adding more (canCreate uses >=).
+    const result = await canCreateBeneficiary(freePlanSupabase(2) as never, 'free-over-cap');
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe('beneficiaryLimitReached');
+    expect(result.limit).toBe(1);
+    expect(result.current).toBe(2);
+  });
+
+  function premiumVideoSupabase(opts: {
+    videoCountForIn: (values: string[]) => number;
+    userId: string;
+  }) {
+    return {
+      from: jest.fn((table: string) => {
+        if (table === 'billing_subscriptions') {
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  single: () =>
+                    Promise.resolve({
+                      data: {
+                        status: 'active',
+                        plan: {
+                          id: 'plan_premium_month',
+                          name: 'Premium',
+                          features: {
+                            max_assets: -1,
+                            max_beneficiaries: 10,
+                            max_storage_mb: 5000,
+                            max_file_size_mb: 100,
+                            max_video_assets: 5,
+                          },
+                        },
+                      },
+                      error: null,
+                    }),
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === 'asset_types') {
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: () =>
+                  Promise.resolve({ data: { id: 'video-type-uuid' }, error: null }),
+              }),
+            }),
+          };
+        }
+        if (table === 'digital_assets') {
+          return {
+            select: () => ({
+              eq: () => ({
+                // Correct path: count key OR uuid via .in()
+                in: (_col: string, values: string[]) =>
+                  Promise.resolve({
+                    count: opts.videoCountForIn(values),
+                    data: null,
+                    error: null,
+                  }),
+                // Buggy legacy path: only .eq uuid — key-stored rows return 0
+                eq: (_col: string, value: string) =>
+                  Promise.resolve({
+                    count: value === 'video' ? opts.videoCountForIn(['video']) : 0,
+                    data: null,
+                    error: null,
+                  }),
+              }),
+            }),
+          };
+        }
+        return {
+          select: () => ({
+            eq: () => Promise.resolve({ count: 0, data: [], error: null }),
+          }),
+        };
+      }),
+    };
+  }
+
+  it('canCreateVideoAsset enforces Premium max of 5', async () => {
+    const supabase = premiumVideoSupabase({
+      userId: 'premium-user',
+      videoCountForIn: () => 5,
+    });
+
+    const result = await canCreateVideoAsset(supabase as never, 'premium-user');
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe('videoLimitReached');
+    expect(result.limit).toBe(5);
+    expect(result.current).toBe(5);
+  });
+
+  it('canCreateVideoAsset allows when under Premium video cap', async () => {
+    clearSubscriptionCache();
+    const supabase = premiumVideoSupabase({
+      userId: 'premium-under-cap',
+      videoCountForIn: () => 2,
+    });
+
+    const result = await canCreateVideoAsset(supabase as never, 'premium-under-cap');
+    expect(result.allowed).toBe(true);
+  });
+
+  it('canCreateVideoAsset counts asset_type=video key even when asset_types uuid exists', async () => {
+    // Rows stored as key 'video' while catalog has a uuid — UUID-only count would be 0 (bypass).
+    clearSubscriptionCache();
+    const supabase = premiumVideoSupabase({
+      userId: 'premium-key-stored',
+      videoCountForIn: (values) => {
+        // Key-stored rows only contribute when 'video' is included in the filter.
+        return values.includes('video') ? 5 : 0;
+      },
+    });
+
+    const result = await canCreateVideoAsset(supabase as never, 'premium-key-stored');
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe('videoLimitReached');
+    expect(result.current).toBe(5);
   });
 });

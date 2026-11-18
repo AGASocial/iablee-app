@@ -4,7 +4,12 @@
 import { POST } from '../route';
 import { getAuthenticatedContext } from '@/lib/auth-context';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { canCreateAsset, canCreateBeneficiary } from '@/lib/subscription/limits';
+import {
+  canCreateAsset,
+  canCreateBeneficiary,
+  canCreateVideoAsset,
+  isVideoAssetType,
+} from '@/lib/subscription/limits';
 import { maybeSendBeneficiaryVerificationEmail } from '@/lib/beneficiary-verification-flow';
 
 jest.mock('@/lib/auth-context', () => ({
@@ -16,6 +21,8 @@ jest.mock('@/lib/supabase-admin', () => ({
 jest.mock('@/lib/subscription/limits', () => ({
   canCreateAsset: jest.fn(),
   canCreateBeneficiary: jest.fn(),
+  canCreateVideoAsset: jest.fn(),
+  isVideoAssetType: jest.fn(),
 }));
 jest.mock('@/lib/beneficiary-verification-flow', () => ({
   maybeSendBeneficiaryVerificationEmail: jest.fn(),
@@ -24,6 +31,8 @@ jest.mock('@/lib/beneficiary-verification-flow', () => ({
 describe('POST /api/wizard/complete', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (isVideoAssetType as jest.Mock).mockResolvedValue(false);
+    (canCreateVideoAsset as jest.Mock).mockResolvedValue({ allowed: true });
   });
 
   function request() {

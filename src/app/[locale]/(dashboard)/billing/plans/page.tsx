@@ -16,6 +16,7 @@ interface PlanFeatures {
   max_beneficiaries: number;
   max_file_size_mb: number;
   max_storage_mb: number;
+  max_video_assets?: number;
   priority_support: boolean;
   advanced_security: boolean;
 }
@@ -27,6 +28,7 @@ interface Plan {
   amountCents: number;
   interval: 'month' | 'year';
   features: PlanFeatures;
+  providerPriceMap?: Partial<Record<string, string>>;
 }
 
 interface SubscriptionWithPlan extends Subscription {
@@ -41,6 +43,8 @@ export default function PlansPage() {
   const [billingCycle, setBillingCycle] = useState<'month' | 'year'>('month');
   const [subscribing, setSubscribing] = useState<string | null>(null);
   const [currentSubscription, setCurrentSubscription] = useState<SubscriptionWithPlan | null>(null);
+  // Prefer API-reported active gateway; fall back to public env (KAN-164).
+  const [activeProvider, setActiveProvider] = useState(PAYMENT_GATEWAY);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,12 +60,22 @@ export default function PlansPage() {
 
         if (subResponse.ok) {
           const subData = await subResponse.json();
-          if (!cancelled) setCurrentSubscription(subData.subscription);
+          if (!cancelled) {
+            setCurrentSubscription(subData.subscription);
+            if (typeof subData.config?.provider === 'string') {
+              setActiveProvider(subData.config.provider);
+            }
+          }
         }
 
         if (!plansResponse.ok) throw new Error('Failed to fetch plans');
         const plansData = await plansResponse.json();
-        if (!cancelled) setPlans(plansData.plans);
+        if (!cancelled) {
+          setPlans(plansData.plans);
+          if (typeof plansData.provider === 'string') {
+            setActiveProvider(plansData.provider);
+          }
+        }
       } catch (error) {
         if (cancelled) return;
         console.error('Error fetching plans:', error);
@@ -89,7 +103,7 @@ export default function PlansPage() {
       }
 
       const isHostedCheckout =
-        PAYMENT_GATEWAY === 'payu' || PAYMENT_GATEWAY === 'wompi';
+        activeProvider === 'payu' || activeProvider === 'wompi';
 
       if (!isHostedCheckout) {
         // Check if user has a payment method
@@ -144,7 +158,7 @@ export default function PlansPage() {
       }
 
       if (
-        (PAYMENT_GATEWAY === 'payu' || PAYMENT_GATEWAY === 'wompi') &&
+        (activeProvider === 'payu' || activeProvider === 'wompi') &&
         result.checkoutSession
       ) {
         startHostedCheckout(result.checkoutSession);
@@ -184,12 +198,36 @@ export default function PlansPage() {
     form.submit();
   };
 
-  const formatPrice = (amountCents: number, currency: string) => {
+  const formatPrice = (plan: Plan) => {
+    // Display COP from provider_price_map.wompi when the active server gateway is Wompi
+    // — same source as checkout. Do not treat USD amountCents as COP cents (KAN-164).
+    if (activeProvider === 'wompi') {
+      const wompiRaw = plan.providerPriceMap?.wompi;
+      if (wompiRaw && /^\d+$/.test(wompiRaw.trim())) {
+        const copCents = Number.parseInt(wompiRaw.trim(), 10);
+        const copPesos = copCents / 100;
+        return new Intl.NumberFormat('es-CO', {
+          style: 'currency',
+          currency: 'COP',
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0,
+        }).format(copPesos);
+      }
+      if (plan.amountCents === 0) {
+        return new Intl.NumberFormat('es-CO', {
+          style: 'currency',
+          currency: 'COP',
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0,
+        }).format(0);
+      }
+    }
+
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: currency,
+      currency: plan.currency || 'USD',
       minimumFractionDigits: 2,
-    }).format(amountCents / 100);
+    }).format(plan.amountCents / 100);
   };
 
   const formatFeatureValue = (key: string, value: number | boolean) => {
@@ -199,7 +237,13 @@ export default function PlansPage() {
     if (value === -1) {
       return t('unlimited');
     }
-    if (key.includes('storage') || key.includes('file_size')) {
+    if (key.includes('storage')) {
+      if (typeof value === 'number' && value >= 1000 && value % 1000 === 0) {
+        return `${value / 1000} GB`;
+      }
+      return `${value} MB`;
+    }
+    if (key.includes('file_size')) {
       return `${value} MB`;
     }
     return value.toString();
@@ -251,11 +295,17 @@ export default function PlansPage() {
         </div>
       </div>
 
-      {/* Plan Cards */}
-      <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto px-4 justify-center items-center">
+      {/* Plan Cards — Free + Premium only (Necessary hidden via is_visible) */}
+      <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto px-4 justify-center items-center">
         {filteredPlans.map((plan) => {
           const isPremium = plan.name === 'Premium';
           const isCurrentPlan = currentSubscription?.planId === plan.id;
+          const displayName =
+            plan.name === 'Free'
+              ? t('freePlan')
+              : plan.name === 'Premium'
+                ? t('premiumPlan')
+                : plan.name;
 
           return (
             <Card
@@ -272,11 +322,11 @@ export default function PlansPage() {
               )}
 
               <CardHeader>
-                <CardTitle className="text-2xl">{plan.name}</CardTitle>
+                <CardTitle className="text-2xl">{displayName}</CardTitle>
                 <CardDescription>
                   <div className="mt-4">
                     <span className="text-4xl font-bold text-foreground">
-                      {formatPrice(plan.amountCents, plan.currency)}
+                      {formatPrice(plan)}
                     </span>
                     <span className="text-muted-foreground">
                       {' / '}
@@ -319,6 +369,16 @@ export default function PlansPage() {
                       {t('maxStorage')}
                     </span>
                   </li>
+                  {typeof plan.features.max_video_assets === 'number' &&
+                    plan.features.max_video_assets > 0 && (
+                    <li className="flex items-center gap-2">
+                      <Check className="h-5 w-5 text-primary flex-shrink-0" />
+                      <span>
+                        {formatFeatureValue('max_video_assets', plan.features.max_video_assets)}{' '}
+                        {t('maxVideoAssets')}
+                      </span>
+                    </li>
+                  )}
                   {plan.features.advanced_security && (
                     <li className="flex items-center gap-2">
                       <Check className="h-5 w-5 text-primary flex-shrink-0" />

@@ -28,6 +28,7 @@ import {
   BillingError,
   SubscriptionNotFoundError,
   PlanNotFoundError,
+  PlanNotPurchasableError,
   PaymentGatewayError,
 } from './types';
 import { resolveWompiAmountInCents } from './wompi-pricing';
@@ -58,6 +59,7 @@ export class BillingService {
     const { data, error } = await this.supabase
       .from('billing_plans')
       .select('*')
+      .eq('is_visible', true)
       .order('amount_cents', { ascending: true });
 
     if (error) {
@@ -343,6 +345,7 @@ export class BillingService {
 
     // Get plan
     const plan = await this.getPlan(planId);
+    await this.assertPlanPurchasable(userId, plan);
 
     // Get user details
     const { data: user, error: userError } = await this.supabase
@@ -673,6 +676,10 @@ export class BillingService {
     let stripePriceId: string | undefined;
     if (planId) {
       const plan = await this.getPlan(planId);
+      // Block upgrades/switches onto hidden plans; same-plan renewals stay allowed.
+      if (planId !== subscription.plan_id) {
+        await this.assertPlanPurchasable(subscription.user_id as string, plan);
+      }
       stripePriceId = plan.providerPriceMap?.stripe;
       if (!stripePriceId) {
         throw new BillingError('Stripe price ID not configured for this plan', 'PRICE_ID_NOT_FOUND');
@@ -1188,6 +1195,34 @@ export class BillingService {
   }
 
   /**
+   * Reject new purchases/upgrades onto hidden plans (KAN-164).
+   * Existing Necessary subscribers may renew the same plan or switch
+   * plan_necessary_month ↔ plan_necessary_year. Brand-new Necessary
+   * purchases and Free/Premium → Necessary switches are rejected.
+   */
+  private isNecessaryPlanFamily(planId: string): boolean {
+    return planId === 'plan_necessary_month' || planId === 'plan_necessary_year';
+  }
+
+  private async assertPlanPurchasable(userId: string, plan: PlanDefinition): Promise<void> {
+    if (plan.isVisible !== false) {
+      return;
+    }
+
+    const current = await this.getUserSubscription(userId);
+    if (
+      current &&
+      this.isNecessaryPlanFamily(current.planId) &&
+      this.isNecessaryPlanFamily(plan.id)
+    ) {
+      // Same-plan renewal or Necessary month ↔ year switch.
+      return;
+    }
+
+    throw new PlanNotPurchasableError(plan.id);
+  }
+
+  /**
    * Map database plan to domain model
    */
   private mapPlanFromDb(data: Record<string, unknown>): PlanDefinition {
@@ -1199,6 +1234,7 @@ export class BillingService {
       interval: data.interval as PlanDefinition['interval'],
       features: data.features as PlanDefinition['features'],
       providerPriceMap: data.provider_price_map as PlanDefinition['providerPriceMap'],
+      isVisible: data.is_visible === undefined ? true : Boolean(data.is_visible),
     };
   }
 

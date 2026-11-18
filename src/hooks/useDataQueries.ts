@@ -100,11 +100,13 @@ interface SubscriptionStatus {
     maxBeneficiaries: number;
     maxStorageMb: number;
     maxFileSizeMb: number;
+    maxVideoAssets?: number;
   };
   usage: {
     assetsCount: number;
     beneficiariesCount: number;
     storageUsedMb: number;
+    videoAssetsCount?: number;
   };
 }
 
