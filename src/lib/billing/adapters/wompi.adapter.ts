@@ -426,7 +426,8 @@ export class WompiAdapter implements PaymentGateway {
       throw new PaymentGatewayError(
         `Wompi source transaction failed (${response.status})`,
         'wompi',
-        'WOMPI_SOURCE_CHARGE_FAILED'
+        'WOMPI_SOURCE_CHARGE_FAILED',
+        response.status
       );
     }
 

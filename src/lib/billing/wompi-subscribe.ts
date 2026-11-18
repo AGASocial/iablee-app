@@ -16,13 +16,18 @@ import {
   FIRST_CHARGE_PERIOD_SENTINEL,
   toPeriodEndYmd,
 } from './wompi-references';
-import { CLAIM_STALE_MS, extendPeriodEnd } from './dunning';
+import {
+  CLAIM_STALE_MS,
+  extendPeriodEnd,
+  hasPaidEntitlement,
+} from './dunning';
 import {
   getBillingEmailSender,
   sendBillingEmailOnce,
   type BillingEmailSender,
 } from './billing-emails';
 import { chargeWompiPastDueNow } from './renewals';
+import { isDefinitiveWompiChargeRejection } from './types';
 
 export interface WompiTokenMeta {
   brand?: string;
@@ -129,7 +134,11 @@ type SubSnapshot = {
   billing_anchor_day?: number | null;
 };
 
-async function findBlockingSubscription(
+/**
+ * Block a new first purchase while the user already has paid Wompi entitlement
+ * or an in-dunning past_due subscription (avoids double-billing with cron).
+ */
+export async function findBlockingSubscription(
   supabase: SupabaseClient,
   userId: string
 ): Promise<SubSnapshot | null> {
@@ -140,16 +149,20 @@ async function findBlockingSubscription(
     .eq('provider', 'wompi')
     .in('status', ['active', 'past_due'])
     .order('created_at', { ascending: false })
-    .limit(3);
+    .limit(5);
 
   for (const row of data || []) {
-    const end = row.current_period_end
-      ? new Date(row.current_period_end as string).getTime()
-      : null;
-    if (row.status === 'active' || row.status === 'past_due') {
-      if (end == null || end > Date.now()) {
-        return row as SubSnapshot;
-      }
+    if (row.status === 'past_due') {
+      // Always block during dunning regardless of past period_end
+      return row as SubSnapshot;
+    }
+    if (
+      hasPaidEntitlement({
+        status: row.status as string,
+        currentPeriodEnd: row.current_period_end as string | null,
+      })
+    ) {
+      return row as SubSnapshot;
     }
   }
   return null;
@@ -537,11 +550,20 @@ export async function createWompiSourceAndSubscribe(
       recurrent: isCard ? true : undefined,
     });
   } catch (err) {
-    await markAttemptStatus(supabase, finalReference, ['claimed'], {
-      status: 'error',
-      error_message: err instanceof Error ? err.message : 'Charge failed',
-      finalized_at: new Date().toISOString(),
-    });
+    const message = err instanceof Error ? err.message : 'Charge failed';
+    if (isDefinitiveWompiChargeRejection(err)) {
+      // 4xx validation — no transaction created
+      await markAttemptStatus(supabase, finalReference, ['claimed'], {
+        status: 'error',
+        error_message: message,
+        finalized_at: new Date().toISOString(),
+      });
+    } else {
+      // Network / 5xx / unknown — leave claimed for stale-claim reconciliation
+      await markAttemptStatus(supabase, finalReference, ['claimed'], {
+        error_message: message,
+      });
+    }
     throw err;
   }
 
@@ -618,6 +640,7 @@ export async function createWompiSourceAndSubscribe(
 /**
  * Activate first charge idempotently. No-op if already active with future period.
  * Period math runs at most once (CAS on attempt → approved).
+ * Only proceeds when CAS succeeds or legacy (no attempt row).
  */
 export async function activateFirstCharge(
   supabase: SupabaseClient,
@@ -639,12 +662,25 @@ export async function activateFirstCharge(
     .eq('id', params.subscriptionId)
     .maybeSingle();
 
-  if (
+  const alreadyActive =
     sub?.status === 'active' &&
     sub.current_period_end &&
-    new Date(sub.current_period_end as string).getTime() > Date.now()
-  ) {
-    // Still mark attempt approved if needed (CAS); heal error → approved
+    new Date(sub.current_period_end as string).getTime() > Date.now();
+
+  if (alreadyActive) {
+    const { data: existingAttempt } = await supabase
+      .from('billing_renewal_attempts')
+      .select('status, requires_refund')
+      .eq('wompi_reference', params.reference)
+      .maybeSingle();
+
+    if (existingAttempt?.status === 'approved') {
+      // Idempotent redelivery of the activating payment
+      await persistPaidInvoice(supabase, params);
+      return { activated: false };
+    }
+
+    // Extra APPROVED (different attempt) while sub already active — flag refund
     await markAttemptStatus(
       supabase,
       params.reference,
@@ -653,13 +689,20 @@ export async function activateFirstCharge(
         status: 'approved',
         wompi_transaction_id: params.transactionId,
         finalized_at: new Date().toISOString(),
+        requires_refund: true,
+        refund_reason:
+          'Subscription already active from another first-charge approval',
       }
     );
     await persistPaidInvoice(supabase, params);
+    console.error(
+      `[billing] First-charge APPROVED but sub already active — manual refund required`,
+      { reference: params.reference, subscriptionId: params.subscriptionId }
+    );
     return { activated: false };
   }
 
-  // CAS attempt first — period extension exactly once (heal error → approved)
+  // CAS attempt first — heal error → approved
   const casOk = await markAttemptStatus(
     supabase,
     params.reference,
@@ -671,17 +714,23 @@ export async function activateFirstCharge(
     }
   );
 
-  // If no attempt row (legacy) or already approved, still guard subscription update
   if (!casOk) {
     const { data: attempt } = await supabase
       .from('billing_renewal_attempts')
-      .select('status')
+      .select('status, requires_refund')
       .eq('wompi_reference', params.reference)
       .maybeSingle();
+
     if (attempt?.status === 'approved') {
       await persistPaidInvoice(supabase, params);
       return { activated: false };
     }
+
+    if (attempt) {
+      // Terminal declined/error or unexpected race — do not promote subscription
+      return { activated: false };
+    }
+    // Legacy: no attempt row (web-checkout era) — continue
   }
 
   const paidAt = new Date();
@@ -706,9 +755,11 @@ export async function activateFirstCharge(
     .select('id')
     .maybeSingle();
 
+  let activated = !!updated?.id;
+
   // Also allow active with expired period
-  if (!updated) {
-    await supabase
+  if (!activated) {
+    const { data: renewed } = await supabase
       .from('billing_subscriptions')
       .update({
         status: 'active',
@@ -721,34 +772,57 @@ export async function activateFirstCharge(
       })
       .eq('id', params.subscriptionId)
       .eq('status', 'active')
-      .lt('current_period_end', nowIso);
+      .lt('current_period_end', nowIso)
+      .select('id')
+      .maybeSingle();
+    activated = !!renewed?.id;
+  }
+
+  if (!activated && casOk) {
+    await supabase
+      .from('billing_renewal_attempts')
+      .update({
+        requires_refund: true,
+        refund_reason:
+          'First-charge APPROVED but subscription could not be activated',
+        updated_at: nowIso,
+      })
+      .eq('wompi_reference', params.reference)
+      .eq('status', 'approved');
+    console.error(
+      `[billing] First-charge APPROVED but activation CAS failed — manual refund required`,
+      { reference: params.reference, subscriptionId: params.subscriptionId }
+    );
+    await persistPaidInvoice(supabase, params);
+    return { activated: false };
   }
 
   await persistPaidInvoice(supabase, params);
 
-  // Quiet orphan incomplete rows left by older declined-retry paths
-  await cancelOrphanIncompleteSubscriptions(
-    supabase,
-    params.userId,
-    params.subscriptionId
-  );
+  if (activated) {
+    await cancelOrphanIncompleteSubscriptions(
+      supabase,
+      params.userId,
+      params.subscriptionId
+    );
 
-  const sender = params.emailSender ?? getBillingEmailSender();
-  if (params.email) {
-    await sendBillingEmailOnce(supabase, sender, 'renewal_success', {
-      userId: params.userId,
-      subscriptionId: params.subscriptionId,
-      email: params.email,
-      locale: params.locale,
-      periodKey: `${toPeriodEndYmd(periodEnd)}:first:${params.subscriptionId}`,
-      planName: params.plan.name,
-    });
+    const sender = params.emailSender ?? getBillingEmailSender();
+    if (params.email) {
+      await sendBillingEmailOnce(supabase, sender, 'renewal_success', {
+        userId: params.userId,
+        subscriptionId: params.subscriptionId,
+        email: params.email,
+        locale: params.locale,
+        periodKey: `${toPeriodEndYmd(periodEnd)}:first:${params.subscriptionId}`,
+        planName: params.plan.name,
+      });
+    }
   }
 
-  return { activated: true };
+  return { activated };
 }
 
-async function cancelOrphanIncompleteSubscriptions(
+export async function cancelOrphanIncompleteSubscriptions(
   supabase: SupabaseClient,
   userId: string,
   keepSubscriptionId: string

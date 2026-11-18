@@ -269,10 +269,22 @@ export class BillingError extends Error {
 }
 
 export class PaymentGatewayError extends BillingError {
-  constructor(message: string, provider: PaymentProvider, code = 'GATEWAY_ERROR') {
+  constructor(
+    message: string,
+    provider: PaymentProvider,
+    code = 'GATEWAY_ERROR',
+    public httpStatus?: number
+  ) {
     super(message, code, provider);
     this.name = 'PaymentGatewayError';
   }
+}
+
+/** True when Wompi rejected the charge with 4xx (no transaction created). */
+export function isDefinitiveWompiChargeRejection(err: unknown): boolean {
+  if (!(err instanceof PaymentGatewayError)) return false;
+  const status = err.httpStatus;
+  return status != null && status >= 400 && status < 500;
 }
 
 export class WebhookVerificationError extends BillingError {

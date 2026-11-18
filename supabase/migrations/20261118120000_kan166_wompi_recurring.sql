@@ -53,6 +53,8 @@ CREATE TABLE IF NOT EXISTS public.billing_renewal_attempts (
   amount_cents integer null,
   currency text null default 'COP',
   error_message text null,
+  requires_refund boolean null,
+  refund_reason text null,
   claimed_at timestamp with time zone not null default now(),
   finalized_at timestamp with time zone null,
   created_at timestamp with time zone not null default now(),
@@ -67,6 +69,21 @@ CREATE TABLE IF NOT EXISTS public.billing_renewal_attempts (
   constraint billing_renewal_attempts_reference_unique
     unique (wompi_reference)
 ) TABLESPACE pg_default;
+
+-- Re-runnable adds for environments that already created the table
+ALTER TABLE public.billing_renewal_attempts
+  ADD COLUMN IF NOT EXISTS requires_refund boolean NULL,
+  ADD COLUMN IF NOT EXISTS refund_reason text NULL;
+
+COMMENT ON COLUMN public.billing_renewal_attempts.requires_refund IS
+  'True when Wompi APPROVED but entitlement could not be applied (duplicate period / wrong sub state). Ops must refund.';
+COMMENT ON COLUMN public.billing_renewal_attempts.refund_reason IS
+  'Why requires_refund was set (period already extended, user-canceled, etc.).';
+
+-- At most one entitlement-bearing approval per (subscription, period)
+CREATE UNIQUE INDEX IF NOT EXISTS billing_renewal_attempts_one_approved_per_period_uidx
+  ON public.billing_renewal_attempts (subscription_id, period_end)
+  WHERE status = 'approved' AND (requires_refund IS NOT TRUE);
 
 CREATE INDEX IF NOT EXISTS billing_renewal_attempts_status_idx
   ON public.billing_renewal_attempts (status);

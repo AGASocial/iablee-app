@@ -8,6 +8,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { WompiAdapter } from './adapters/wompi.adapter';
+import { isDefinitiveWompiChargeRejection } from './types';
 import { resolveWompiAmountInCents } from './wompi-pricing';
 import {
   buildWompiRenewalReference,
@@ -161,60 +162,33 @@ export async function casAttemptStatus(
   return !!data?.id;
 }
 
-async function applyApprovedRenewal(
+async function flagAttemptRequiresRefund(
+  supabase: SupabaseClient,
+  reference: string,
+  reason: string
+): Promise<void> {
+  await supabase
+    .from('billing_renewal_attempts')
+    .update({
+      requires_refund: true,
+      refund_reason: reason,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('wompi_reference', reference)
+    .eq('status', 'approved');
+  console.error(
+    `[billing] Wompi APPROVED but entitlement not applied — manual refund required`,
+    { reference, reason }
+  );
+}
+
+async function persistPaidRenewalInvoice(
   supabase: SupabaseClient,
   sub: SubRow,
-  periodEnd: string,
-  amountCents: number,
   reference: string,
-  transactionId: string,
-  planInterval: 'month' | 'year',
-  planName: string,
-  emailSender: BillingEmailSender
-): Promise<boolean> {
-  // CAS attempt → approved first (exactly-once period extension gate).
-  // Include `error` so a late APPROVED can heal a false-negative stale recovery.
-  const casOk = await casAttemptStatus(
-    supabase,
-    reference,
-    ['claimed', 'pending', 'error'],
-    {
-      status: 'approved',
-      wompi_transaction_id: transactionId,
-      finalized_at: new Date().toISOString(),
-    }
-  );
-
-  if (!casOk) {
-    const { data: attempt } = await supabase
-      .from('billing_renewal_attempts')
-      .select('status')
-      .eq('wompi_reference', reference)
-      .maybeSingle();
-    if (attempt?.status === 'approved') {
-      return true; // already extended
-    }
-    return false;
-  }
-
-  const previousEnd = new Date(periodEnd);
-  const anchor =
-    sub.billing_anchor_day ?? previousEnd.getUTCDate();
-  const newEnd = extendPeriodEnd(previousEnd, planInterval, anchor);
-  const nowIso = new Date().toISOString();
-
-  // Preserve cancel_at_period_end if user canceled during in-flight renewal
-  await supabase
-    .from('billing_subscriptions')
-    .update({
-      status: 'active',
-      current_period_start: previousEnd.toISOString(),
-      current_period_end: newEnd.toISOString(),
-      billing_anchor_day: anchor,
-      updated_at: nowIso,
-    })
-    .eq('id', sub.id);
-
+  amountCents: number,
+  nowIso: string
+): Promise<void> {
   const { error: invError } = await supabase.from('billing_invoices').upsert(
     {
       user_id: sub.user_id,
@@ -261,6 +235,210 @@ async function applyApprovedRenewal(
       });
     }
   }
+}
+
+/**
+ * Exactly-once period extension: CAS current_period_end = attempt.period_end.
+ * Allows active/past_due, or canceled-by-dunning (cancel_at_period_end=false).
+ */
+async function casApplyPeriodExtension(
+  supabase: SupabaseClient,
+  sub: SubRow,
+  periodEnd: string,
+  planInterval: 'month' | 'year'
+): Promise<{ applied: boolean; reason?: string }> {
+  const previousEnd = new Date(periodEnd);
+  const anchor = sub.billing_anchor_day ?? previousEnd.getUTCDate();
+  const newEnd = extendPeriodEnd(previousEnd, planInterval, anchor);
+  const nowIso = new Date().toISOString();
+
+  const patch = {
+    status: 'active',
+    current_period_start: previousEnd.toISOString(),
+    current_period_end: newEnd.toISOString(),
+    billing_anchor_day: anchor,
+    canceled_at: null,
+    updated_at: nowIso,
+  };
+
+  // Path 1: still entitled / in dunning
+  const { data: fromLive } = await supabase
+    .from('billing_subscriptions')
+    .update(patch)
+    .eq('id', sub.id)
+    .eq('current_period_end', periodEnd)
+    .in('status', ['active', 'past_due'])
+    .select('id')
+    .maybeSingle();
+
+  if (fromLive?.id) {
+    return { applied: true };
+  }
+
+  // Path 2: canceled by dunning for this same period — user paid, reactivate
+  const { data: fromDunning } = await supabase
+    .from('billing_subscriptions')
+    .update(patch)
+    .eq('id', sub.id)
+    .eq('current_period_end', periodEnd)
+    .eq('status', 'canceled')
+    .eq('cancel_at_period_end', false)
+    .select('id')
+    .maybeSingle();
+
+  if (fromDunning?.id) {
+    return { applied: true };
+  }
+
+  // Reload to explain
+  const { data: current } = await supabase
+    .from('billing_subscriptions')
+    .select('status, current_period_end, cancel_at_period_end')
+    .eq('id', sub.id)
+    .maybeSingle();
+
+  if (
+    current?.current_period_end &&
+    current.current_period_end !== periodEnd
+  ) {
+    return {
+      applied: false,
+      reason: `Period already extended (current_period_end=${current.current_period_end})`,
+    };
+  }
+
+  if (
+    current?.status === 'canceled' &&
+    current.cancel_at_period_end === true
+  ) {
+    return {
+      applied: false,
+      reason: 'Subscription canceled by user at period end',
+    };
+  }
+
+  return {
+    applied: false,
+    reason: `Cannot apply period extension (status=${current?.status ?? 'missing'})`,
+  };
+}
+
+async function applyApprovedRenewal(
+  supabase: SupabaseClient,
+  sub: SubRow,
+  periodEnd: string,
+  amountCents: number,
+  reference: string,
+  transactionId: string,
+  planInterval: 'month' | 'year',
+  planName: string,
+  emailSender: BillingEmailSender
+): Promise<boolean> {
+  // Another entitlement-bearing approval already claimed this period?
+  const { data: approvedPeers } = await supabase
+    .from('billing_renewal_attempts')
+    .select('id, wompi_reference, requires_refund')
+    .eq('subscription_id', sub.id)
+    .eq('period_end', periodEnd)
+    .eq('status', 'approved')
+    .neq('wompi_reference', reference);
+
+  const duplicatePeriod = (approvedPeers || []).find(
+    a => a.requires_refund !== true
+  );
+
+  const nowIso = new Date().toISOString();
+
+  if (duplicatePeriod) {
+    const casDup = await casAttemptStatus(
+      supabase,
+      reference,
+      ['claimed', 'pending', 'error'],
+      {
+        status: 'approved',
+        wompi_transaction_id: transactionId,
+        finalized_at: nowIso,
+        requires_refund: true,
+        refund_reason: `Duplicate APPROVED for period; entitlement already applied via ${duplicatePeriod.wompi_reference}`,
+      }
+    );
+    if (!casDup) {
+      const { data: attempt } = await supabase
+        .from('billing_renewal_attempts')
+        .select('status')
+        .eq('wompi_reference', reference)
+        .maybeSingle();
+      return attempt?.status === 'approved';
+    }
+    await persistPaidRenewalInvoice(supabase, sub, reference, amountCents, nowIso);
+    console.error(
+      `[billing] Duplicate Wompi APPROVED for same period — manual refund required`,
+      { reference, periodEnd, subscriptionId: sub.id }
+    );
+    return true;
+  }
+
+  // CAS attempt → approved (heal error). Unique index enforces one non-refund approved/period.
+  const { data: casRow, error: casError } = await supabase
+    .from('billing_renewal_attempts')
+    .update({
+      status: 'approved',
+      wompi_transaction_id: transactionId,
+      finalized_at: nowIso,
+      updated_at: nowIso,
+    })
+    .eq('wompi_reference', reference)
+    .in('status', ['claimed', 'pending', 'error'])
+    .select('id')
+    .maybeSingle();
+
+  if (casError?.code === '23505') {
+    // Lost race for the non-refund approved slot
+    await casAttemptStatus(supabase, reference, ['claimed', 'pending', 'error'], {
+      status: 'approved',
+      wompi_transaction_id: transactionId,
+      finalized_at: nowIso,
+      requires_refund: true,
+      refund_reason: 'Lost race for per-period approved slot',
+    });
+    await persistPaidRenewalInvoice(supabase, sub, reference, amountCents, nowIso);
+    console.error(
+      `[billing] Per-period approved unique conflict — manual refund required`,
+      { reference, periodEnd, subscriptionId: sub.id }
+    );
+    return true;
+  }
+
+  if (!casRow?.id) {
+    const { data: attempt } = await supabase
+      .from('billing_renewal_attempts')
+      .select('status, requires_refund')
+      .eq('wompi_reference', reference)
+      .maybeSingle();
+    if (attempt?.status === 'approved') {
+      return true;
+    }
+    return false;
+  }
+
+  const periodResult = await casApplyPeriodExtension(
+    supabase,
+    sub,
+    periodEnd,
+    planInterval
+  );
+
+  if (!periodResult.applied) {
+    await flagAttemptRequiresRefund(
+      supabase,
+      reference,
+      periodResult.reason || 'Period entitlement CAS failed'
+    );
+    await persistPaidRenewalInvoice(supabase, sub, reference, amountCents, nowIso);
+    return true;
+  }
+
+  await persistPaidRenewalInvoice(supabase, sub, reference, amountCents, nowIso);
 
   const user = await getUserEmail(supabase, sub.user_id);
   if (user) {
@@ -393,7 +571,15 @@ export async function applyWompiRenewalFailure(
     .maybeSingle();
 
   if (!attempt) return false;
-  if (attempt.status === 'approved') return true;
+
+  // Already terminal — no side effects (no re-email, no early downgrade)
+  if (
+    attempt.status === 'approved' ||
+    attempt.status === 'declined' ||
+    attempt.status === 'error'
+  ) {
+    return true;
+  }
 
   await markAttemptFailed(
     supabase,
@@ -433,10 +619,9 @@ export async function applyWompiRenewalFailure(
     });
   }
 
-  if (
-    (attempt.attempt_number as number) >= MAX_DUNNING_ATTEMPTS ||
-    isPastFinalDunningDay(attempt.period_end as string)
-  ) {
+  // Downgrade only when finalizing the max dunning attempt (never on attempt 1–3
+  // just because day ≥ 5 — that undoes the day-5 cron fix via webhook redelivery).
+  if ((attempt.attempt_number as number) >= MAX_DUNNING_ATTEMPTS) {
     await downgradeToFree(
       supabase,
       sub as SubRow,
@@ -563,7 +748,8 @@ async function reconcilePendingAttempt(
       {
         reference: attempt.wompi_reference,
         transactionId: tx.id,
-        status: status === 'ERROR' ? 'error' : 'declined',
+        status:
+          status === 'ERROR' || status === 'VOIDED' ? 'error' : 'declined',
         message: `Wompi status ${status}`,
       },
       emailSender
@@ -790,7 +976,8 @@ async function processOneSubscription(
         {
           reference,
           transactionId: settled.id,
-          status: status === 'ERROR' ? 'error' : 'declined',
+          status:
+            status === 'ERROR' || status === 'VOIDED' ? 'error' : 'declined',
           message: `Wompi status ${status}`,
         },
         emailSender
@@ -810,19 +997,37 @@ async function processOneSubscription(
     await setPastDue(supabase, sub.id);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Charge failed';
-    await markAttemptFailed(supabase, reference, 'error', null, message);
-    await setPastDue(supabase, sub.id);
-    summary.failed++;
-    summary.errors.push({ subscriptionId: sub.id, message });
 
-    await sendBillingEmailOnce(supabase, emailSender, 'payment_failed', {
-      userId: sub.user_id,
+    if (isDefinitiveWompiChargeRejection(err)) {
+      // 4xx validation — no transaction created; safe to finalize as error
+      await markAttemptFailed(supabase, reference, 'error', null, message);
+      await setPastDue(supabase, sub.id);
+      summary.failed++;
+      summary.errors.push({ subscriptionId: sub.id, message });
+      await sendBillingEmailOnce(supabase, emailSender, 'payment_failed', {
+        userId: sub.user_id,
+        subscriptionId: sub.id,
+        email: user.email,
+        locale: user.locale,
+        periodKey: `${toPeriodEndYmd(periodEnd)}:fail:${attemptNumber}`,
+        planName: plan.name,
+        amountLabel: formatCop(amountInCents),
+      });
+      if (attemptNumber >= MAX_DUNNING_ATTEMPTS) {
+        await downgradeToFree(supabase, sub, plan.name, emailSender, periodEnd);
+        summary.downgraded++;
+      }
+      return;
+    }
+
+    // Network / 5xx / unknown — leave claimed; reconcile via reference lookup
+    await casAttemptStatus(supabase, reference, ['claimed'], {
+      error_message: message,
+    });
+    await setPastDue(supabase, sub.id);
+    summary.errors.push({
       subscriptionId: sub.id,
-      email: user.email,
-      locale: user.locale,
-      periodKey: `${toPeriodEndYmd(periodEnd)}:fail:${attemptNumber}`,
-      planName: plan.name,
-      amountLabel: formatCop(amountInCents),
+      message: `Charge inconclusive (kept claimed): ${message}`,
     });
   }
 }
@@ -831,60 +1036,90 @@ async function sendUpcomingRenewalEmails(
   supabase: SupabaseClient,
   now: Date,
   emailSender: BillingEmailSender,
-  summary: RenewalRunSummary
+  summary: RenewalRunSummary,
+  deadlineMs = Date.now() + 60_000
 ): Promise<void> {
   const windowStart = new Date(now.getTime());
   const windowEnd = new Date(
     now.getTime() + UPCOMING_RENEWAL_DAYS * 24 * 60 * 60 * 1000
   );
+  const batchSize = 50;
+  let cursorPeriodEnd: string | null = null;
+  let cursorId: string | null = null;
 
-  const { data: upcoming } = await supabase
-    .from('billing_subscriptions')
-    .select(
-      'id, user_id, plan_id, current_period_end, status, cancel_at_period_end, provider'
-    )
-    .eq('provider', 'wompi')
-    .eq('status', 'active')
-    .eq('cancel_at_period_end', false)
-    .gt('current_period_end', windowStart.toISOString())
-    .lte('current_period_end', windowEnd.toISOString())
-    .limit(100);
+  while (Date.now() < deadlineMs) {
+    let query = supabase
+      .from('billing_subscriptions')
+      .select(
+        'id, user_id, plan_id, current_period_end, status, cancel_at_period_end, provider'
+      )
+      .eq('provider', 'wompi')
+      .eq('status', 'active')
+      .eq('cancel_at_period_end', false)
+      .gt('current_period_end', windowStart.toISOString())
+      .lte('current_period_end', windowEnd.toISOString())
+      .order('current_period_end', { ascending: true })
+      .order('id', { ascending: true })
+      .limit(batchSize);
 
-  for (const sub of upcoming || []) {
-    try {
-      const plan = await getPlanMeta(supabase, sub.plan_id as string);
-      const user = await getUserEmail(supabase, sub.user_id as string);
-      if (!user || !plan || !sub.current_period_end) continue;
-
-      const amountInCents = resolveWompiAmountInCents(
-        sub.plan_id as string,
-        plan.provider_price_map?.wompi
+    if (cursorPeriodEnd && cursorId) {
+      query = query.or(
+        `current_period_end.gt.${cursorPeriodEnd},and(current_period_end.eq.${cursorPeriodEnd},id.gt.${cursorId})`
       );
-      const periodKey = `${toPeriodEndYmd(sub.current_period_end as string)}:upcoming`;
-      const result = await sendBillingEmailOnce(
-        supabase,
-        emailSender,
-        'upcoming_renewal',
-        {
-          userId: sub.user_id as string,
-          subscriptionId: sub.id as string,
-          email: user.email,
-          locale: user.locale,
-          periodKey,
-          planName: plan.name,
-          amountLabel: formatCop(amountInCents),
-          periodEndLabel: new Date(sub.current_period_end as string)
-            .toISOString()
-            .slice(0, 10),
-        }
-      );
-      if (result.sent) summary.upcomingEmails++;
-    } catch (err) {
-      summary.errors.push({
-        subscriptionId: sub.id as string,
-        message: err instanceof Error ? err.message : 'Upcoming email failed',
-      });
     }
+
+    const { data: upcoming, error } = await query;
+    if (error) {
+      summary.errors.push({
+        subscriptionId: '-',
+        message: `Upcoming emails query: ${error.message}`,
+      });
+      break;
+    }
+    if (!upcoming?.length) break;
+
+    for (const sub of upcoming) {
+      if (Date.now() >= deadlineMs) break;
+      try {
+        const plan = await getPlanMeta(supabase, sub.plan_id as string);
+        const user = await getUserEmail(supabase, sub.user_id as string);
+        if (!user || !plan || !sub.current_period_end) continue;
+
+        const amountInCents = resolveWompiAmountInCents(
+          sub.plan_id as string,
+          plan.provider_price_map?.wompi
+        );
+        const periodKey = `${toPeriodEndYmd(sub.current_period_end as string)}:upcoming`;
+        const result = await sendBillingEmailOnce(
+          supabase,
+          emailSender,
+          'upcoming_renewal',
+          {
+            userId: sub.user_id as string,
+            subscriptionId: sub.id as string,
+            email: user.email,
+            locale: user.locale,
+            periodKey,
+            planName: plan.name,
+            amountLabel: formatCop(amountInCents),
+            periodEndLabel: new Date(sub.current_period_end as string)
+              .toISOString()
+              .slice(0, 10),
+          }
+        );
+        if (result.sent) summary.upcomingEmails++;
+      } catch (err) {
+        summary.errors.push({
+          subscriptionId: sub.id as string,
+          message: err instanceof Error ? err.message : 'Upcoming email failed',
+        });
+      }
+    }
+
+    const last = upcoming[upcoming.length - 1];
+    cursorPeriodEnd = last.current_period_end as string;
+    cursorId = last.id as string;
+    if (upcoming.length < batchSize) break;
   }
 }
 
@@ -983,7 +1218,13 @@ export async function processWompiRenewals(
 
   if (Date.now() < deadline) {
     try {
-      await sendUpcomingRenewalEmails(supabase, now, emailSender, summary);
+      await sendUpcomingRenewalEmails(
+        supabase,
+        now,
+        emailSender,
+        summary,
+        deadline
+      );
     } catch (err) {
       summary.errors.push({
         subscriptionId: '-',

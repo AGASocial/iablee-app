@@ -8,24 +8,25 @@ const planId = 'plan_premium_month';
 const correctSubId = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
 const wrongLatestSubId = '99999999-9999-9999-9999-999999999999';
 
-const mockActivateFirstCharge = jest.fn(
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async (..._args: unknown[]) => ({ activated: true })
-);
-
 jest.mock('../wompi-subscribe', () => {
   const actual = jest.requireActual('../wompi-subscribe') as Record<string, unknown>;
   return {
     ...actual,
-    activateFirstCharge: mockActivateFirstCharge,
+    activateFirstCharge: jest.fn(async () => ({ activated: true })),
   };
 });
 
+import { activateFirstCharge } from '../wompi-subscribe';
 import { BillingService } from '../billing.service';
+
+const mockActivateFirstCharge = activateFirstCharge as jest.MockedFunction<
+  typeof activateFirstCharge
+>;
 
 describe('BillingService first-charge webhook targets subscriptionId from reference', () => {
   beforeEach(() => {
     mockActivateFirstCharge.mockClear();
+    mockActivateFirstCharge.mockResolvedValue({ activated: true });
   });
 
   it('activates the subscription embedded in the reference, not latest by created_at', async () => {

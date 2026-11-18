@@ -1,8 +1,14 @@
 /**
  * @jest-environment node
  */
-import { createWompiSourceAndSubscribe, activateFirstCharge } from '../wompi-subscribe';
+import {
+  createWompiSourceAndSubscribe,
+  activateFirstCharge,
+  findBlockingSubscription,
+  cancelOrphanIncompleteSubscriptions,
+} from '../wompi-subscribe';
 import { FIRST_CHARGE_PERIOD_SENTINEL } from '../wompi-references';
+import { PaymentGatewayError } from '../types';
 
 const userId = '48508890-08ea-40bc-8dc6-4a0860f6bc6a';
 const planId = 'plan_premium_month';
@@ -557,6 +563,14 @@ describe('activateFirstCharge idempotency', () => {
         }
         if (table === 'billing_renewal_attempts') {
           return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({
+                  data: { status: 'approved', requires_refund: null },
+                  error: null,
+                }),
+              }),
+            }),
             update: () => ({
               eq: () => ({
                 in: () => ({
@@ -614,5 +628,305 @@ describe('activateFirstCharge idempotency', () => {
           'current_period_end' in (u as object)
       )
     ).toBe(false);
+  });
+
+  it('no-ops when CAS fails and attempt is already declined', async () => {
+    const subUpdates: unknown[] = [];
+    const supabase = {
+      from: jest.fn((table: string) => {
+        if (table === 'billing_subscriptions') {
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({
+                  data: {
+                    id: subId,
+                    status: 'incomplete',
+                    current_period_end: null,
+                    billing_anchor_day: null,
+                  },
+                  error: null,
+                }),
+              }),
+            }),
+            update: (payload: unknown) => {
+              subUpdates.push(payload);
+              return {
+                eq: () => ({
+                  in: () => ({
+                    select: () => ({
+                      maybeSingle: async () => ({ data: null, error: null }),
+                    }),
+                  }),
+                  lt: () => ({
+                    select: () => ({
+                      maybeSingle: async () => ({ data: null, error: null }),
+                    }),
+                  }),
+                }),
+              };
+            },
+          };
+        }
+        if (table === 'billing_renewal_attempts') {
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({
+                  data: { status: 'declined', requires_refund: null },
+                  error: null,
+                }),
+              }),
+            }),
+            update: () => ({
+              eq: () => ({
+                in: () => ({
+                  select: () => ({
+                    maybeSingle: async () => ({ data: null, error: null }),
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({ data: null, error: null }),
+            }),
+          }),
+        };
+      }),
+    };
+
+    const result = await activateFirstCharge(supabase as never, {
+      userId,
+      subscriptionId: subId,
+      plan,
+      reference: `wompi_first_${userId}_${planId}_${subId}_1`,
+      transactionId: 'tx',
+      amountInCents: 990000,
+      email: 'a@b.com',
+    });
+
+    expect(result.activated).toBe(false);
+    expect(subUpdates).toHaveLength(0);
+  });
+});
+
+describe('findBlockingSubscription', () => {
+  it('blocks past_due even when current_period_end is in the past', async () => {
+    const past = new Date(Date.now() - 3 * 86400000).toISOString();
+    const supabase = {
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              in: () => ({
+                order: () => ({
+                  limit: async () => ({
+                    data: [
+                      {
+                        id: subId,
+                        status: 'past_due',
+                        current_period_end: past,
+                        plan_id: planId,
+                      },
+                    ],
+                    error: null,
+                  }),
+                }),
+              }),
+            }),
+          }),
+        }),
+      }),
+    };
+
+    const blocked = await findBlockingSubscription(supabase as never, userId);
+    expect(blocked?.id).toBe(subId);
+    expect(blocked?.status).toBe('past_due');
+  });
+
+  it('blocks active within entitlement grace after period end', async () => {
+    const justEnded = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
+    const supabase = {
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              in: () => ({
+                order: () => ({
+                  limit: async () => ({
+                    data: [
+                      {
+                        id: subId,
+                        status: 'active',
+                        current_period_end: justEnded,
+                        plan_id: planId,
+                      },
+                    ],
+                    error: null,
+                  }),
+                }),
+              }),
+            }),
+          }),
+        }),
+      }),
+    };
+
+    const blocked = await findBlockingSubscription(supabase as never, userId);
+    expect(blocked?.id).toBe(subId);
+  });
+});
+
+describe('cancelOrphanIncompleteSubscriptions', () => {
+  it('cancels other incomplete Wompi subs for the user, keeping the target', async () => {
+    const updates: Array<{ payload: Record<string, unknown>; filters: string[] }> = [];
+    const filters: string[] = [];
+    const supabase = {
+      from: () => ({
+        update: (payload: Record<string, unknown>) => {
+          const recorded = { payload, filters: [] as string[] };
+          updates.push(recorded);
+          const api: Record<string, unknown> = {};
+          const self = () => api;
+          api.eq = jest.fn((col: string, val: string) => {
+            recorded.filters.push(`${col}=${val}`);
+            filters.push(`${col}=${val}`);
+            return self();
+          });
+          api.neq = jest.fn((col: string, val: string) => {
+            recorded.filters.push(`${col}!=${val}`);
+            filters.push(`${col}!=${val}`);
+            return Promise.resolve({ error: null });
+          });
+          return api;
+        },
+      }),
+    };
+
+    await cancelOrphanIncompleteSubscriptions(supabase as never, userId, subId);
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0].payload.status).toBe('canceled');
+    expect(filters).toEqual(
+      expect.arrayContaining([
+        `user_id=${userId}`,
+        'provider=wompi',
+        'status=incomplete',
+        `id!=${subId}`,
+      ])
+    );
+  });
+});
+
+describe('createSourceTransaction inconclusive keeps claimed', () => {
+  it('records error_message but leaves status claimed on network/5xx', async () => {
+    const attemptPatches: Record<string, unknown>[] = [];
+    const chain = (terminal: { data?: unknown; error?: unknown }) => {
+      const api: Record<string, unknown> = {};
+      const self = () => api;
+      for (const m of [
+        'select',
+        'eq',
+        'in',
+        'order',
+        'limit',
+        'update',
+        'insert',
+        'is',
+        'neq',
+        'lt',
+      ]) {
+        api[m] = jest.fn(self);
+      }
+      api.maybeSingle = jest.fn(async () => terminal);
+      api.single = jest.fn(async () => terminal);
+      (api as { then?: unknown }).then = (
+        resolve: (v: unknown) => unknown,
+        reject?: (e: unknown) => unknown
+      ) => Promise.resolve(terminal).then(resolve, reject);
+      return api;
+    };
+
+    let subSelect = 0;
+    const supabase = {
+      from: jest.fn((table: string) => {
+        if (table === 'billing_subscriptions') {
+          return {
+            select: () => {
+              subSelect++;
+              if (subSelect === 1) return chain({ data: [], error: null });
+              return chain({
+                data: {
+                  id: subId,
+                  status: 'incomplete',
+                  current_period_end: null,
+                  plan_id: planId,
+                },
+                error: null,
+              });
+            },
+            update: () => chain({ data: null, error: null }),
+          };
+        }
+        if (table === 'billing_renewal_attempts') {
+          return {
+            select: () => chain({ data: [], error: null }),
+            insert: async () => ({ error: null }),
+            update: (patch: Record<string, unknown>) => {
+              attemptPatches.push(patch);
+              return chain({ data: { id: 'a' }, error: null });
+            },
+          };
+        }
+        if (table === 'billing_payment_methods') {
+          return {
+            update: () => chain({ data: null, error: null }),
+            insert: () => chain({ data: { id: 'pm' }, error: null }),
+          };
+        }
+        if (table === 'billing_invoices') {
+          return { insert: async () => ({ error: null }) };
+        }
+        return chain({ data: null, error: null });
+      }),
+    };
+
+    const wompi = {
+      createPaymentSource: jest.fn(async () => ({
+        id: 1,
+        status: 'AVAILABLE',
+        type: 'CARD',
+        publicData: {},
+      })),
+      createSourceTransaction: jest.fn(async () => {
+        throw new PaymentGatewayError(
+          'Wompi source transaction failed (503)',
+          'wompi',
+          'WOMPI_SOURCE_CHARGE_FAILED',
+          503
+        );
+      }),
+    };
+
+    await expect(
+      createWompiSourceAndSubscribe(supabase as never, wompi as never, {
+        userId,
+        plan,
+        email: 'a@b.com',
+        paymentType: 'CARD',
+        paymentToken: 'tok',
+        acceptanceToken: 'acc',
+        acceptPersonalAuth: 'pers',
+      })
+    ).rejects.toBeInstanceOf(PaymentGatewayError);
+
+    expect(attemptPatches.some(p => p.status === 'error')).toBe(false);
+    expect(attemptPatches.some(p => typeof p.error_message === 'string')).toBe(
+      true
+    );
   });
 });
