@@ -23,6 +23,7 @@ export {
   toPeriodEndYmd,
 } from './wompi-references';
 export * from './billing-emails';
+export * from './charge-leases';
 export * from './renewals';
 export * from './wompi-subscribe';
 

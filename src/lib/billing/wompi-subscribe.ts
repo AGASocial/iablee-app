@@ -28,6 +28,10 @@ import {
 } from './billing-emails';
 import { chargeWompiPastDueNow } from './renewals';
 import { isDefinitiveWompiChargeRejection } from './types';
+import {
+  acquireChargeLease,
+  releaseChargeLease,
+} from './charge-leases';
 
 export interface WompiTokenMeta {
   brand?: string;
@@ -136,8 +140,8 @@ type SubSnapshot = {
 
 /**
  * Block a new first purchase while any Wompi active/past_due exists.
- * Expired `active` past grace with no open renewal attempt is CAS'd to
- * canceled (expired) so a clean re-subscribe can proceed.
+ * Expired `active` past grace may be permanently tombstoned
+ * (canceled_reason=expired_resubscribe) when safe.
  */
 export async function findBlockingSubscription(
   supabase: SupabaseClient,
@@ -145,7 +149,9 @@ export async function findBlockingSubscription(
 ): Promise<SubSnapshot | null> {
   const { data } = await supabase
     .from('billing_subscriptions')
-    .select('id, status, current_period_end, plan_id, billing_anchor_day')
+    .select(
+      'id, status, current_period_end, plan_id, billing_anchor_day, canceled_reason'
+    )
     .eq('user_id', userId)
     .eq('provider', 'wompi')
     .in('status', ['active', 'past_due'])
@@ -166,15 +172,23 @@ export async function findBlockingSubscription(
       return row as SubSnapshot;
     }
 
-    // Expired active past grace — only tombstone if no in-flight renewal charge
+    // Expired active past grace — never tombstone while open charge or
+    // entitlement-bearing approval for this period still exists.
     const { data: openAttempts } = await supabase
       .from('billing_renewal_attempts')
-      .select('id')
+      .select('id, status, requires_refund')
       .eq('subscription_id', row.id)
-      .in('status', ['claimed', 'pending'])
-      .limit(1);
+      .in('status', ['claimed', 'pending', 'approved'])
+      .limit(10);
 
-    if (openAttempts && openAttempts.length > 0) {
+    const blocksTombstone = (openAttempts || []).some(
+      a =>
+        a.status === 'claimed' ||
+        a.status === 'pending' ||
+        (a.status === 'approved' && a.requires_refund !== true)
+    );
+
+    if (blocksTombstone) {
       return row as SubSnapshot;
     }
 
@@ -184,6 +198,8 @@ export async function findBlockingSubscription(
       .update({
         status: 'canceled',
         canceled_at: nowIso,
+        cancel_at_period_end: true,
+        canceled_reason: 'expired_resubscribe',
         updated_at: nowIso,
       })
       .eq('id', row.id)
@@ -192,10 +208,8 @@ export async function findBlockingSubscription(
       .maybeSingle();
 
     if (!tombstoned?.id) {
-      // Race (e.g. cron moved to past_due) — block
       return row as SubSnapshot;
     }
-    // Successfully expired — do not block on this row
   }
   return null;
 }
@@ -205,17 +219,41 @@ async function getOrCreateIncompleteSubscription(
   userId: string,
   planId: string
 ): Promise<SubSnapshot> {
-  const { data: existing } = await supabase
+  // Cancel stray incompletes except the newest (unique index allows one)
+  const { data: incompletes } = await supabase
     .from('billing_subscriptions')
     .select('id, status, current_period_end, plan_id, billing_anchor_day')
     .eq('user_id', userId)
     .eq('provider', 'wompi')
     .eq('status', 'incomplete')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .order('created_at', { ascending: false });
 
-  if (existing?.id) {
+  if (incompletes && incompletes.length > 1) {
+    const keep = incompletes[0];
+    const nowIso = new Date().toISOString();
+    for (const orphan of incompletes.slice(1)) {
+      await supabase
+        .from('billing_subscriptions')
+        .update({
+          status: 'canceled',
+          canceled_at: nowIso,
+          canceled_reason: 'superseded',
+          updated_at: nowIso,
+        })
+        .eq('id', orphan.id)
+        .eq('status', 'incomplete');
+    }
+    if (keep.plan_id !== planId) {
+      await supabase
+        .from('billing_subscriptions')
+        .update({ plan_id: planId, updated_at: nowIso })
+        .eq('id', keep.id);
+    }
+    return { ...(keep as SubSnapshot), plan_id: planId };
+  }
+
+  if (incompletes?.[0]?.id) {
+    const existing = incompletes[0];
     if (existing.plan_id !== planId) {
       await supabase
         .from('billing_subscriptions')
@@ -237,6 +275,13 @@ async function getOrCreateIncompleteSubscription(
     })
     .select('id, status, current_period_end, plan_id, billing_anchor_day')
     .single();
+
+  if (error?.code === '23505') {
+    throw new BillingError(
+      'A Wompi subscription purchase is already in progress',
+      'WOMPI_SUBSCRIBE_IN_PROGRESS'
+    );
+  }
 
   if (error || !created) {
     throw new BillingError(
@@ -279,6 +324,39 @@ export async function createWompiSourceAndSubscribe(
     alreadyActive?: boolean;
   }
 > {
+  const leaseHolder = `first:${params.userId}:${Date.now()}`;
+  const leased = await acquireChargeLease(supabase, params.userId, leaseHolder);
+  if (!leased) {
+    throw new BillingError(
+      'A Wompi charge is already in progress for this account',
+      'WOMPI_SUBSCRIBE_IN_PROGRESS'
+    );
+  }
+
+  try {
+    return await createWompiSourceAndSubscribeLocked(
+      supabase,
+      wompi,
+      params
+    );
+  } finally {
+    await releaseChargeLease(supabase, params.userId, leaseHolder);
+  }
+}
+
+async function createWompiSourceAndSubscribeLocked(
+  supabase: SupabaseClient,
+  wompi: WompiAdapter,
+  params: CreateWompiSourceAndSubscribeParams
+): Promise<
+  CreateSubscriptionResponse & {
+    transactionStatus: string;
+    paymentMethodId?: string;
+    transactionId?: string;
+    alreadyActive?: boolean;
+  }
+> {
+  // Re-validate under lease
   const blocking = await findBlockingSubscription(supabase, params.userId);
   if (blocking) {
     return {
@@ -345,7 +423,7 @@ export async function createWompiSourceAndSubscribe(
         );
         const mapped = mapTxStatus(tx.status);
         if (mapped === 'active') {
-          await activateFirstCharge(supabase, {
+          await activateFirstChargeLocked(supabase, {
             userId: params.userId,
             subscriptionId: subscription.id,
             plan: params.plan,
@@ -408,7 +486,7 @@ export async function createWompiSourceAndSubscribe(
           );
           const mapped = mapTxStatus(found.status);
           if (mapped === 'active') {
-            await activateFirstCharge(supabase, {
+            await activateFirstChargeLocked(supabase, {
               userId: params.userId,
               subscriptionId: subscription.id,
               plan: params.plan,
@@ -613,7 +691,7 @@ export async function createWompiSourceAndSubscribe(
   const mapped = mapTxStatus(settled.status);
 
   if (mapped === 'active') {
-    await activateFirstCharge(supabase, {
+    await activateFirstChargeLocked(supabase, {
       userId: params.userId,
       subscriptionId: subscription.id,
       plan: params.plan,
@@ -669,24 +747,48 @@ export async function createWompiSourceAndSubscribe(
   };
 }
 
+type ActivateFirstChargeParams = {
+  userId: string;
+  subscriptionId: string;
+  plan: PlanDefinition;
+  reference: string;
+  transactionId: string;
+  amountInCents: number;
+  email: string;
+  locale?: string | null;
+  emailSender?: BillingEmailSender;
+};
+
 /**
  * Activate first charge idempotently. No-op if already active with future period.
  * Period math runs at most once (CAS on attempt → approved).
  * Only proceeds when CAS succeeds or legacy (no attempt row).
+ * Acquires a per-user charge lease (webhook / external callers).
  */
 export async function activateFirstCharge(
   supabase: SupabaseClient,
-  params: {
-    userId: string;
-    subscriptionId: string;
-    plan: PlanDefinition;
-    reference: string;
-    transactionId: string;
-    amountInCents: number;
-    email: string;
-    locale?: string | null;
-    emailSender?: BillingEmailSender;
+  params: ActivateFirstChargeParams
+): Promise<{ activated: boolean }> {
+  const leaseHolder = `activate:${params.userId}:${params.reference}`;
+  const leased = await acquireChargeLease(supabase, params.userId, leaseHolder);
+  if (!leased) {
+    console.warn(
+      '[billing] activateFirstCharge skipped — charge lease not acquired',
+      { reference: params.reference }
+    );
+    return { activated: false };
   }
+  try {
+    return await activateFirstChargeLocked(supabase, params);
+  } finally {
+    await releaseChargeLease(supabase, params.userId, leaseHolder);
+  }
+}
+
+/** Activation writes under an already-held lease (subscribe path). */
+async function activateFirstChargeLocked(
+  supabase: SupabaseClient,
+  params: ActivateFirstChargeParams
 ): Promise<{ activated: boolean }> {
   const { data: sub } = await supabase
     .from('billing_subscriptions')
@@ -865,6 +967,7 @@ export async function cancelOrphanIncompleteSubscriptions(
     .update({
       status: 'canceled',
       canceled_at: nowIso,
+      canceled_reason: 'superseded',
       updated_at: nowIso,
     })
     .eq('user_id', userId)

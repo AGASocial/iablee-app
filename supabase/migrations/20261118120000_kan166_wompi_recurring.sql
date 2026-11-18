@@ -40,6 +40,101 @@ CREATE UNIQUE INDEX IF NOT EXISTS billing_subscriptions_one_chargeable_wompi_uid
   ON public.billing_subscriptions (user_id)
   WHERE provider = 'wompi' AND status IN ('active', 'past_due');
 
+-- At most one in-flight first purchase per user.
+-- Verified read-only: production had 1 incomplete, 0 multi-incomplete users.
+CREATE UNIQUE INDEX IF NOT EXISTS billing_subscriptions_one_incomplete_wompi_uidx
+  ON public.billing_subscriptions (user_id)
+  WHERE provider = 'wompi' AND status = 'incomplete';
+
+-- Why a subscription was canceled (tombstones must not be reactivated as dunning).
+ALTER TABLE public.billing_subscriptions
+  ADD COLUMN IF NOT EXISTS canceled_reason text NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'billing_subscriptions_canceled_reason_check'
+  ) THEN
+    ALTER TABLE public.billing_subscriptions
+      ADD CONSTRAINT billing_subscriptions_canceled_reason_check
+      CHECK (
+        canceled_reason IS NULL
+        OR canceled_reason IN ('dunning', 'user', 'expired_resubscribe', 'superseded')
+      );
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.billing_subscriptions.canceled_reason IS
+  'dunning | user | expired_resubscribe | superseded. Only dunning may be reactivated by late APPROVED.';
+
+-- ---------------------------------------------------------------------------
+-- billing_charge_leases: per-user mutex across first-charge / renewal / reactivation
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.billing_charge_leases (
+  user_id uuid not null,
+  holder text not null,
+  acquired_at timestamp with time zone not null default now(),
+  expires_at timestamp with time zone not null,
+  constraint billing_charge_leases_pkey primary key (user_id),
+  constraint billing_charge_leases_user_id_fkey
+    foreign key (user_id) references users (id) on delete cascade
+) TABLESPACE pg_default;
+
+CREATE INDEX IF NOT EXISTS billing_charge_leases_expires_idx
+  ON public.billing_charge_leases (expires_at);
+
+ALTER TABLE public.billing_charge_leases ENABLE ROW LEVEL SECURITY;
+-- No policies for authenticated: service role only
+
+CREATE OR REPLACE FUNCTION public.acquire_billing_charge_lease(
+  p_user_id uuid,
+  p_holder text,
+  p_ttl_seconds integer DEFAULT 300
+) RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  now_ts timestamptz := now();
+  new_exp timestamptz := now_ts + make_interval(secs => GREATEST(p_ttl_seconds, 1));
+  got uuid;
+BEGIN
+  INSERT INTO public.billing_charge_leases (user_id, holder, acquired_at, expires_at)
+  VALUES (p_user_id, p_holder, now_ts, new_exp)
+  ON CONFLICT (user_id) DO UPDATE
+    SET holder = EXCLUDED.holder,
+        acquired_at = EXCLUDED.acquired_at,
+        expires_at = EXCLUDED.expires_at
+    WHERE public.billing_charge_leases.expires_at < now_ts
+       OR public.billing_charge_leases.holder = EXCLUDED.holder
+  RETURNING user_id INTO got;
+
+  RETURN got IS NOT NULL;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.release_billing_charge_lease(
+  p_user_id uuid,
+  p_holder text
+) RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  DELETE FROM public.billing_charge_leases
+  WHERE user_id = p_user_id
+    AND holder = p_holder;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.acquire_billing_charge_lease(uuid, text, integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.release_billing_charge_lease(uuid, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.acquire_billing_charge_lease(uuid, text, integer) TO service_role;
+GRANT EXECUTE ON FUNCTION public.release_billing_charge_lease(uuid, text) TO service_role;
+
 -- ---------------------------------------------------------------------------
 -- billing_renewal_attempts: claim-before-charge idempotency for cron renewals
 -- Unique (subscription_id, period_end, attempt_number) prevents double charges.

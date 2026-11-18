@@ -12,6 +12,7 @@ import { isDefinitiveWompiChargeRejection } from './types';
 import { resolveWompiAmountInCents } from './wompi-pricing';
 import {
   buildWompiRenewalReference,
+  FIRST_CHARGE_PERIOD_SENTINEL,
   toPeriodEndYmd,
 } from './wompi-references';
 import {
@@ -27,6 +28,13 @@ import {
   sendBillingEmailOnce,
   type BillingEmailSender,
 } from './billing-emails';
+import {
+  acquireChargeLease,
+  releaseChargeLease,
+} from './charge-leases';
+
+/** Durable marker when approved but requires_refund flag write failed */
+export const REQUIRES_REFUND_FLAG_PENDING = 'REQUIRES_REFUND_FLAG_PENDING';
 
 export interface RenewalRunSummary {
   scanned: number;
@@ -262,30 +270,51 @@ async function casApplyPeriodExtension(
     return { applied: true };
   }
 
-  // Path 2: dunning-canceled reactivation — refuse if another chargeable sub exists
-  const { data: otherChargeable } = await supabase
+  // Path 2: only dunning-canceled may reactivate; never tombstones/user cancels
+  const { data: otherSubs } = await supabase
     .from('billing_subscriptions')
-    .select('id')
+    .select('id, status')
     .eq('user_id', sub.user_id)
     .eq('provider', 'wompi')
-    .in('status', ['active', 'past_due'])
+    .in('status', ['active', 'past_due', 'incomplete'])
     .neq('id', sub.id)
-    .limit(1);
+    .limit(5);
 
-  if (otherChargeable && otherChargeable.length > 0) {
+  if (otherSubs && otherSubs.length > 0) {
     return {
       applied: false,
-      reason: `Another chargeable Wompi subscription exists (${otherChargeable[0].id})`,
+      reason: `Another Wompi subscription exists (${otherSubs[0].status}:${otherSubs[0].id})`,
     };
   }
 
+  const { data: openFirst } = await supabase
+    .from('billing_renewal_attempts')
+    .select('id')
+    .eq('user_id', sub.user_id)
+    .eq('period_end', FIRST_CHARGE_PERIOD_SENTINEL)
+    .in('status', ['claimed', 'pending'])
+    .limit(1);
+
+  if (openFirst && openFirst.length > 0) {
+    return {
+      applied: false,
+      reason: 'Open first-charge attempt exists for user',
+    };
+  }
+
+  const reactivatePatch = {
+    ...patch,
+    canceled_reason: null as string | null,
+    cancel_at_period_end: false,
+  };
+
   const { data: fromDunning, error: dunningError } = await supabase
     .from('billing_subscriptions')
-    .update(patch)
+    .update(reactivatePatch)
     .eq('id', sub.id)
     .eq('current_period_end', periodEnd)
     .eq('status', 'canceled')
-    .eq('cancel_at_period_end', false)
+    .eq('canceled_reason', 'dunning')
     .select('id')
     .maybeSingle();
 
@@ -303,7 +332,7 @@ async function casApplyPeriodExtension(
   // Reload to explain
   const { data: current } = await supabase
     .from('billing_subscriptions')
-    .select('status, current_period_end, cancel_at_period_end')
+    .select('status, current_period_end, cancel_at_period_end, canceled_reason')
     .eq('id', sub.id)
     .maybeSingle();
 
@@ -317,13 +346,10 @@ async function casApplyPeriodExtension(
     };
   }
 
-  if (
-    current?.status === 'canceled' &&
-    current.cancel_at_period_end === true
-  ) {
+  if (current?.status === 'canceled') {
     return {
       applied: false,
-      reason: 'Subscription canceled by user at period end',
+      reason: `Canceled not reactivatable (reason=${current.canceled_reason ?? 'unknown'})`,
     };
   }
 
@@ -493,47 +519,49 @@ async function applyApprovedRenewal(
   );
 
   if (!periodResult.applied) {
-    // Already approved without refund — must durably set the flag
-    const { data: flagged } = await supabase
-      .from('billing_renewal_attempts')
-      .update({
-        requires_refund: true,
-        refund_reason: periodResult.reason || 'Period entitlement CAS failed',
-        updated_at: nowIso,
-      })
-      .eq('wompi_reference', reference)
-      .eq('status', 'approved')
-      .select('id, requires_refund')
-      .maybeSingle();
+    const reason = periodResult.reason || 'Period entitlement CAS failed';
+    // Never move approved → claimed (would free the per-period unique slot).
+    let flagged = false;
+    for (let i = 0; i < 3; i++) {
+      const { data: row } = await supabase
+        .from('billing_renewal_attempts')
+        .update({
+          requires_refund: true,
+          refund_reason: reason,
+          error_message: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('wompi_reference', reference)
+        .eq('status', 'approved')
+        .select('id, requires_refund')
+        .maybeSingle();
+      if (row?.requires_refund === true) {
+        flagged = true;
+        break;
+      }
+    }
 
-    if (!flagged || flagged.requires_refund !== true) {
-      // Rollback approval to claimed so reconciliation retries with refund path
+    if (!flagged) {
       await supabase
         .from('billing_renewal_attempts')
         .update({
-          status: 'claimed',
-          finalized_at: null,
-          requires_refund: null,
-          refund_reason: null,
-          error_message:
-            periodResult.reason ||
-            'Period CAS failed; refund flag write failed — retry',
-          updated_at: nowIso,
+          error_message: REQUIRES_REFUND_FLAG_PENDING,
+          refund_reason: reason,
+          updated_at: new Date().toISOString(),
         })
         .eq('wompi_reference', reference)
         .eq('status', 'approved');
       console.error(
-        `[billing] CRITICAL: period CAS failed and requires_refund not written — reverted to claimed`,
-        { reference, reason: periodResult.reason }
+        `[billing] CRITICAL: period CAS failed and requires_refund not written — left approved with ${REQUIRES_REFUND_FLAG_PENDING}`,
+        { reference, reason }
       );
-      await persistPaidRenewalInvoice(supabase, sub, reference, amountCents, nowIso);
-      return false;
+    } else {
+      console.error(
+        `[billing] Wompi APPROVED but entitlement not applied — manual refund required`,
+        { reference, reason }
+      );
     }
 
-    console.error(
-      `[billing] Wompi APPROVED but entitlement not applied — manual refund required`,
-      { reference, reason: periodResult.reason }
-    );
     await persistPaidRenewalInvoice(supabase, sub, reference, amountCents, nowIso);
     return true;
   }
@@ -596,6 +624,7 @@ async function downgradeToFree(
       status: 'canceled',
       canceled_at: nowIso,
       cancel_at_period_end: false,
+      canceled_reason: 'dunning',
       updated_at: nowIso,
     })
     .eq('id', sub.id)
@@ -632,26 +661,48 @@ export async function applyWompiRenewalApproval(
   if (!attempt) return false;
   if (attempt.status === 'approved') return true;
 
-  const { data: sub } = await supabase
-    .from('billing_subscriptions')
-    .select('*')
-    .eq('id', attempt.subscription_id)
-    .maybeSingle();
-
-  if (!sub) return false;
-
-  const plan = await getPlanMeta(supabase, sub.plan_id as string);
-  return applyApprovedRenewal(
+  const leaseHolder = `approve:${attempt.user_id}:${params.reference}`;
+  const leased = await acquireChargeLease(
     supabase,
-    sub as SubRow,
-    attempt.period_end as string,
-    params.amountCents || (attempt.amount_cents as number) || 0,
-    params.reference,
-    params.transactionId,
-    plan?.interval || 'month',
-    plan?.name || 'Premium',
-    emailSender
+    attempt.user_id as string,
+    leaseHolder
   );
+  if (!leased) {
+    console.warn(
+      '[billing] applyWompiRenewalApproval skipped — charge lease not acquired',
+      { reference: params.reference }
+    );
+    return false;
+  }
+
+  try {
+    const { data: sub } = await supabase
+      .from('billing_subscriptions')
+      .select('*')
+      .eq('id', attempt.subscription_id)
+      .maybeSingle();
+
+    if (!sub) return false;
+
+    const plan = await getPlanMeta(supabase, sub.plan_id as string);
+    return applyApprovedRenewal(
+      supabase,
+      sub as SubRow,
+      attempt.period_end as string,
+      params.amountCents || (attempt.amount_cents as number) || 0,
+      params.reference,
+      params.transactionId,
+      plan?.interval || 'month',
+      plan?.name || 'Premium',
+      emailSender
+    );
+  } finally {
+    await releaseChargeLease(
+      supabase,
+      attempt.user_id as string,
+      leaseHolder
+    );
+  }
 }
 
 export async function applyWompiRenewalFailure(
@@ -883,6 +934,7 @@ async function processOneSubscription(
       .update({
         status: 'canceled',
         canceled_at: nowIso,
+        canceled_reason: 'user',
         updated_at: nowIso,
       })
       .eq('id', sub.id)
@@ -895,6 +947,122 @@ async function processOneSubscription(
     summary.skipped++;
     return;
   }
+
+  const leaseHolder = `renew:${sub.id}:${periodEnd}`;
+  const leased = await acquireChargeLease(supabase, sub.user_id, leaseHolder);
+  if (!leased) {
+    summary.skipped++;
+    return;
+  }
+
+  try {
+    await processOneSubscriptionLocked(
+      supabase,
+      wompi,
+      sub,
+      now,
+      summary,
+      emailSender,
+      periodEnd
+    );
+  } finally {
+    await releaseChargeLease(supabase, sub.user_id, leaseHolder);
+  }
+}
+
+async function retryRequiresRefundFlagPending(
+  supabase: SupabaseClient,
+  subscriptionId: string,
+  periodEnd: string
+): Promise<void> {
+  const { data: rows } = await supabase
+    .from('billing_renewal_attempts')
+    .select('wompi_reference, refund_reason')
+    .eq('subscription_id', subscriptionId)
+    .eq('period_end', periodEnd)
+    .eq('status', 'approved')
+    .eq('error_message', REQUIRES_REFUND_FLAG_PENDING)
+    .limit(5);
+
+  for (const row of rows || []) {
+    const { data: flagged } = await supabase
+      .from('billing_renewal_attempts')
+      .update({
+        requires_refund: true,
+        refund_reason:
+          (row.refund_reason as string) || 'Period entitlement CAS failed',
+        error_message: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('wompi_reference', row.wompi_reference)
+      .eq('status', 'approved')
+      .select('id, requires_refund')
+      .maybeSingle();
+    if (flagged?.requires_refund === true) {
+      console.error(
+        `[billing] Retried requires_refund flag successfully`,
+        { reference: row.wompi_reference }
+      );
+    }
+  }
+}
+
+/**
+ * Re-read live subscription under lease and charge only if still eligible.
+ */
+async function processOneSubscriptionLocked(
+  supabase: SupabaseClient,
+  wompi: WompiAdapter,
+  batchSub: SubRow,
+  now: Date,
+  summary: RenewalRunSummary,
+  emailSender: BillingEmailSender,
+  periodEnd: string
+): Promise<void> {
+  // Re-validate live row under lease
+  const { data: live } = await supabase
+    .from('billing_subscriptions')
+    .select(
+      'id, user_id, plan_id, status, cancel_at_period_end, current_period_end, current_period_start, billing_anchor_day, provider, canceled_reason'
+    )
+    .eq('id', batchSub.id)
+    .maybeSingle();
+
+  if (!live) {
+    summary.skipped++;
+    return;
+  }
+
+  const sub = live as SubRow;
+
+  if (sub.status !== 'active' && sub.status !== 'past_due') {
+    summary.skipped++;
+    return;
+  }
+  if (sub.cancel_at_period_end) {
+    summary.skipped++;
+    return;
+  }
+  if (sub.current_period_end !== periodEnd) {
+    summary.skipped++;
+    return;
+  }
+
+  // Must still be the user's only chargeable sub
+  const { data: chargeablePeers } = await supabase
+    .from('billing_subscriptions')
+    .select('id')
+    .eq('user_id', sub.user_id)
+    .eq('provider', 'wompi')
+    .in('status', ['active', 'past_due'])
+    .neq('id', sub.id)
+    .limit(1);
+  if (chargeablePeers && chargeablePeers.length > 0) {
+    summary.skipped++;
+    return;
+  }
+
+  await retryRequiresRefundFlagPending(supabase, sub.id, periodEnd);
 
   const dueAttempt = getDueDunningAttempt(periodEnd, now);
   if (dueAttempt == null) {
@@ -932,12 +1100,10 @@ async function processOneSubscription(
       if (result === 'approved') summary.approved++;
       if (result === 'failed') summary.failed++;
       if (result === 'pending') stillBlocked = true;
-      // recovered_error frees the slot — continue to maybe charge below
     }
     if (stillBlocked) {
       return;
     }
-    // If all recovered as error, fall through to open a new attempt if due
   }
 
   // Exists entitlement-bearing approval (ignore requires_refund duplicates)

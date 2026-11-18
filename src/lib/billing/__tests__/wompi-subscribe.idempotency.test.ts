@@ -31,6 +31,39 @@ const plan = {
   providerPriceMap: { wompi: '990000' },
 };
 
+const incompleteRow = {
+  id: subId,
+  status: 'incomplete',
+  current_period_end: null,
+  plan_id: planId,
+};
+
+function chain(terminal: { data?: unknown; error?: unknown }) {
+  const api: Record<string, unknown> = {};
+  const self = () => api;
+  for (const m of [
+    'select',
+    'eq',
+    'in',
+    'order',
+    'limit',
+    'update',
+    'insert',
+    'is',
+    'neq',
+    'lt',
+  ]) {
+    api[m] = jest.fn(self);
+  }
+  api.maybeSingle = jest.fn(async () => terminal);
+  api.single = jest.fn(async () => terminal);
+  (api as { then?: unknown }).then = (
+    resolve: (v: unknown) => unknown,
+    reject?: (e: unknown) => unknown
+  ) => Promise.resolve(terminal).then(resolve, reject);
+  return api;
+}
+
 describe('createWompiSourceAndSubscribe first-charge idempotency', () => {
   it('refuses when user already has active Wompi sub with future period', async () => {
     const supabase = {
@@ -95,22 +128,6 @@ describe('createWompiSourceAndSubscribe first-charge idempotency', () => {
     const reference = `wompi_first_${userId}_${planId}_${subId}_1`;
     let insertAttempts = 0;
 
-    const chain = (terminal: { data?: unknown; error?: unknown }) => {
-      const api: Record<string, unknown> = {};
-      const self = () => api;
-      for (const m of ['select', 'eq', 'in', 'order', 'limit', 'update', 'insert', 'is', 'neq']) {
-        api[m] = jest.fn(self);
-      }
-      api.maybeSingle = jest.fn(async () => terminal);
-      api.single = jest.fn(async () => terminal);
-      // Supabase builders are thenable when awaited without maybeSingle
-      (api as { then?: unknown }).then = (
-        resolve: (v: unknown) => unknown,
-        reject?: (e: unknown) => unknown
-      ) => Promise.resolve(terminal).then(resolve, reject);
-      return api;
-    };
-
     let subSelect = 0;
     const supabase = {
       from: jest.fn((table: string) => {
@@ -122,16 +139,16 @@ describe('createWompiSourceAndSubscribe first-charge idempotency', () => {
                 return chain({ data: [], error: null });
               }
               return chain({
-                data: {
-                  id: subId,
-                  status: 'incomplete',
-                  current_period_end: null,
-                  plan_id: planId,
-                },
+                data: [incompleteRow],
                 error: null,
               });
             },
             update: () => chain({ data: null, error: null }),
+            insert: () =>
+              chain({
+                data: incompleteRow,
+                error: null,
+              }),
           };
         }
         if (table === 'billing_renewal_attempts') {
@@ -200,32 +217,6 @@ describe('createWompiSourceAndSubscribe first-charge idempotency', () => {
     let claimedAttemptNumber: number | null = null;
     let claimedReference: string | null = null;
 
-    const chain = (terminal: { data?: unknown; error?: unknown }) => {
-      const api: Record<string, unknown> = {};
-      const self = () => api;
-      for (const m of [
-        'select',
-        'eq',
-        'in',
-        'order',
-        'limit',
-        'update',
-        'insert',
-        'is',
-        'neq',
-        'lt',
-      ]) {
-        api[m] = jest.fn(self);
-      }
-      api.maybeSingle = jest.fn(async () => terminal);
-      api.single = jest.fn(async () => terminal);
-      (api as { then?: unknown }).then = (
-        resolve: (v: unknown) => unknown,
-        reject?: (e: unknown) => unknown
-      ) => Promise.resolve(terminal).then(resolve, reject);
-      return api;
-    };
-
     let subSelect = 0;
     const supabase = {
       from: jest.fn((table: string) => {
@@ -237,17 +228,16 @@ describe('createWompiSourceAndSubscribe first-charge idempotency', () => {
                 return chain({ data: [], error: null });
               }
               return chain({
-                data: {
-                  id: subId,
-                  status: 'incomplete',
-                  current_period_end: null,
-                  plan_id: planId,
-                },
+                data: [incompleteRow],
                 error: null,
               });
             },
             update: () => chain({ data: { id: subId }, error: null }),
-            insert: () => chain({ data: null, error: null }),
+            insert: () =>
+              chain({
+                data: incompleteRow,
+                error: null,
+              }),
           };
         }
         if (table === 'billing_renewal_attempts') {
@@ -376,16 +366,16 @@ describe('createWompiSourceAndSubscribe first-charge idempotency', () => {
                 return chain({ data: [], error: null });
               }
               return chain({
-                data: {
-                  id: subId,
-                  status: 'incomplete',
-                  current_period_end: null,
-                  plan_id: planId,
-                },
+                data: [incompleteRow],
                 error: null,
               });
             },
             update: () => chain({ data: null, error: null }),
+            insert: () =>
+              chain({
+                data: incompleteRow,
+                error: null,
+              }),
           };
         }
         if (table === 'billing_renewal_attempts') {
@@ -432,21 +422,6 @@ describe('createWompiSourceAndSubscribe first-charge idempotency', () => {
     const reference = `wompi_first_${userId}_${planId}_${subId}_1`;
     const stale = new Date(Date.now() - 20 * 60 * 1000).toISOString();
 
-    const chain = (terminal: { data?: unknown; error?: unknown }) => {
-      const api: Record<string, unknown> = {};
-      const self = () => api;
-      for (const m of ['select', 'eq', 'in', 'order', 'limit', 'update', 'insert', 'is', 'neq']) {
-        api[m] = jest.fn(self);
-      }
-      api.maybeSingle = jest.fn(async () => terminal);
-      api.single = jest.fn(async () => terminal);
-      (api as { then?: unknown }).then = (
-        resolve: (v: unknown) => unknown,
-        reject?: (e: unknown) => unknown
-      ) => Promise.resolve(terminal).then(resolve, reject);
-      return api;
-    };
-
     let subSelect = 0;
     const supabase = {
       from: jest.fn((table: string) => {
@@ -458,16 +433,16 @@ describe('createWompiSourceAndSubscribe first-charge idempotency', () => {
                 return chain({ data: [], error: null });
               }
               return chain({
-                data: {
-                  id: subId,
-                  status: 'incomplete',
-                  current_period_end: null,
-                  plan_id: planId,
-                },
+                data: [incompleteRow],
                 error: null,
               });
             },
             update: () => chain({ data: null, error: null }),
+            insert: () =>
+              chain({
+                data: incompleteRow,
+                error: null,
+              }),
           };
         }
         if (table === 'billing_renewal_attempts') {
@@ -849,7 +824,73 @@ describe('findBlockingSubscription', () => {
 
     const blocked = await findBlockingSubscription(supabase as never, userId);
     expect(blocked).toBeNull();
-    expect(tombstonePayload).toEqual(expect.objectContaining({ status: 'canceled' }));
+    expect(tombstonePayload).toEqual(
+      expect.objectContaining({
+        status: 'canceled',
+        canceled_reason: 'expired_resubscribe',
+        cancel_at_period_end: true,
+      })
+    );
+  });
+
+  it('does not tombstone when a non-refund approved attempt exists for the period', async () => {
+    const expired = new Date(Date.now() - 3 * 86400000).toISOString();
+    const supabase = {
+      from: jest.fn((table: string) => {
+        if (table === 'billing_subscriptions') {
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  in: () => ({
+                    order: () => ({
+                      limit: async () => ({
+                        data: [
+                          {
+                            id: subId,
+                            status: 'active',
+                            current_period_end: expired,
+                            plan_id: planId,
+                          },
+                        ],
+                        error: null,
+                      }),
+                    }),
+                  }),
+                }),
+              }),
+            }),
+            update: () => {
+              throw new Error('must not tombstone while approved exists');
+            },
+          };
+        }
+        if (table === 'billing_renewal_attempts') {
+          return {
+            select: () => ({
+              eq: () => ({
+                in: () => ({
+                  limit: async () => ({
+                    data: [
+                      {
+                        id: 'a-approved',
+                        status: 'approved',
+                        requires_refund: null,
+                      },
+                    ],
+                    error: null,
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        return {};
+      }),
+    };
+
+    const blocked = await findBlockingSubscription(supabase as never, userId);
+    expect(blocked?.id).toBe(subId);
   });
 
   it('blocks expired active when an open claimed/pending renewal exists', async () => {
@@ -890,7 +931,7 @@ describe('findBlockingSubscription', () => {
               eq: () => ({
                 in: () => ({
                   limit: async () => ({
-                    data: [{ id: 'open-attempt' }],
+                    data: [{ id: 'open-attempt', status: 'claimed' }],
                     error: null,
                   }),
                 }),
@@ -937,6 +978,7 @@ describe('cancelOrphanIncompleteSubscriptions', () => {
 
     expect(updates).toHaveLength(1);
     expect(updates[0].payload.status).toBe('canceled');
+    expect(updates[0].payload.canceled_reason).toBe('superseded');
     expect(filters).toEqual(
       expect.arrayContaining([
         `user_id=${userId}`,
@@ -951,31 +993,6 @@ describe('cancelOrphanIncompleteSubscriptions', () => {
 describe('createSourceTransaction inconclusive keeps claimed', () => {
   it('records error_message but leaves status claimed on network/5xx', async () => {
     const attemptPatches: Record<string, unknown>[] = [];
-    const chain = (terminal: { data?: unknown; error?: unknown }) => {
-      const api: Record<string, unknown> = {};
-      const self = () => api;
-      for (const m of [
-        'select',
-        'eq',
-        'in',
-        'order',
-        'limit',
-        'update',
-        'insert',
-        'is',
-        'neq',
-        'lt',
-      ]) {
-        api[m] = jest.fn(self);
-      }
-      api.maybeSingle = jest.fn(async () => terminal);
-      api.single = jest.fn(async () => terminal);
-      (api as { then?: unknown }).then = (
-        resolve: (v: unknown) => unknown,
-        reject?: (e: unknown) => unknown
-      ) => Promise.resolve(terminal).then(resolve, reject);
-      return api;
-    };
 
     let subSelect = 0;
     const supabase = {
@@ -986,16 +1003,16 @@ describe('createSourceTransaction inconclusive keeps claimed', () => {
               subSelect++;
               if (subSelect === 1) return chain({ data: [], error: null });
               return chain({
-                data: {
-                  id: subId,
-                  status: 'incomplete',
-                  current_period_end: null,
-                  plan_id: planId,
-                },
+                data: [incompleteRow],
                 error: null,
               });
             },
             update: () => chain({ data: null, error: null }),
+            insert: () =>
+              chain({
+                data: incompleteRow,
+                error: null,
+              }),
           };
         }
         if (table === 'billing_renewal_attempts') {

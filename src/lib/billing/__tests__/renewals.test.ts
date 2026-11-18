@@ -10,6 +10,70 @@ import {
 import { buildWompiRenewalReference } from '../wompi-references';
 import { CLAIM_STALE_MS } from '../dunning';
 
+/** Flexible billing_subscriptions select for processWompiRenewals live re-read. */
+function makeLiveSubSelect(liveSub: Record<string, unknown>) {
+  return () => {
+    const node: Record<string, unknown> = {};
+    const self = () => node;
+    let afterNeq = false;
+    node.eq = jest.fn(self);
+    node.in = jest.fn(self);
+    node.lte = jest.fn(self);
+    node.or = jest.fn(self);
+    node.neq = jest.fn(() => {
+      afterNeq = true;
+      return node;
+    });
+    node.order = jest.fn(self);
+    node.limit = jest.fn(async () => {
+      if (afterNeq) {
+        afterNeq = false;
+        return { data: [], error: null };
+      }
+      return { data: [liveSub], error: null };
+    });
+    node.maybeSingle = jest.fn(async () => ({
+      data: liveSub,
+      error: null,
+    }));
+    return node;
+  };
+}
+
+/** Flexible billing_renewal_attempts select for locked renewals flow. */
+function makeAttemptSelect(opts: {
+  pending?: unknown[];
+  approved?: unknown[];
+  prior?: unknown[];
+  pendingMarker?: unknown[];
+}) {
+  return () => {
+    const node: Record<string, unknown> = {};
+    const self = () => node;
+    let limitCalls = 0;
+    node.eq = jest.fn(self);
+    node.in = jest.fn(async () => ({
+      data: opts.pending ?? [],
+      error: null,
+    }));
+    node.order = jest.fn(async () => ({
+      data: opts.prior ?? [],
+      error: null,
+    }));
+    node.limit = jest.fn(async () => {
+      limitCalls++;
+      // First limit: retryRequiresRefundFlagPending (error_message marker)
+      if (limitCalls === 1) {
+        return { data: opts.pendingMarker ?? [], error: null };
+      }
+      // Second+: entitlement-bearing approved check
+      return { data: opts.approved ?? [], error: null };
+    });
+    node.maybeSingle = jest.fn(async () => ({ data: null, error: null }));
+    return node;
+  };
+}
+
 describe('casAttemptStatus', () => {
   it('updates only when status is in fromStatuses', async () => {
     const updates: Array<{ filter: string[]; patch: unknown }> = [];
@@ -171,39 +235,23 @@ describe('processWompiRenewals selection', () => {
     const reference = buildWompiRenewalReference(subId, periodEnd, 1);
     const staleClaimedAt = new Date(now.getTime() - CLAIM_STALE_MS - 1000).toISOString();
     let casPending = false;
+    const liveSub = {
+      id: subId,
+      user_id: userId,
+      plan_id: 'plan_premium_month',
+      status: 'past_due',
+      cancel_at_period_end: false,
+      current_period_end: periodEnd,
+      current_period_start: '2026-10-10T07:00:00.000Z',
+      billing_anchor_day: 10,
+      provider: 'wompi',
+    };
 
     const supabase = {
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
           return {
-            select: () => ({
-              eq: () => ({
-                in: () => ({
-                  lte: () => ({
-                    order: () => ({
-                      order: () => ({
-                        limit: async () => ({
-                          data: [
-                            {
-                              id: subId,
-                              user_id: userId,
-                              plan_id: 'plan_premium_month',
-                              status: 'past_due',
-                              cancel_at_period_end: false,
-                              current_period_end: periodEnd,
-                              current_period_start: '2026-10-10T07:00:00.000Z',
-                              billing_anchor_day: 10,
-                              provider: 'wompi',
-                            },
-                          ],
-                          error: null,
-                        }),
-                      }),
-                    }),
-                  }),
-                }),
-              }),
-            }),
+            select: makeLiveSubSelect(liveSub),
             update: () => ({
               eq: () => ({
                 in: async () => ({ error: null }),
@@ -213,37 +261,23 @@ describe('processWompiRenewals selection', () => {
           };
         }
         if (table === 'billing_renewal_attempts') {
+          const staleAttempt = {
+            id: 'attempt-1',
+            subscription_id: subId,
+            user_id: userId,
+            period_end: periodEnd,
+            attempt_number: 1,
+            wompi_reference: reference,
+            wompi_transaction_id: null,
+            amount_cents: 990000,
+            status: 'claimed',
+            claimed_at: staleClaimedAt,
+          };
           return {
-            select: () => ({
-              eq: () => ({
-                eq: () => ({
-                  in: async () => ({
-                    data: [
-                      {
-                        id: 'attempt-1',
-                        subscription_id: subId,
-                        user_id: userId,
-                        period_end: periodEnd,
-                        attempt_number: 1,
-                        wompi_reference: reference,
-                        wompi_transaction_id: null,
-                        amount_cents: 990000,
-                        status: 'claimed',
-                        claimed_at: staleClaimedAt,
-                      },
-                    ],
-                    error: null,
-                  }),
-                  eq: () => ({
-                    maybeSingle: async () => ({ data: null, error: null }),
-                  }),
-                  order: async () => ({
-                    data: [{ attempt_number: 1, status: 'claimed' }],
-                    error: null,
-                  }),
-                  maybeSingle: async () => ({ data: null, error: null }),
-                }),
-              }),
+            select: makeAttemptSelect({
+              pending: [staleAttempt],
+              prior: [{ attempt_number: 1, status: 'claimed' }],
+              approved: [],
             }),
             update: (patch: Record<string, unknown>) => ({
               eq: () => ({
@@ -350,66 +384,63 @@ describe('processWompiRenewals selection', () => {
 
   it('does not create a new charge while a fresh claimed attempt has no tx yet', async () => {
     const reference = buildWompiRenewalReference(subId, periodEnd, 1);
+    const liveSub = {
+      id: subId,
+      user_id: userId,
+      plan_id: 'plan_premium_month',
+      status: 'active',
+      cancel_at_period_end: false,
+      current_period_end: periodEnd,
+      current_period_start: '2026-10-10T07:00:00.000Z',
+      provider: 'wompi',
+    };
     const supabase = {
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
           return {
-            select: () => ({
-              eq: () => ({
-                in: () => ({
-                  lte: () => ({
-                    order: () => ({
-                      order: () => ({
-                        limit: async () => ({
-                          data: [
-                            {
-                              id: subId,
-                              user_id: userId,
-                              plan_id: 'plan_premium_month',
-                              status: 'active',
-                              cancel_at_period_end: false,
-                              current_period_end: periodEnd,
-                              current_period_start: '2026-10-10T07:00:00.000Z',
-                              provider: 'wompi',
-                            },
-                          ],
-                          error: null,
-                        }),
-                      }),
-                    }),
-                  }),
-                }),
-              }),
-            }),
+            select: makeLiveSubSelect(liveSub),
           };
         }
         if (table === 'billing_renewal_attempts') {
+          const attemptSelect = () => {
+            const node: Record<string, unknown> = {};
+            const self = () => node;
+            node.eq = jest.fn(self);
+            node.in = jest.fn(async () => ({
+              data: [
+                {
+                  id: 'attempt-1',
+                  subscription_id: subId,
+                  user_id: userId,
+                  period_end: periodEnd,
+                  attempt_number: 1,
+                  wompi_reference: reference,
+                  wompi_transaction_id: null,
+                  amount_cents: 990000,
+                  status: 'claimed',
+                  claimed_at: now.toISOString(),
+                },
+              ],
+              error: null,
+            }));
+            node.limit = jest.fn(async () => ({ data: [], error: null }));
+            node.order = jest.fn(async () => ({ data: [], error: null }));
+            node.maybeSingle = jest.fn(async () => ({ data: null, error: null }));
+            return node;
+          };
           return {
-            select: () => ({
+            select: () => attemptSelect(),
+            insert: jest.fn(async () => {
+              throw new Error('should not insert');
+            }),
+            update: () => ({
               eq: () => ({
-                eq: () => ({
-                  in: async () => ({
-                    data: [
-                      {
-                        id: 'attempt-1',
-                        subscription_id: subId,
-                        user_id: userId,
-                        period_end: periodEnd,
-                        attempt_number: 1,
-                        wompi_reference: reference,
-                        wompi_transaction_id: null,
-                        amount_cents: 990000,
-                        status: 'claimed',
-                        claimed_at: now.toISOString(),
-                      },
-                    ],
-                    error: null,
+                in: () => ({
+                  select: () => ({
+                    maybeSingle: async () => ({ data: { id: 'attempt-1' }, error: null }),
                   }),
                 }),
               }),
-            }),
-            insert: jest.fn(async () => {
-              throw new Error('should not insert');
             }),
           };
         }
@@ -633,39 +664,23 @@ describe('day-5 final dunning attempt before downgrade', () => {
   it('runs attempt 4 on day 5 when attempts 1–3 already failed (no early downgrade)', async () => {
     let insertedAttempt: number | null = null;
     let downgraded = false;
+    const liveSub = {
+      id: subId,
+      user_id: userId,
+      plan_id: 'plan_premium_month',
+      status: 'past_due',
+      cancel_at_period_end: false,
+      current_period_end: periodEnd,
+      current_period_start: '2026-10-10T07:00:00.000Z',
+      billing_anchor_day: 10,
+      provider: 'wompi',
+    };
 
     const supabase = {
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
           return {
-            select: () => ({
-              eq: () => ({
-                in: () => ({
-                  lte: () => ({
-                    order: () => ({
-                      order: () => ({
-                        limit: async () => ({
-                          data: [
-                            {
-                              id: subId,
-                              user_id: userId,
-                              plan_id: 'plan_premium_month',
-                              status: 'past_due',
-                              cancel_at_period_end: false,
-                              current_period_end: periodEnd,
-                              current_period_start: '2026-10-10T07:00:00.000Z',
-                              billing_anchor_day: 10,
-                              provider: 'wompi',
-                            },
-                          ],
-                          error: null,
-                        }),
-                      }),
-                    }),
-                  }),
-                }),
-              }),
-            }),
+            select: makeLiveSubSelect(liveSub),
             update: (payload: Record<string, unknown>) => {
               if (payload.status === 'canceled') downgraded = true;
               return {
@@ -828,36 +843,20 @@ describe('day-5 final dunning attempt before downgrade', () => {
 
   it('downgrades on a later run only after attempt 4 is declined', async () => {
     let downgraded = false;
+    const liveSub = {
+      id: subId,
+      user_id: userId,
+      plan_id: 'plan_premium_month',
+      status: 'past_due',
+      cancel_at_period_end: false,
+      current_period_end: periodEnd,
+      provider: 'wompi',
+    };
     const supabase = {
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
           return {
-            select: () => ({
-              eq: () => ({
-                in: () => ({
-                  lte: () => ({
-                    order: () => ({
-                      order: () => ({
-                        limit: async () => ({
-                          data: [
-                            {
-                              id: subId,
-                              user_id: userId,
-                              plan_id: 'plan_premium_month',
-                              status: 'past_due',
-                              cancel_at_period_end: false,
-                              current_period_end: periodEnd,
-                              provider: 'wompi',
-                            },
-                          ],
-                          error: null,
-                        }),
-                      }),
-                    }),
-                  }),
-                }),
-              }),
-            }),
+            select: makeLiveSubSelect(liveSub),
             update: (payload: Record<string, unknown>) => {
               if (payload.status === 'canceled') downgraded = true;
               return {
@@ -968,36 +967,20 @@ describe('stale-claim reference lookup contract', () => {
   function baseSupabase(opts: {
     onAttemptUpdate?: (patch: Record<string, unknown>, from: string[]) => void;
   }) {
+    const liveSub = {
+      id: subId,
+      user_id: userId,
+      plan_id: 'plan_premium_month',
+      status: 'past_due',
+      cancel_at_period_end: false,
+      current_period_end: periodEnd,
+      provider: 'wompi',
+    };
     return {
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
           return {
-            select: () => ({
-              eq: () => ({
-                in: () => ({
-                  lte: () => ({
-                    order: () => ({
-                      order: () => ({
-                        limit: async () => ({
-                          data: [
-                            {
-                              id: subId,
-                              user_id: userId,
-                              plan_id: 'plan_premium_month',
-                              status: 'past_due',
-                              cancel_at_period_end: false,
-                              current_period_end: periodEnd,
-                              provider: 'wompi',
-                            },
-                          ],
-                          error: null,
-                        }),
-                      }),
-                    }),
-                  }),
-                }),
-              }),
-            }),
+            select: makeLiveSubSelect(liveSub),
             update: () => ({
               eq: () => ({
                 in: async () => ({ error: null }),
@@ -1007,37 +990,23 @@ describe('stale-claim reference lookup contract', () => {
           };
         }
         if (table === 'billing_renewal_attempts') {
+          const staleAttempt = {
+            id: 'attempt-1',
+            subscription_id: subId,
+            user_id: userId,
+            period_end: periodEnd,
+            attempt_number: 1,
+            wompi_reference: reference,
+            wompi_transaction_id: null,
+            amount_cents: 990000,
+            status: 'claimed',
+            claimed_at: staleClaimedAt,
+          };
           return {
-            select: () => ({
-              eq: () => ({
-                eq: () => ({
-                  in: async () => ({
-                    data: [
-                      {
-                        id: 'attempt-1',
-                        subscription_id: subId,
-                        user_id: userId,
-                        period_end: periodEnd,
-                        attempt_number: 1,
-                        wompi_reference: reference,
-                        wompi_transaction_id: null,
-                        amount_cents: 990000,
-                        status: 'claimed',
-                        claimed_at: staleClaimedAt,
-                      },
-                    ],
-                    error: null,
-                  }),
-                  eq: () => ({
-                    maybeSingle: async () => ({ data: null, error: null }),
-                  }),
-                  order: async () => ({
-                    data: [{ attempt_number: 1, status: 'claimed' }],
-                    error: null,
-                  }),
-                  maybeSingle: async () => ({ data: null, error: null }),
-                }),
-              }),
+            select: makeAttemptSelect({
+              pending: [staleAttempt],
+              prior: [{ attempt_number: 1, status: 'claimed' }],
+              approved: [],
             }),
             update: (patch: Record<string, unknown>) => ({
               eq: () => ({
@@ -1793,68 +1762,54 @@ describe('round-4: dunning reactivation, durable refund, approved exists', () =>
     const emailSender = { send: jest.fn(async () => ({ sent: true })) };
     const now = new Date('2026-11-11T08:00:00.000Z');
     let charged = false;
+    const liveSub = {
+      id: subId,
+      user_id: userId,
+      plan_id: 'plan_premium_month',
+      status: 'past_due',
+      cancel_at_period_end: false,
+      current_period_end: periodEnd,
+      provider: 'wompi',
+    };
 
     const supabase = {
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
           return {
-            select: () => ({
-              eq: () => ({
-                in: () => ({
-                  lte: () => ({
-                    order: () => ({
-                      order: () => ({
-                        limit: async () => ({
-                          data: [
-                            {
-                              id: subId,
-                              user_id: userId,
-                              plan_id: 'plan_premium_month',
-                              status: 'past_due',
-                              cancel_at_period_end: false,
-                              current_period_end: periodEnd,
-                              provider: 'wompi',
-                            },
-                          ],
-                          error: null,
-                        }),
-                      }),
-                    }),
-                  }),
-                }),
-              }),
-            }),
+            select: makeLiveSubSelect(liveSub),
           };
         }
         if (table === 'billing_renewal_attempts') {
-          const attemptSelect = () => {
-            const node: Record<string, unknown> = {};
-            const self = () => node;
-            node.eq = jest.fn(self);
-            node.in = jest.fn(async () => ({ data: [], error: null }));
-            node.limit = jest.fn(async () => ({
-              data: [
+          return {
+            select: makeAttemptSelect({
+              pending: [],
+              approved: [
                 { id: 'a-refund', requires_refund: true },
                 { id: 'a-real', requires_refund: null },
               ],
-              error: null,
-            }));
-            node.order = jest.fn(async () => ({
-              data: [
+              prior: [
                 { attempt_number: 2, status: 'approved' },
                 { attempt_number: 1, status: 'approved' },
               ],
-              error: null,
-            }));
-            node.maybeSingle = jest.fn(async () => ({ data: null, error: null }));
-            return node;
-          };
-          return {
-            select: () => attemptSelect(),
+            }),
             insert: async () => {
               charged = true;
               return { error: null };
             },
+            update: () => ({
+              eq: () => ({
+                eq: () => ({
+                  select: () => ({
+                    maybeSingle: async () => ({ data: { id: 'x' }, error: null }),
+                  }),
+                }),
+                in: () => ({
+                  select: () => ({
+                    maybeSingle: async () => ({ data: { id: 'x' }, error: null }),
+                  }),
+                }),
+              }),
+            }),
           };
         }
         if (table === 'billing_plans') {

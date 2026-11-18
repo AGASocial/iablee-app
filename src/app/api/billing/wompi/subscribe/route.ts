@@ -127,6 +127,12 @@ export async function POST(request: Request) {
 
     return successResponse(result, statusCode);
   } catch (error) {
+    if (
+      error instanceof BillingError &&
+      error.code === 'WOMPI_SUBSCRIBE_IN_PROGRESS'
+    ) {
+      return errorResponse(error.message, 409);
+    }
     console.error('Wompi subscribe failed:', error);
     return errorResponse(
       error instanceof Error ? error.message : 'Failed to subscribe',
