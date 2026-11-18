@@ -6,11 +6,14 @@
 -- ---------------------------------------------------------------------------
 ALTER TABLE public.billing_renewal_attempts
   ADD COLUMN IF NOT EXISTS refund_alerted_at timestamp with time zone NULL,
+  ADD COLUMN IF NOT EXISTS refund_alert_sent_at timestamp with time zone NULL,
   ADD COLUMN IF NOT EXISTS refund_resolved_at timestamp with time zone NULL,
   ADD COLUMN IF NOT EXISTS refund_resolution_note text NULL;
 
 COMMENT ON COLUMN public.billing_renewal_attempts.refund_alerted_at IS
-  'Set when admin refund alert email was successfully claimed/sent (CAS dedupe).';
+  'In-flight / last claim time for admin refund alert (CAS). Cleared on send failure; stale claims without sent_at are reclaimable.';
+COMMENT ON COLUMN public.billing_renewal_attempts.refund_alert_sent_at IS
+  'Set when admin refund alert email was successfully sent (durable dedupe).';
 COMMENT ON COLUMN public.billing_renewal_attempts.refund_resolved_at IS
   'Ops marks after manual Wompi dashboard refund; NULL = still unresolved.';
 COMMENT ON COLUMN public.billing_renewal_attempts.refund_resolution_note IS
@@ -21,8 +24,8 @@ CREATE INDEX IF NOT EXISTS billing_renewal_attempts_unresolved_refund_idx
   WHERE requires_refund = true AND refund_resolved_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS billing_renewal_attempts_unalerted_refund_idx
-  ON public.billing_renewal_attempts (requires_refund, refund_alerted_at)
-  WHERE requires_refund = true AND refund_alerted_at IS NULL;
+  ON public.billing_renewal_attempts (requires_refund, refund_alert_sent_at)
+  WHERE requires_refund = true AND refund_alert_sent_at IS NULL;
 
 -- ---------------------------------------------------------------------------
 -- billing_email_events: allow daily refund summary dedupe type

@@ -13,9 +13,12 @@ import {
   parseBillingAlertEmails,
   processRequiresRefundAlerts,
   refundSummaryPeriodKey,
+  setAdminEmailSenderForTests,
+  REFUND_ALERT_CLAIM_STALE_MS,
 } from '../refund-alerts';
 import { configureChargeLeaseForTests } from '../charge-leases';
 import { BillingError } from '../types';
+import { buildWompiRenewalReference } from '../wompi-references';
 
 const userId = '11111111-2222-3333-4444-555555555555';
 const subId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
@@ -432,6 +435,160 @@ describe('round-9: eligibility read errors fail closed', () => {
       )
     ).toBe(true);
   });
+
+  it('skips charge when priorAttempts query errors (does not treat as empty)', async () => {
+    const emailSender = { send: jest.fn(async () => ({ sent: true })) };
+    const now = new Date('2026-11-11T08:00:00.000Z');
+    const dueSub = {
+      id: subId,
+      user_id: userId,
+      plan_id: 'plan_premium_month',
+      status: 'active',
+      cancel_at_period_end: false,
+      current_period_end: periodEnd,
+      current_period_start: '2026-10-10T07:00:00.000Z',
+      provider: 'wompi',
+    };
+
+    let insertCalled = false;
+
+    const supabase = {
+      from: jest.fn((table: string) => {
+        if (table === 'billing_subscriptions') {
+          return {
+            select: () => {
+              const node: Record<string, unknown> = {};
+              const self = () => node;
+              let afterNeq = false;
+              node.eq = jest.fn(self);
+              node.in = jest.fn(self);
+              node.lte = jest.fn(self);
+              node.or = jest.fn(self);
+              node.neq = jest.fn(() => {
+                afterNeq = true;
+                return node;
+              });
+              node.order = jest.fn(self);
+              node.limit = jest.fn(async () => {
+                if (afterNeq) return { data: [], error: null };
+                return { data: [dueSub], error: null };
+              });
+              node.maybeSingle = jest.fn(async () => ({
+                data: dueSub,
+                error: null,
+              }));
+              return node;
+            },
+            update: () => chain({ data: null, error: null }),
+          };
+        }
+        if (table === 'billing_plans') {
+          return {
+            select: () =>
+              chain({
+                data: {
+                  name: 'Premium',
+                  interval: 'month',
+                  provider_price_map: { wompi: 'wompi_premium_month' },
+                },
+                error: null,
+              }),
+          };
+        }
+        if (table === 'billing_renewal_attempts') {
+          return {
+            select: (cols?: string) => {
+              const node: Record<string, unknown> = {};
+              const self = () => node;
+              for (const m of [
+                'eq',
+                'neq',
+                'in',
+                'is',
+                'or',
+                'order',
+                'limit',
+              ]) {
+                node[m] = jest.fn(self);
+              }
+              node.maybeSingle = jest.fn(async () => ({
+                data: null,
+                error: null,
+              }));
+              (node as { then?: unknown }).then = (
+                resolve: (v: unknown) => unknown,
+                reject?: (e: unknown) => unknown
+              ) => {
+                // priorAttempts: attempt_number + status (no requires_refund/applied_at)
+                if (
+                  cols?.includes('attempt_number') &&
+                  cols.includes('status') &&
+                  !cols.includes('requires_refund')
+                ) {
+                  return Promise.resolve({
+                    data: null,
+                    error: { message: 'priorAttempts boom' },
+                  }).then(resolve, reject);
+                }
+                return Promise.resolve({ data: [], error: null }).then(
+                  resolve,
+                  reject
+                );
+              };
+              return node;
+            },
+            insert: () => {
+              insertCalled = true;
+              return {
+                then: (
+                  resolve: (v: unknown) => unknown,
+                  reject?: (e: unknown) => unknown
+                ) =>
+                  Promise.resolve({ data: null, error: null }).then(
+                    resolve,
+                    reject
+                  ),
+              };
+            },
+            update: () => chain({ data: null, error: null }),
+            delete: () => chain({ data: null, error: null }),
+          };
+        }
+        if (table === 'billing_email_events') {
+          return {
+            insert: () =>
+              chain({
+                data: null,
+                error: { code: '23505', message: 'duplicate' },
+              }),
+          };
+        }
+        return chain({ data: null, error: null });
+      }),
+      rpc: jest.fn(async () => ({ data: true, error: null })),
+    };
+
+    const wompi = {
+      createSourceTransaction: jest.fn(),
+      getTransaction: jest.fn(),
+      findTransactionByReference: jest.fn(),
+      waitForTransactionStatus: jest.fn(),
+    };
+
+    const summary = await processWompiRenewals(supabase as never, wompi as never, {
+      now,
+      emailSender,
+      timeBudgetMs: 30_000,
+    });
+
+    expect(insertCalled).toBe(false);
+    expect(wompi.createSourceTransaction).not.toHaveBeenCalled();
+    expect(
+      summary.errors.some(e =>
+        e.message.includes('Prior attempts read failed')
+      )
+    ).toBe(true);
+  });
 });
 
 describe('round-9: non-promotable first-charge → requires_refund + not retryable', () => {
@@ -638,18 +795,22 @@ describe('round-9: non-promotable first-charge → requires_refund + not retryab
 });
 
 describe('round-9: lease lost before/after Wompi call', () => {
-  it('abandonUnsentClaim deletes only claimed rows with null tx id', async () => {
-    const deleted: string[] = [];
+  it('abandonUnsentClaim CAS filters status=claimed and wompi_transaction_id null', async () => {
+    const eqFilters: Array<{ col: string; val: unknown }> = [];
+    const isFilters: Array<{ col: string; val: unknown }> = [];
     const supabase = {
       from: jest.fn(() => ({
         delete: () => {
           const node: Record<string, unknown> = {};
           const self = () => node;
           node.eq = jest.fn((col: string, val: unknown) => {
-            if (col === 'wompi_reference') deleted.push(String(val));
+            eqFilters.push({ col, val });
             return node;
           });
-          node.is = jest.fn(self);
+          node.is = jest.fn((col: string, val: unknown) => {
+            isFilters.push({ col, val });
+            return node;
+          });
           node.select = jest.fn(self);
           node.maybeSingle = jest.fn(async () => ({
             data: { id: 'att-abandon' },
@@ -662,12 +823,21 @@ describe('round-9: lease lost before/after Wompi call', () => {
 
     const ok = await abandonUnsentClaim(supabase as never, reference);
     expect(ok).toBe(true);
-    expect(deleted).toContain(reference);
+    expect(eqFilters).toEqual(
+      expect.arrayContaining([
+        { col: 'wompi_reference', val: reference },
+        { col: 'status', val: 'claimed' },
+      ])
+    );
+    expect(isFilters).toEqual(
+      expect.arrayContaining([{ col: 'wompi_transaction_id', val: null }])
+    );
   });
 
-  it('lease lost before createSourceTransaction abandons claim; next run can reuse ref', async () => {
+  it('lease lost before createSourceTransaction abandons claim; next run reuses same attempt/ref', async () => {
     const emailSender = { send: jest.fn(async () => ({ sent: true })) };
     const now = new Date('2026-11-11T08:00:00.000Z');
+    const expectedRef = buildWompiRenewalReference(subId, periodEnd, 2);
     const dueSub = {
       id: subId,
       user_id: userId,
@@ -680,13 +850,15 @@ describe('round-9: lease lost before/after Wompi call', () => {
     };
 
     let abandoned = false;
-    let claimed = false;
-    let leaseRpcCalls = 0;
+    let insertCount = 0;
+    /** Run 1 only: fail the pre-charge lease refresh after claim insert. */
+    let failNextPreChargeRefresh = true;
+    let pendingClaim = false;
+    const insertedRefs: string[] = [];
 
-    // Use RPC path: acquire ok until claim inserted, then pre-charge refresh fails.
     configureChargeLeaseForTests(null);
 
-    const supabase = {
+    const makeSupabase = () => ({
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
           return {
@@ -778,8 +950,10 @@ describe('round-9: lease lost before/after Wompi call', () => {
                 );
               return node;
             },
-            insert: () => {
-              claimed = true;
+            insert: (row: Record<string, unknown>) => {
+              insertCount++;
+              pendingClaim = true;
+              insertedRefs.push(String(row.wompi_reference));
               return {
                 then: (
                   resolve: (v: unknown) => unknown,
@@ -794,6 +968,7 @@ describe('round-9: lease lost before/after Wompi call', () => {
             update: () => chain({ data: { id: 'att-1' }, error: null }),
             delete: () => {
               abandoned = true;
+              pendingClaim = false;
               return chain({ data: { id: 'att-1' }, error: null });
             },
           };
@@ -811,9 +986,10 @@ describe('round-9: lease lost before/after Wompi call', () => {
       }),
       rpc: jest.fn(async (fn: string) => {
         if (fn === 'acquire_billing_charge_lease') {
-          leaseRpcCalls++;
-          // After claim insert, next acquire (pre-charge refresh) fails
-          if (claimed) return { data: false, error: null };
+          if (pendingClaim && failNextPreChargeRefresh) {
+            failNextPreChargeRefresh = false;
+            return { data: false, error: null };
+          }
           return { data: true, error: null };
         }
         if (fn === 'release_billing_charge_lease') {
@@ -821,27 +997,51 @@ describe('round-9: lease lost before/after Wompi call', () => {
         }
         return { data: true, error: null };
       }),
-    };
+    });
 
     const wompi = {
-      createSourceTransaction: jest.fn(),
+      createSourceTransaction: jest.fn(async () => ({
+        id: 'tx-reuse',
+        status: 'APPROVED',
+        amountInCents: 990000,
+      })),
       getTransaction: jest.fn(),
       findTransactionByReference: jest.fn(),
-      waitForTransactionStatus: jest.fn(),
+      waitForTransactionStatus: jest.fn(async () => ({
+        id: 'tx-reuse',
+        status: 'APPROVED',
+        amountInCents: 990000,
+      })),
     };
 
-    const summary = await processWompiRenewals(supabase as never, wompi as never, {
+    const supabase1 = makeSupabase();
+    const summary1 = await processWompiRenewals(
+      supabase1 as never,
+      wompi as never,
+      { now, emailSender, timeBudgetMs: 30_000 }
+    );
+
+    expect(wompi.createSourceTransaction).not.toHaveBeenCalled();
+    expect(abandoned).toBe(true);
+    expect(insertCount).toBe(1);
+    expect(insertedRefs[0]).toBe(expectedRef);
+    expect(
+      summary1.errors.some(e => e.message.includes('claim abandoned'))
+    ).toBe(true);
+
+    // Second renewal run: same attempt/reference proceeds to Wompi
+    const supabase2 = makeSupabase();
+    await processWompiRenewals(supabase2 as never, wompi as never, {
       now,
       emailSender,
       timeBudgetMs: 30_000,
     });
 
-    expect(wompi.createSourceTransaction).not.toHaveBeenCalled();
-    expect(abandoned).toBe(true);
-    expect(leaseRpcCalls).toBeGreaterThanOrEqual(1);
-    expect(
-      summary.errors.some(e => e.message.includes('claim abandoned'))
-    ).toBe(true);
+    expect(insertCount).toBe(2);
+    expect(insertedRefs[1]).toBe(expectedRef);
+    expect(wompi.createSourceTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({ reference: expectedRef })
+    );
 
     configureChargeLeaseForTests({ alwaysGrant: true });
   });
@@ -1045,6 +1245,7 @@ describe('round-9: requires_refund alerting', () => {
     else process.env.BILLING_ALERT_EMAIL = originalAlert;
     if (originalResend === undefined) delete process.env.RESEND_API_KEY;
     else process.env.RESEND_API_KEY = originalResend;
+    setAdminEmailSenderForTests(null);
     jest.restoreAllMocks();
   });
 
@@ -1063,27 +1264,16 @@ describe('round-9: requires_refund alerting', () => {
     );
   });
 
-  it('alertRequiresRefundOnce CAS-dedupes; send failure clears claim', async () => {
+  it('send failure via injected sender clears refund_alerted_at claim', async () => {
     process.env.BILLING_ALERT_EMAIL = 'ops@iablee.com';
-    process.env.RESEND_API_KEY = 're_test';
 
-    const updates: Array<{ patch: Record<string, unknown>; cleared?: boolean }> =
-      [];
-    let alertedAt: string | null = null;
+    const sendMock = jest.fn(async () => ({
+      sent: false as const,
+      error: 'smtp down',
+    }));
+    setAdminEmailSenderForTests(sendMock);
 
-    // Mock Resend
-    jest.mock('resend', () => {
-      return {
-        Resend: jest.fn().mockImplementation(() => ({
-          emails: {
-            send: jest.fn(async () => ({ error: { message: 'smtp down' } })),
-          },
-        })),
-      };
-    });
-
-    // Use direct send mock by stubbing module — instead intercept via fetch-less Resend.
-    // Simpler: spy console and use a supabase that tracks CAS clear.
+    const updates: Record<string, unknown>[] = [];
     const attempt = {
       id: 'att-refund-1',
       user_id: userId,
@@ -1093,60 +1283,150 @@ describe('round-9: requires_refund alerting', () => {
       amount_cents: 990000,
       currency: 'COP',
       refund_reason: 'Period already extended',
-      requires_refund: true,
+      requires_refund: true as const,
       refund_alerted_at: null as string | null,
+      refund_alert_sent_at: null as string | null,
     };
 
     const supabase = {
       from: jest.fn(() => ({
         update: (patch: Record<string, unknown>) => {
-          updates.push({ patch });
-          if (patch.refund_alerted_at === null) {
-            alertedAt = null;
-            updates[updates.length - 1].cleared = true;
-          } else if (typeof patch.refund_alerted_at === 'string') {
-            alertedAt = patch.refund_alerted_at as string;
-          }
+          updates.push(patch);
           const node: Record<string, unknown> = {};
           const self = () => node;
           node.eq = jest.fn(self);
           node.is = jest.fn(self);
+          node.or = jest.fn(self);
           node.select = jest.fn(self);
           node.maybeSingle = jest.fn(async () => {
-            if (patch.refund_alerted_at && alertedAt) {
+            if (typeof patch.refund_alerted_at === 'string') {
               return { data: { id: attempt.id }, error: null };
             }
-            if (patch.refund_alerted_at === null) {
-              return { data: { id: attempt.id }, error: null };
-            }
-            return { data: null, error: null };
+            return { data: { id: attempt.id }, error: null };
           });
           return node;
         },
       })),
     };
 
-    // First call: no Resend key path already covered; with key, Resend may fail in test env.
-    // Force RESEND missing to test clear-on-failure after claim:
-    delete process.env.RESEND_API_KEY;
-
     const result = await alertRequiresRefundOnce(supabase as never, attempt);
     expect(result.sent).toBe(false);
-    expect(result.error).toMatch(/RESEND_API_KEY/);
-    expect(updates.some(u => typeof u.patch.refund_alerted_at === 'string')).toBe(
+    expect(result.error).toBe('smtp down');
+    expect(sendMock).toHaveBeenCalled();
+    expect(updates.some(p => typeof p.refund_alerted_at === 'string')).toBe(
       true
     );
-    expect(updates.some(u => u.patch.refund_alerted_at === null)).toBe(true);
+    expect(updates.some(p => p.refund_alerted_at === null)).toBe(true);
+    expect(updates.some(p => p.refund_alert_sent_at)).toBe(false);
 
-    // Second call while already alerted → skipped
+    // Fresh claim while sent_at set → skipped
     const skipped = await alertRequiresRefundOnce(supabase as never, {
       ...attempt,
-      refund_alerted_at: '2026-11-18T00:00:00.000Z',
+      refund_alert_sent_at: '2026-11-18T00:00:00.000Z',
     });
     expect(skipped.skipped).toBe(true);
   });
 
-  it('leaves refund_alerted_at null and logs CRITICAL when BILLING_ALERT_EMAIL unset', async () => {
+  it('sets refund_alert_sent_at on successful send', async () => {
+    process.env.BILLING_ALERT_EMAIL = 'ops@iablee.com';
+    setAdminEmailSenderForTests(async () => ({ sent: true }));
+
+    const updates: Record<string, unknown>[] = [];
+    const supabase = {
+      from: jest.fn(() => ({
+        update: (patch: Record<string, unknown>) => {
+          updates.push(patch);
+          const node: Record<string, unknown> = {};
+          const self = () => node;
+          node.eq = jest.fn(self);
+          node.is = jest.fn(self);
+          node.or = jest.fn(self);
+          node.select = jest.fn(self);
+          node.maybeSingle = jest.fn(async () => ({
+            data: { id: 'att-1' },
+            error: null,
+          }));
+          return node;
+        },
+      })),
+    };
+
+    const result = await alertRequiresRefundOnce(supabase as never, {
+      id: 'att-1',
+      user_id: userId,
+      subscription_id: subId,
+      wompi_reference: reference,
+      wompi_transaction_id: 'tx-1',
+      amount_cents: 990000,
+      currency: 'COP',
+      refund_reason: 'test',
+      requires_refund: true,
+      refund_alerted_at: null,
+      refund_alert_sent_at: null,
+    });
+
+    expect(result.sent).toBe(true);
+    expect(updates.some(p => typeof p.refund_alert_sent_at === 'string')).toBe(
+      true
+    );
+  });
+
+  it('reclaims stale in-flight claim without sent_at', async () => {
+    process.env.BILLING_ALERT_EMAIL = 'ops@iablee.com';
+    setAdminEmailSenderForTests(async () => ({ sent: true }));
+
+    const staleAt = new Date(
+      Date.now() - REFUND_ALERT_CLAIM_STALE_MS - 1000
+    ).toISOString();
+    let orFilter: string | null = null;
+
+    const supabase = {
+      from: jest.fn(() => ({
+        update: (patch: Record<string, unknown>) => {
+          const node: Record<string, unknown> = {};
+          const self = () => node;
+          node.eq = jest.fn(self);
+          node.is = jest.fn(self);
+          node.or = jest.fn((expr: string) => {
+            orFilter = expr;
+            return node;
+          });
+          node.select = jest.fn(self);
+          node.maybeSingle = jest.fn(async () => ({
+            data: patch.refund_alert_sent_at
+              ? { id: 'att-stale' }
+              : { id: 'att-stale' },
+            error: null,
+          }));
+          return node;
+        },
+      })),
+    };
+
+    const result = await alertRequiresRefundOnce(
+      supabase as never,
+      {
+        id: 'att-stale',
+        user_id: userId,
+        subscription_id: subId,
+        wompi_reference: reference,
+        wompi_transaction_id: 'tx-1',
+        amount_cents: 990000,
+        currency: 'COP',
+        refund_reason: 'stale claim',
+        requires_refund: true,
+        refund_alerted_at: staleAt,
+        refund_alert_sent_at: null,
+      },
+      { now: new Date() }
+    );
+
+    expect(result.sent).toBe(true);
+    expect(orFilter).toMatch(/refund_alerted_at\.is\.null/);
+    expect(orFilter).toMatch(/refund_alerted_at\.lt\./);
+  });
+
+  it('leaves claim unset and logs CRITICAL when BILLING_ALERT_EMAIL unset', async () => {
     delete process.env.BILLING_ALERT_EMAIL;
     const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -1171,6 +1451,7 @@ describe('round-9: requires_refund alerting', () => {
       refund_reason: 'test',
       requires_refund: true,
       refund_alerted_at: null,
+      refund_alert_sent_at: null,
     });
 
     expect(result.sent).toBe(false);
@@ -1186,23 +1467,10 @@ describe('round-9: requires_refund alerting', () => {
 
   it('daily summary dedupes via billing_email_events and includes count + ids', async () => {
     process.env.BILLING_ALERT_EMAIL = 'ops@iablee.com';
-    process.env.RESEND_API_KEY = 're_test_key';
+    const sendMock = jest.fn(async () => ({ sent: true as const }));
+    setAdminEmailSenderForTests(sendMock);
 
     const inserts: Record<string, unknown>[] = [];
-    let summaryClaimed = false;
-
-    // Mock Resend constructor used inside refund-alerts
-    const sendMock = jest.fn(async () => ({ error: null }));
-    jest.doMock('resend', () => ({
-      Resend: jest.fn().mockImplementation(() => ({
-        emails: { send: sendMock },
-      })),
-    }));
-
-    // Re-import won't work easily; instead test claim/dedupe path by forcing
-    // sendAdminEmail to see RESEND — use real module with mocked from().
-    // We'll assert claim insert shape + duplicate skip without requiring send success.
-
     const unresolved = [
       { id: 'att-a', user_id: userId },
       { id: 'att-b', user_id: userId },
@@ -1218,10 +1486,10 @@ describe('round-9: requires_refund alerting', () => {
               const self = () => node;
               node.eq = jest.fn(self);
               node.is = jest.fn(self);
+              node.or = jest.fn(self);
               node.order = jest.fn(self);
               node.limit = jest.fn(async () => {
                 attemptListCalls++;
-                // 1: unalerted (empty); 2: unresolved
                 if (attemptListCalls === 1) return { data: [], error: null };
                 return { data: unresolved, error: null };
               });
@@ -1233,7 +1501,6 @@ describe('round-9: requires_refund alerting', () => {
           return {
             insert: (row: Record<string, unknown>) => {
               inserts.push(row);
-              summaryClaimed = true;
               return {
                 select: () => ({
                   maybeSingle: async () => ({
@@ -1258,15 +1525,17 @@ describe('round-9: requires_refund alerting', () => {
 
     expect(out.unresolvedCount).toBe(2);
     expect(out.unresolvedIds).toEqual(['att-a', 'att-b']);
+    expect(out.summaryEmailSent).toBe(true);
+    expect(sendMock).toHaveBeenCalled();
     expect(inserts[0]?.email_type).toBe('refund_summary');
     expect(inserts[0]?.period_key).toBe('refund_summary_20261118');
     expect(
       (inserts[0]?.metadata as { attemptIds: string[] })?.attemptIds
     ).toEqual(['att-a', 'att-b']);
-    expect(summaryClaimed).toBe(true);
 
-    // Second run same day: duplicate claim → no second summary send
+    // Same-day duplicate claim → no second send
     let attemptListCalls2 = 0;
+    sendMock.mockClear();
     const supabaseDup = {
       from: jest.fn((table: string) => {
         if (table === 'billing_renewal_attempts') {
@@ -1276,6 +1545,7 @@ describe('round-9: requires_refund alerting', () => {
               const self = () => node;
               node.eq = jest.fn(self);
               node.is = jest.fn(self);
+              node.or = jest.fn(self);
               node.order = jest.fn(self);
               node.limit = jest.fn(async () => {
                 attemptListCalls2++;
@@ -1306,6 +1576,66 @@ describe('round-9: requires_refund alerting', () => {
       now: new Date('2026-11-18T18:00:00.000Z'),
     });
     expect(out2.summaryEmailSent).toBe(false);
+    expect(sendMock).not.toHaveBeenCalled();
     expect(out2.unresolvedCount).toBe(2);
+  });
+
+  it('does not send daily summary when claim insert fails with non-23505', async () => {
+    process.env.BILLING_ALERT_EMAIL = 'ops@iablee.com';
+    const sendMock = jest.fn(async () => ({ sent: true as const }));
+    setAdminEmailSenderForTests(sendMock);
+    const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const unresolved = [{ id: 'att-a', user_id: userId }];
+    let attemptListCalls = 0;
+
+    const supabase = {
+      from: jest.fn((table: string) => {
+        if (table === 'billing_renewal_attempts') {
+          return {
+            select: () => {
+              const node: Record<string, unknown> = {};
+              const self = () => node;
+              node.eq = jest.fn(self);
+              node.is = jest.fn(self);
+              node.or = jest.fn(self);
+              node.order = jest.fn(self);
+              node.limit = jest.fn(async () => {
+                attemptListCalls++;
+                if (attemptListCalls === 1) return { data: [], error: null };
+                return { data: unresolved, error: null };
+              });
+              return node;
+            },
+          };
+        }
+        if (table === 'billing_email_events') {
+          return {
+            insert: () => ({
+              select: () => ({
+                maybeSingle: async () => ({
+                  data: null,
+                  error: { code: '57014', message: 'statement timeout' },
+                }),
+              }),
+            }),
+          };
+        }
+        return chain({ data: null, error: null });
+      }),
+    };
+
+    const out = await processRequiresRefundAlerts(supabase as never, {
+      now: new Date('2026-11-18T12:00:00.000Z'),
+    });
+
+    expect(out.summaryEmailSent).toBe(false);
+    expect(sendMock).not.toHaveBeenCalled();
+    expect(
+      errSpy.mock.calls.some(c =>
+        String(c[0]).includes('refund_summary claim failed')
+      )
+    ).toBe(true);
+    errSpy.mockRestore();
   });
 });
