@@ -87,10 +87,11 @@ CREATE INDEX IF NOT EXISTS billing_charge_leases_expires_idx
 ALTER TABLE public.billing_charge_leases ENABLE ROW LEVEL SECURITY;
 -- No policies for authenticated: service role only
 
+-- TTL default 600s: covers cron maxDuration (300) + Wompi wait + write margin.
 CREATE OR REPLACE FUNCTION public.acquire_billing_charge_lease(
   p_user_id uuid,
   p_holder text,
-  p_ttl_seconds integer DEFAULT 300
+  p_ttl_seconds integer DEFAULT 600
 ) RETURNS boolean
 LANGUAGE plpgsql
 SECURITY DEFINER

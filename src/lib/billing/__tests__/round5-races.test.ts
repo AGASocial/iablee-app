@@ -432,6 +432,8 @@ describe('round-5: concurrent dual subscribe', () => {
   });
 
   it('returns WOMPI_SUBSCRIBE_IN_PROGRESS when lease is not acquired', async () => {
+    const { configureChargeLeaseForTests } = await import('../charge-leases');
+    configureChargeLeaseForTests({});
     const supabase = {
       rpc: jest.fn(async () => ({ data: false, error: null })),
       from: jest.fn(),
@@ -466,6 +468,8 @@ describe('round-5: concurrent dual subscribe', () => {
         acceptPersonalAuth: 'pers',
       })
     ).rejects.toMatchObject({ code: 'WOMPI_SUBSCRIBE_IN_PROGRESS' });
+
+    configureChargeLeaseForTests({ alwaysGrant: true });
   });
 });
 
@@ -533,6 +537,8 @@ describe('round-5: tombstone blocked while approved exists', () => {
 
 describe('round-5: lease contention cron skip', () => {
   it('skips renewal when charge lease is not acquired', async () => {
+    const { configureChargeLeaseForTests } = await import('../charge-leases');
+    configureChargeLeaseForTests({});
     const emailSender = { send: jest.fn(async () => ({ sent: true })) };
     const now = new Date('2026-11-11T08:00:00.000Z');
     const liveSub = {
@@ -556,12 +562,18 @@ describe('round-5: lease contention cron skip', () => {
         if (table === 'billing_subscriptions') {
           return { select: makeLiveSubSelect(liveSub) };
         }
+        // first-charge heal + attempts
+        const node: Record<string, unknown> = {};
+        const self = () => node;
+        node.eq = jest.fn(self);
+        node.or = jest.fn(self);
+        node.is = jest.fn(self);
+        node.in = jest.fn(self);
+        node.order = jest.fn(self);
+        node.limit = jest.fn(async () => ({ data: [], error: null }));
+        node.maybeSingle = jest.fn(async () => ({ data: null, error: null }));
         return {
-          select: () => ({
-            eq: () => ({
-              maybeSingle: async () => ({ data: null, error: null }),
-            }),
-          }),
+          select: () => node,
         };
       }),
     };
@@ -582,6 +594,7 @@ describe('round-5: lease contention cron skip', () => {
     expect(wompi.createSourceTransaction).not.toHaveBeenCalled();
     expect(summary.skipped).toBeGreaterThanOrEqual(1);
     expect(acquireChargeLease).toBeDefined();
+    configureChargeLeaseForTests({ alwaysGrant: true });
   });
 });
 

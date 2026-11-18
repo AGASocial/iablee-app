@@ -95,3 +95,15 @@ jest.mock('sonner', () => ({
 // Setup global fetch mock
 global.fetch = jest.fn()
 
+// Billing charge leases: grant in unit tests by default. Production fails closed
+// without RPC; tests that assert fail-closed call configureChargeLeaseForTests({}).
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const chargeLeases = require('./src/lib/billing/charge-leases')
+  if (typeof chargeLeases.configureChargeLeaseForTests === 'function') {
+    chargeLeases.configureChargeLeaseForTests({ alwaysGrant: true })
+  }
+} catch {
+  // ignore if path unavailable in a given jest project
+}
+

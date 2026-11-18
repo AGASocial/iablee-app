@@ -30,6 +30,7 @@ import { chargeWompiPastDueNow } from './renewals';
 import { isDefinitiveWompiChargeRejection } from './types';
 import {
   acquireChargeLease,
+  refreshChargeLease,
   releaseChargeLease,
 } from './charge-leases';
 
@@ -322,6 +323,7 @@ export async function createWompiSourceAndSubscribe(
     paymentMethodId?: string;
     transactionId?: string;
     alreadyActive?: boolean;
+    message?: string;
   }
 > {
   const leaseHolder = `first:${params.userId}:${Date.now()}`;
@@ -337,7 +339,8 @@ export async function createWompiSourceAndSubscribe(
     return await createWompiSourceAndSubscribeLocked(
       supabase,
       wompi,
-      params
+      params,
+      leaseHolder
     );
   } finally {
     await releaseChargeLease(supabase, params.userId, leaseHolder);
@@ -347,24 +350,47 @@ export async function createWompiSourceAndSubscribe(
 async function createWompiSourceAndSubscribeLocked(
   supabase: SupabaseClient,
   wompi: WompiAdapter,
-  params: CreateWompiSourceAndSubscribeParams
+  params: CreateWompiSourceAndSubscribeParams,
+  leaseHolder: string
 ): Promise<
   CreateSubscriptionResponse & {
     transactionStatus: string;
     paymentMethodId?: string;
     transactionId?: string;
     alreadyActive?: boolean;
+    message?: string;
   }
 > {
   // Re-validate under lease
   const blocking = await findBlockingSubscription(supabase, params.userId);
   if (blocking) {
+    if (blocking.status === 'past_due') {
+      return {
+        subscriptionId: blocking.id,
+        providerSubscriptionId: blocking.id,
+        status: 'past_due',
+        transactionStatus: 'REQUIRES_PAYMENT_METHOD',
+        alreadyActive: false,
+        message:
+          'Your subscription is past due. Update your payment method to retry the charge.',
+      };
+    }
+    // Only claim alreadyActive when the live row is actually active
+    if (blocking.status === 'active') {
+      return {
+        subscriptionId: blocking.id,
+        providerSubscriptionId: blocking.id,
+        status: 'active',
+        transactionStatus: 'APPROVED',
+        alreadyActive: true,
+      };
+    }
     return {
       subscriptionId: blocking.id,
       providerSubscriptionId: blocking.id,
       status: blocking.status as SubscriptionStatus,
-      transactionStatus: 'APPROVED',
-      alreadyActive: true,
+      transactionStatus: 'PENDING',
+      alreadyActive: false,
     };
   }
 
@@ -402,13 +428,67 @@ async function createWompiSourceAndSubscribeLocked(
       );
 
     if (existingAttempt.status === 'approved') {
+      // Heal approved-but-not-promoted (crash between approve and activate)
+      if (existingAttempt.requires_refund !== true) {
+        const refreshed = await refreshChargeLease(
+          supabase,
+          params.userId,
+          leaseHolder
+        );
+        if (!refreshed) {
+          throw new BillingError(
+            'A Wompi charge is already in progress for this account',
+            'WOMPI_SUBSCRIBE_IN_PROGRESS'
+          );
+        }
+        await activateFirstChargeLocked(supabase, {
+          userId: params.userId,
+          subscriptionId: subscription.id,
+          plan: params.plan,
+          reference: attemptRef,
+          transactionId:
+            (existingAttempt.wompi_transaction_id as string) || attemptRef,
+          amountInCents: amountInCents,
+          email: params.email,
+          locale: params.locale,
+          emailSender: params.emailSender,
+        });
+      }
+
+      const { data: liveAfterHeal } = await supabase
+        .from('billing_subscriptions')
+        .select('id, status, current_period_end')
+        .eq('id', subscription.id)
+        .maybeSingle();
+
+      if (
+        liveAfterHeal?.status === 'active' &&
+        hasPaidEntitlement({
+          status: 'active',
+          currentPeriodEnd: liveAfterHeal.current_period_end as string | null,
+        })
+      ) {
+        return {
+          subscriptionId: subscription.id,
+          providerSubscriptionId: attemptRef,
+          status: 'active',
+          transactionStatus: 'APPROVED',
+          transactionId: existingAttempt.wompi_transaction_id as string | undefined,
+          alreadyActive: true,
+        };
+      }
+
       return {
         subscriptionId: subscription.id,
         providerSubscriptionId: attemptRef,
-        status: 'active',
+        status: (liveAfterHeal?.status as SubscriptionStatus) || 'incomplete',
         transactionStatus: 'APPROVED',
         transactionId: existingAttempt.wompi_transaction_id as string | undefined,
-        alreadyActive: true,
+        alreadyActive: false,
+        message:
+          existingAttempt.requires_refund === true
+            ? 'Payment approved but requires manual refund review'
+            : 'Payment approved; subscription activation pending',
       };
     }
 
@@ -648,6 +728,18 @@ async function createWompiSourceAndSubscribeLocked(
   });
 
   const isCard = params.paymentType === 'CARD';
+  const leaseOkBeforeCharge = await refreshChargeLease(
+    supabase,
+    params.userId,
+    leaseHolder
+  );
+  if (!leaseOkBeforeCharge) {
+    throw new BillingError(
+      'A Wompi charge is already in progress for this account',
+      'WOMPI_SUBSCRIBE_IN_PROGRESS'
+    );
+  }
+
   let tx;
   try {
     tx = await wompi.createSourceTransaction({
@@ -691,6 +783,18 @@ async function createWompiSourceAndSubscribeLocked(
   const mapped = mapTxStatus(settled.status);
 
   if (mapped === 'active') {
+    const leaseOkBeforeActivate = await refreshChargeLease(
+      supabase,
+      params.userId,
+      leaseHolder
+    );
+    if (!leaseOkBeforeActivate) {
+      throw new BillingError(
+        'A Wompi charge is already in progress for this account',
+        'WOMPI_SUBSCRIBE_IN_PROGRESS'
+      );
+    }
+
     await activateFirstChargeLocked(supabase, {
       userId: params.userId,
       subscriptionId: subscription.id,
@@ -703,13 +807,20 @@ async function createWompiSourceAndSubscribeLocked(
       emailSender: params.emailSender,
     });
 
+    const { data: liveSub } = await supabase
+      .from('billing_subscriptions')
+      .select('status')
+      .eq('id', subscription.id)
+      .maybeSingle();
+
     return {
       subscriptionId: subscription.id,
       providerSubscriptionId: finalReference,
-      status: 'active',
+      status: (liveSub?.status as SubscriptionStatus) || 'incomplete',
       transactionStatus: 'APPROVED',
       paymentMethodId,
       transactionId: settled.id,
+      alreadyActive: liveSub?.status === 'active',
     };
   }
 
@@ -759,27 +870,50 @@ type ActivateFirstChargeParams = {
   emailSender?: BillingEmailSender;
 };
 
+export type ActivateFirstChargeResult = {
+  activated: boolean;
+  /** Entitlement not applied; webhook/cron should retry (5xx / re-run). */
+  retryable?: boolean;
+};
+
 /**
  * Activate first charge idempotently. No-op if already active with future period.
- * Period math runs at most once (CAS on attempt → approved).
- * Only proceeds when CAS succeeds or legacy (no attempt row).
+ * Heals approved-but-still-incomplete on every call (webhook redelivery / cron).
  * Acquires a per-user charge lease (webhook / external callers).
+ * Throws BillingError WOMPI_LEASE_CONTENTION / WOMPI_ACTIVATION_RETRY so webhooks 5xx.
  */
 export async function activateFirstCharge(
   supabase: SupabaseClient,
   params: ActivateFirstChargeParams
-): Promise<{ activated: boolean }> {
+): Promise<ActivateFirstChargeResult> {
   const leaseHolder = `activate:${params.userId}:${params.reference}`;
   const leased = await acquireChargeLease(supabase, params.userId, leaseHolder);
   if (!leased) {
-    console.warn(
-      '[billing] activateFirstCharge skipped — charge lease not acquired',
-      { reference: params.reference }
+    throw new BillingError(
+      'Charge lease contention during first-charge activation',
+      'WOMPI_LEASE_CONTENTION'
     );
-    return { activated: false };
   }
   try {
-    return await activateFirstChargeLocked(supabase, params);
+    const refreshed = await refreshChargeLease(
+      supabase,
+      params.userId,
+      leaseHolder
+    );
+    if (!refreshed) {
+      throw new BillingError(
+        'Charge lease lost during first-charge activation',
+        'WOMPI_LEASE_CONTENTION'
+      );
+    }
+    const result = await activateFirstChargeLocked(supabase, params);
+    if (result.retryable) {
+      throw new BillingError(
+        'First-charge activation not applied — retry',
+        'WOMPI_ACTIVATION_RETRY'
+      );
+    }
+    return result;
   } finally {
     await releaseChargeLease(supabase, params.userId, leaseHolder);
   }
@@ -789,7 +923,7 @@ export async function activateFirstCharge(
 async function activateFirstChargeLocked(
   supabase: SupabaseClient,
   params: ActivateFirstChargeParams
-): Promise<{ activated: boolean }> {
+): Promise<ActivateFirstChargeResult> {
   const { data: sub } = await supabase
     .from('billing_subscriptions')
     .select('id, status, current_period_end, billing_anchor_day')
@@ -848,6 +982,8 @@ async function activateFirstChargeLocked(
     }
   );
 
+  let alreadyApproved = false;
+
   if (!casOk) {
     const { data: attempt } = await supabase
       .from('billing_renewal_attempts')
@@ -856,15 +992,46 @@ async function activateFirstChargeLocked(
       .maybeSingle();
 
     if (attempt?.status === 'approved') {
-      await persistPaidInvoice(supabase, params);
-      return { activated: false };
-    }
-
-    if (attempt) {
+      if (attempt.requires_refund === true) {
+        await persistPaidInvoice(supabase, params);
+        return { activated: false };
+      }
+      // Heal: approved but subscription never promoted
+      alreadyApproved = true;
+    } else if (attempt) {
       // Terminal declined/error or unexpected race — do not promote subscription
       return { activated: false };
     }
     // Legacy: no attempt row (web-checkout era) — continue
+  }
+
+  // Refuse promote when another chargeable Wompi sub already exists
+  const { data: chargeablePeers } = await supabase
+    .from('billing_subscriptions')
+    .select('id, status')
+    .eq('user_id', params.userId)
+    .eq('provider', 'wompi')
+    .in('status', ['active', 'past_due'])
+    .neq('id', params.subscriptionId)
+    .limit(1);
+
+  if (chargeablePeers && chargeablePeers.length > 0) {
+    const nowIso = new Date().toISOString();
+    await supabase
+      .from('billing_renewal_attempts')
+      .update({
+        requires_refund: true,
+        refund_reason: `Another chargeable Wompi subscription exists (${chargeablePeers[0].id})`,
+        updated_at: nowIso,
+      })
+      .eq('wompi_reference', params.reference)
+      .eq('status', 'approved');
+    await persistPaidInvoice(supabase, params);
+    console.error(
+      `[billing] First-charge APPROVED but another chargeable sub exists — manual refund required`,
+      { reference: params.reference, subscriptionId: params.subscriptionId }
+    );
+    return { activated: false };
   }
 
   const paidAt = new Date();
@@ -882,6 +1049,8 @@ async function activateFirstChargeLocked(
       current_period_start: nowIso,
       current_period_end: periodEnd.toISOString(),
       billing_anchor_day: anchorDay,
+      canceled_reason: null,
+      cancel_at_period_end: false,
       updated_at: nowIso,
     })
     .eq('id', params.subscriptionId)
@@ -902,6 +1071,8 @@ async function activateFirstChargeLocked(
         current_period_start: nowIso,
         current_period_end: periodEnd.toISOString(),
         billing_anchor_day: anchorDay,
+        canceled_reason: null,
+        cancel_at_period_end: false,
         updated_at: nowIso,
       })
       .eq('id', params.subscriptionId)
@@ -912,23 +1083,30 @@ async function activateFirstChargeLocked(
     activated = !!renewed?.id;
   }
 
-  if (!activated && casOk) {
-    await supabase
-      .from('billing_renewal_attempts')
-      .update({
-        requires_refund: true,
-        refund_reason:
-          'First-charge APPROVED but subscription could not be activated',
-        updated_at: nowIso,
-      })
-      .eq('wompi_reference', params.reference)
-      .eq('status', 'approved');
+  if (!activated && (casOk || alreadyApproved)) {
+    // Re-read — another path may have activated concurrently
+    const { data: live } = await supabase
+      .from('billing_subscriptions')
+      .select('status, current_period_end')
+      .eq('id', params.subscriptionId)
+      .maybeSingle();
+
+    if (
+      live?.status === 'active' &&
+      live.current_period_end &&
+      new Date(live.current_period_end as string).getTime() > Date.now()
+    ) {
+      await persistPaidInvoice(supabase, params);
+      return { activated: false };
+    }
+
+    // Transient failure — leave approved, ask caller to retry (do not refund yet)
+    await persistPaidInvoice(supabase, params);
     console.error(
-      `[billing] First-charge APPROVED but activation CAS failed — manual refund required`,
+      `[billing] First-charge APPROVED but subscription not yet active — retry activation`,
       { reference: params.reference, subscriptionId: params.subscriptionId }
     );
-    await persistPaidInvoice(supabase, params);
-    return { activated: false };
+    return { activated: false, retryable: true };
   }
 
   await persistPaidInvoice(supabase, params);
@@ -954,6 +1132,121 @@ async function activateFirstChargeLocked(
   }
 
   return { activated };
+}
+
+/**
+ * Cron/webhook heal: approved first-charge attempts whose sub is still not
+ * active/past_due and not refund-flagged → promote under lease (or flag refund).
+ */
+export async function reconcileApprovedFirstCharges(
+  supabase: SupabaseClient,
+  options: {
+    limit?: number;
+    emailSender?: BillingEmailSender;
+    deadlineMs?: number;
+  } = {}
+): Promise<{ healed: number; refundFlagged: number; errors: number }> {
+  const limit = options.limit ?? 50;
+  const deadlineMs = options.deadlineMs ?? Date.now() + 60_000;
+  const summary = { healed: 0, refundFlagged: 0, errors: 0 };
+
+  const { data: attempts, error } = await supabase
+    .from('billing_renewal_attempts')
+    .select(
+      'wompi_reference, wompi_transaction_id, subscription_id, user_id, amount_cents, requires_refund'
+    )
+    .eq('period_end', FIRST_CHARGE_PERIOD_SENTINEL)
+    .eq('status', 'approved')
+    .or('requires_refund.is.null,requires_refund.eq.false')
+    .order('claimed_at', { ascending: true })
+    .limit(limit);
+
+  if (error) {
+    console.error('[billing] reconcileApprovedFirstCharges query failed', error);
+    summary.errors++;
+    return summary;
+  }
+
+  for (const attempt of attempts || []) {
+    if (Date.now() >= deadlineMs) break;
+
+    const { data: sub } = await supabase
+      .from('billing_subscriptions')
+      .select('id, status, plan_id, current_period_end')
+      .eq('id', attempt.subscription_id)
+      .maybeSingle();
+
+    if (!sub) continue;
+    if (sub.status === 'active' || sub.status === 'past_due') continue;
+
+    const { data: planRow } = await supabase
+      .from('billing_plans')
+      .select(
+        'id, name, currency, amount_cents, interval, features, provider_price_map'
+      )
+      .eq('id', sub.plan_id)
+      .maybeSingle();
+
+    if (!planRow) {
+      summary.errors++;
+      continue;
+    }
+
+    const plan: PlanDefinition = {
+      id: planRow.id as string,
+      name: planRow.name as string,
+      currency: (planRow.currency as PlanDefinition['currency']) || 'USD',
+      amountCents: (planRow.amount_cents as number) || 0,
+      interval: (planRow.interval as PlanDefinition['interval']) || 'month',
+      features: (planRow.features as PlanDefinition['features']) || {
+        max_assets: -1,
+        max_beneficiaries: 10,
+        max_file_size_mb: 100,
+        max_storage_mb: 5000,
+        priority_support: true,
+        advanced_security: true,
+      },
+      providerPriceMap: planRow.provider_price_map as PlanDefinition['providerPriceMap'],
+    };
+
+    const { data: user } = await supabase
+      .from('users')
+      .select('email')
+      .eq('id', attempt.user_id)
+      .maybeSingle();
+
+    try {
+      const result = await activateFirstCharge(supabase, {
+        userId: attempt.user_id as string,
+        subscriptionId: attempt.subscription_id as string,
+        plan,
+        reference: attempt.wompi_reference as string,
+        transactionId:
+          (attempt.wompi_transaction_id as string) ||
+          (attempt.wompi_reference as string),
+        amountInCents: (attempt.amount_cents as number) || 0,
+        email: (user?.email as string) || '',
+        emailSender: options.emailSender,
+      });
+      if (result.activated) summary.healed++;
+      else {
+        const { data: att } = await supabase
+          .from('billing_renewal_attempts')
+          .select('requires_refund')
+          .eq('wompi_reference', attempt.wompi_reference)
+          .maybeSingle();
+        if (att?.requires_refund === true) summary.refundFlagged++;
+      }
+    } catch (err) {
+      console.error(
+        '[billing] reconcileApprovedFirstCharges heal failed',
+        err instanceof Error ? err.message : err
+      );
+      summary.errors++;
+    }
+  }
+
+  return summary;
 }
 
 export async function cancelOrphanIncompleteSubscriptions(

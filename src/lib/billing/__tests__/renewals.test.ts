@@ -52,6 +52,8 @@ function makeAttemptSelect(opts: {
     const self = () => node;
     let limitCalls = 0;
     node.eq = jest.fn(self);
+    node.or = jest.fn(self);
+    node.is = jest.fn(self);
     node.in = jest.fn(async () => ({
       data: opts.pending ?? [],
       error: null,
@@ -62,11 +64,12 @@ function makeAttemptSelect(opts: {
     }));
     node.limit = jest.fn(async () => {
       limitCalls++;
-      // First limit: retryRequiresRefundFlagPending (error_message marker)
+      // First-charge heal / refund-pending marker / approved checks share limit
       if (limitCalls === 1) {
+        // reconcileApprovedFirstCharges OR retryRequiresRefundFlagPending
         return { data: opts.pendingMarker ?? [], error: null };
       }
-      // Second+: entitlement-bearing approved check
+      // Next: entitlement-bearing approved check (may be 2nd or 3rd)
       return { data: opts.approved ?? [], error: null };
     });
     node.maybeSingle = jest.fn(async () => ({ data: null, error: null }));
@@ -1654,7 +1657,7 @@ describe('round-4: dunning reactivation, durable refund, approved exists', () =>
     expect(periodUpdates).toBeGreaterThanOrEqual(1);
   });
 
-  it('on 23505, returns false if requires_refund cannot be written (keeps claimed)', async () => {
+  it('on 23505, throws retryable if requires_refund cannot be written (keeps claimed)', async () => {
     const supabase = {
       from: jest.fn((table: string) => {
         if (table === 'billing_renewal_attempts') {
@@ -1669,6 +1672,7 @@ describe('round-4: dunning reactivation, durable refund, approved exists', () =>
                   status: 'claimed',
                   requires_refund: null,
                   subscription_id: subId,
+                  user_id: userId,
                   period_end: periodEnd,
                   amount_cents: 990000,
                   attempt_number: 1,
@@ -1750,12 +1754,13 @@ describe('round-4: dunning reactivation, durable refund, approved exists', () =>
       }),
     };
 
-    const ok = await applyWompiRenewalApproval(
-      supabase as never,
-      { reference, transactionId: 'tx-race', amountCents: 990000 },
-      { send: async () => ({ sent: true }) }
-    );
-    expect(ok).toBe(false);
+    await expect(
+      applyWompiRenewalApproval(
+        supabase as never,
+        { reference, transactionId: 'tx-race', amountCents: 990000 },
+        { send: async () => ({ sent: true }) }
+      )
+    ).rejects.toMatchObject({ code: 'WOMPI_APPROVAL_RETRY' });
   });
 
   it('skips period when entitlement-bearing approved exists among refund duplicates', async () => {

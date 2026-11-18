@@ -8,7 +8,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { WompiAdapter } from './adapters/wompi.adapter';
-import { isDefinitiveWompiChargeRejection } from './types';
+import { BillingError, isDefinitiveWompiChargeRejection } from './types';
 import { resolveWompiAmountInCents } from './wompi-pricing';
 import {
   buildWompiRenewalReference,
@@ -30,6 +30,7 @@ import {
 } from './billing-emails';
 import {
   acquireChargeLease,
+  refreshChargeLease,
   releaseChargeLease,
 } from './charge-leases';
 
@@ -668,14 +669,25 @@ export async function applyWompiRenewalApproval(
     leaseHolder
   );
   if (!leased) {
-    console.warn(
-      '[billing] applyWompiRenewalApproval skipped — charge lease not acquired',
-      { reference: params.reference }
+    throw new BillingError(
+      'Charge lease contention during renewal approval',
+      'WOMPI_LEASE_CONTENTION'
     );
-    return false;
   }
 
   try {
+    const refreshed = await refreshChargeLease(
+      supabase,
+      attempt.user_id as string,
+      leaseHolder
+    );
+    if (!refreshed) {
+      throw new BillingError(
+        'Charge lease lost during renewal approval',
+        'WOMPI_LEASE_CONTENTION'
+      );
+    }
+
     const { data: sub } = await supabase
       .from('billing_subscriptions')
       .select('*')
@@ -685,7 +697,7 @@ export async function applyWompiRenewalApproval(
     if (!sub) return false;
 
     const plan = await getPlanMeta(supabase, sub.plan_id as string);
-    return applyApprovedRenewal(
+    const ok = await applyApprovedRenewal(
       supabase,
       sub as SubRow,
       attempt.period_end as string,
@@ -696,6 +708,14 @@ export async function applyWompiRenewalApproval(
       plan?.name || 'Premium',
       emailSender
     );
+    if (!ok) {
+      // Durable refund flag could not be written while money moved — retry
+      throw new BillingError(
+        'Renewal approval not durably applied — retry',
+        'WOMPI_APPROVAL_RETRY'
+      );
+    }
+    return true;
   } finally {
     await releaseChargeLease(
       supabase,
@@ -963,7 +983,8 @@ async function processOneSubscription(
       now,
       summary,
       emailSender,
-      periodEnd
+      periodEnd,
+      leaseHolder
     );
   } finally {
     await releaseChargeLease(supabase, sub.user_id, leaseHolder);
@@ -1017,7 +1038,8 @@ async function processOneSubscriptionLocked(
   now: Date,
   summary: RenewalRunSummary,
   emailSender: BillingEmailSender,
-  periodEnd: string
+  periodEnd: string,
+  leaseHolder: string
 ): Promise<void> {
   // Re-validate live row under lease
   const { data: live } = await supabase
@@ -1200,6 +1222,16 @@ async function processOneSubscriptionLocked(
 
   const isCard = (pm.method_type || 'CARD').toUpperCase() === 'CARD';
 
+  const leaseBeforeCharge = await refreshChargeLease(
+    supabase,
+    sub.user_id,
+    leaseHolder
+  );
+  if (!leaseBeforeCharge) {
+    summary.skipped++;
+    return;
+  }
+
   try {
     const tx = await wompi.createSourceTransaction({
       amountInCents,
@@ -1226,6 +1258,18 @@ async function processOneSubscriptionLocked(
     const status = settled.status.toUpperCase();
 
     if (status === 'APPROVED') {
+      const leaseBeforeWrite = await refreshChargeLease(
+        supabase,
+        sub.user_id,
+        leaseHolder
+      );
+      if (!leaseBeforeWrite) {
+        summary.errors.push({
+          subscriptionId: sub.id,
+          message: 'Lease lost after APPROVED — left pending for reconcile',
+        });
+        return;
+      }
       const ok = await applyApprovedRenewal(
         supabase,
         sub,
@@ -1421,6 +1465,31 @@ export async function processWompiRenewals(
     batches: 0,
     errors: [],
   };
+
+  // Heal approved first-charge attempts stuck on incomplete (crash between approve + promote)
+  try {
+    const { reconcileApprovedFirstCharges } = await import('./wompi-subscribe');
+    const heal = await reconcileApprovedFirstCharges(supabase, {
+      emailSender,
+      deadlineMs: deadline,
+      limit: batchSize,
+    });
+    summary.reconciled += heal.healed;
+    if (heal.errors > 0) {
+      summary.errors.push({
+        subscriptionId: '-',
+        message: `First-charge heal errors: ${heal.errors}`,
+      });
+    }
+  } catch (err) {
+    summary.errors.push({
+      subscriptionId: '-',
+      message:
+        err instanceof Error
+          ? `First-charge heal: ${err.message}`
+          : 'First-charge heal failed',
+    });
+  }
 
   let cursorPeriodEnd: string | null = null;
   let cursorId: string | null = null;
