@@ -135,8 +135,9 @@ type SubSnapshot = {
 };
 
 /**
- * Block a new first purchase while the user already has paid Wompi entitlement
- * or an in-dunning past_due subscription (avoids double-billing with cron).
+ * Block a new first purchase while any Wompi active/past_due exists.
+ * Expired `active` past grace with no open renewal attempt is CAS'd to
+ * canceled (expired) so a clean re-subscribe can proceed.
  */
 export async function findBlockingSubscription(
   supabase: SupabaseClient,
@@ -153,17 +154,48 @@ export async function findBlockingSubscription(
 
   for (const row of data || []) {
     if (row.status === 'past_due') {
-      // Always block during dunning regardless of past period_end
       return row as SubSnapshot;
     }
+
     if (
       hasPaidEntitlement({
-        status: row.status as string,
+        status: 'active',
         currentPeriodEnd: row.current_period_end as string | null,
       })
     ) {
       return row as SubSnapshot;
     }
+
+    // Expired active past grace — only tombstone if no in-flight renewal charge
+    const { data: openAttempts } = await supabase
+      .from('billing_renewal_attempts')
+      .select('id')
+      .eq('subscription_id', row.id)
+      .in('status', ['claimed', 'pending'])
+      .limit(1);
+
+    if (openAttempts && openAttempts.length > 0) {
+      return row as SubSnapshot;
+    }
+
+    const nowIso = new Date().toISOString();
+    const { data: tombstoned } = await supabase
+      .from('billing_subscriptions')
+      .update({
+        status: 'canceled',
+        canceled_at: nowIso,
+        updated_at: nowIso,
+      })
+      .eq('id', row.id)
+      .eq('status', 'active')
+      .select('id')
+      .maybeSingle();
+
+    if (!tombstoned?.id) {
+      // Race (e.g. cron moved to past_due) — block
+      return row as SubSnapshot;
+    }
+    // Successfully expired — do not block on this row
   }
   return null;
 }

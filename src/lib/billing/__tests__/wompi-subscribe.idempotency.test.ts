@@ -779,6 +779,132 @@ describe('findBlockingSubscription', () => {
     const blocked = await findBlockingSubscription(supabase as never, userId);
     expect(blocked?.id).toBe(subId);
   });
+
+  it('tombstones expired active past grace with no open attempt, then allows subscribe', async () => {
+    const expired = new Date(Date.now() - 3 * 86400000).toISOString();
+    let tombstonePayload: Record<string, unknown> | null = null;
+    let tableCalls = 0;
+
+    const supabase = {
+      from: jest.fn((table: string) => {
+        if (table === 'billing_subscriptions') {
+          tableCalls++;
+          if (tableCalls === 1) {
+            return {
+              select: () => ({
+                eq: () => ({
+                  eq: () => ({
+                    in: () => ({
+                      order: () => ({
+                        limit: async () => ({
+                          data: [
+                            {
+                              id: subId,
+                              status: 'active',
+                              current_period_end: expired,
+                              plan_id: planId,
+                            },
+                          ],
+                          error: null,
+                        }),
+                      }),
+                    }),
+                  }),
+                }),
+              }),
+            };
+          }
+          return {
+            update: (payload: Record<string, unknown>) => {
+              tombstonePayload = payload;
+              return {
+                eq: () => ({
+                  eq: () => ({
+                    select: () => ({
+                      maybeSingle: async () => ({
+                        data: { id: subId },
+                        error: null,
+                      }),
+                    }),
+                  }),
+                }),
+              };
+            },
+          };
+        }
+        if (table === 'billing_renewal_attempts') {
+          return {
+            select: () => ({
+              eq: () => ({
+                in: () => ({
+                  limit: async () => ({ data: [], error: null }),
+                }),
+              }),
+            }),
+          };
+        }
+        return {};
+      }),
+    };
+
+    const blocked = await findBlockingSubscription(supabase as never, userId);
+    expect(blocked).toBeNull();
+    expect(tombstonePayload).toEqual(expect.objectContaining({ status: 'canceled' }));
+  });
+
+  it('blocks expired active when an open claimed/pending renewal exists', async () => {
+    const expired = new Date(Date.now() - 3 * 86400000).toISOString();
+    const supabase = {
+      from: jest.fn((table: string) => {
+        if (table === 'billing_subscriptions') {
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  in: () => ({
+                    order: () => ({
+                      limit: async () => ({
+                        data: [
+                          {
+                            id: subId,
+                            status: 'active',
+                            current_period_end: expired,
+                            plan_id: planId,
+                          },
+                        ],
+                        error: null,
+                      }),
+                    }),
+                  }),
+                }),
+              }),
+            }),
+            update: () => {
+              throw new Error('must not tombstone while attempt open');
+            },
+          };
+        }
+        if (table === 'billing_renewal_attempts') {
+          return {
+            select: () => ({
+              eq: () => ({
+                in: () => ({
+                  limit: async () => ({
+                    data: [{ id: 'open-attempt' }],
+                    error: null,
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        return {};
+      }),
+    };
+
+    const blocked = await findBlockingSubscription(supabase as never, userId);
+    expect(blocked?.id).toBe(subId);
+  });
 });
 
 describe('cancelOrphanIncompleteSubscriptions', () => {

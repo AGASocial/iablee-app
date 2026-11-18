@@ -1138,31 +1138,6 @@ export class BillingService {
       if (latest) sub = latest as SubSnap;
     }
 
-    // Idempotent: already active with a future period
-    if (
-      sub?.status === 'active' &&
-      sub.current_period_end &&
-      new Date(sub.current_period_end as string).getTime() > Date.now()
-    ) {
-      await persistByProviderId(
-        this.supabase,
-        'billing_invoices',
-        'provider_invoice_id',
-        data.invoiceId,
-        {
-          user_id: userId,
-          subscription_id: sub.id,
-          provider: 'wompi',
-          amount_cents: data.amountCents,
-          currency: data.currency,
-          status: 'paid',
-          issued_at: data.issuedAt,
-          paid_at: data.paidAt || new Date().toISOString(),
-        }
-      );
-      return;
-    }
-
     if (!sub?.id || !planId) {
       await this.handleInvoicePaid(data);
       return;
@@ -1175,6 +1150,8 @@ export class BillingService {
       .eq('id', userId)
       .maybeSingle();
 
+    // activateFirstCharge marks approved+requires_refund when already active
+    // (extra APPROVED) and is a no-op for the activating reference redelivery.
     await activateFirstCharge(this.supabase, {
       userId,
       subscriptionId: sub.id as string,

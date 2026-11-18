@@ -162,26 +162,6 @@ export async function casAttemptStatus(
   return !!data?.id;
 }
 
-async function flagAttemptRequiresRefund(
-  supabase: SupabaseClient,
-  reference: string,
-  reason: string
-): Promise<void> {
-  await supabase
-    .from('billing_renewal_attempts')
-    .update({
-      requires_refund: true,
-      refund_reason: reason,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('wompi_reference', reference)
-    .eq('status', 'approved');
-  console.error(
-    `[billing] Wompi APPROVED but entitlement not applied — manual refund required`,
-    { reference, reason }
-  );
-}
-
 async function persistPaidRenewalInvoice(
   supabase: SupabaseClient,
   sub: SubRow,
@@ -239,7 +219,7 @@ async function persistPaidRenewalInvoice(
 
 /**
  * Exactly-once period extension: CAS current_period_end = attempt.period_end.
- * Allows active/past_due, or canceled-by-dunning (cancel_at_period_end=false).
+ * Allows active/past_due, or canceled-by-dunning when no other chargeable sub exists.
  */
 async function casApplyPeriodExtension(
   supabase: SupabaseClient,
@@ -262,7 +242,7 @@ async function casApplyPeriodExtension(
   };
 
   // Path 1: still entitled / in dunning
-  const { data: fromLive } = await supabase
+  const { data: fromLive, error: liveError } = await supabase
     .from('billing_subscriptions')
     .update(patch)
     .eq('id', sub.id)
@@ -271,12 +251,35 @@ async function casApplyPeriodExtension(
     .select('id')
     .maybeSingle();
 
+  if (liveError?.code === '23505') {
+    return {
+      applied: false,
+      reason: 'Unique chargeable Wompi subscription conflict (23505)',
+    };
+  }
+
   if (fromLive?.id) {
     return { applied: true };
   }
 
-  // Path 2: canceled by dunning for this same period — user paid, reactivate
-  const { data: fromDunning } = await supabase
+  // Path 2: dunning-canceled reactivation — refuse if another chargeable sub exists
+  const { data: otherChargeable } = await supabase
+    .from('billing_subscriptions')
+    .select('id')
+    .eq('user_id', sub.user_id)
+    .eq('provider', 'wompi')
+    .in('status', ['active', 'past_due'])
+    .neq('id', sub.id)
+    .limit(1);
+
+  if (otherChargeable && otherChargeable.length > 0) {
+    return {
+      applied: false,
+      reason: `Another chargeable Wompi subscription exists (${otherChargeable[0].id})`,
+    };
+  }
+
+  const { data: fromDunning, error: dunningError } = await supabase
     .from('billing_subscriptions')
     .update(patch)
     .eq('id', sub.id)
@@ -285,6 +288,13 @@ async function casApplyPeriodExtension(
     .eq('cancel_at_period_end', false)
     .select('id')
     .maybeSingle();
+
+  if (dunningError?.code === '23505') {
+    return {
+      applied: false,
+      reason: 'Unique chargeable Wompi subscription conflict (23505)',
+    };
+  }
 
   if (fromDunning?.id) {
     return { applied: true };
@@ -323,6 +333,67 @@ async function casApplyPeriodExtension(
   };
 }
 
+/**
+ * Durably mark attempt approved + requires_refund. Retries; on failure leaves
+ * the attempt claimed so reconciliation can retry. Never reports success if
+ * the flag was not written.
+ */
+async function approveAttemptRequiresRefundDurable(
+  supabase: SupabaseClient,
+  reference: string,
+  transactionId: string,
+  reason: string,
+  nowIso: string
+): Promise<boolean> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const casOk = await casAttemptStatus(
+      supabase,
+      reference,
+      ['claimed', 'pending', 'error'],
+      {
+        status: 'approved',
+        wompi_transaction_id: transactionId,
+        finalized_at: nowIso,
+        requires_refund: true,
+        refund_reason: reason,
+      }
+    );
+    if (casOk) return true;
+
+    const { data: row } = await supabase
+      .from('billing_renewal_attempts')
+      .select('status, requires_refund')
+      .eq('wompi_reference', reference)
+      .maybeSingle();
+
+    if (row?.status === 'approved' && row.requires_refund === true) {
+      return true;
+    }
+
+    if (row?.status === 'approved') {
+      const { data: flagged } = await supabase
+        .from('billing_renewal_attempts')
+        .update({
+          requires_refund: true,
+          refund_reason: reason,
+          wompi_transaction_id: transactionId,
+          updated_at: nowIso,
+        })
+        .eq('wompi_reference', reference)
+        .eq('status', 'approved')
+        .select('id, requires_refund')
+        .maybeSingle();
+      if (flagged?.requires_refund === true) return true;
+    }
+  }
+
+  console.error(
+    `[billing] CRITICAL: could not durably set requires_refund — leaving attempt claimed for retry`,
+    { reference, reason }
+  );
+  return false;
+}
+
 async function applyApprovedRenewal(
   supabase: SupabaseClient,
   sub: SubRow,
@@ -350,27 +421,18 @@ async function applyApprovedRenewal(
   const nowIso = new Date().toISOString();
 
   if (duplicatePeriod) {
-    const casDup = await casAttemptStatus(
+    const reason = `Duplicate APPROVED for period; entitlement already applied via ${duplicatePeriod.wompi_reference}`;
+    const durable = await approveAttemptRequiresRefundDurable(
       supabase,
       reference,
-      ['claimed', 'pending', 'error'],
-      {
-        status: 'approved',
-        wompi_transaction_id: transactionId,
-        finalized_at: nowIso,
-        requires_refund: true,
-        refund_reason: `Duplicate APPROVED for period; entitlement already applied via ${duplicatePeriod.wompi_reference}`,
-      }
+      transactionId,
+      reason,
+      nowIso
     );
-    if (!casDup) {
-      const { data: attempt } = await supabase
-        .from('billing_renewal_attempts')
-        .select('status')
-        .eq('wompi_reference', reference)
-        .maybeSingle();
-      return attempt?.status === 'approved';
-    }
     await persistPaidRenewalInvoice(supabase, sub, reference, amountCents, nowIso);
+    if (!durable) {
+      return false; // left claimed for reconciliation retry
+    }
     console.error(
       `[billing] Duplicate Wompi APPROVED for same period — manual refund required`,
       { reference, periodEnd, subscriptionId: sub.id }
@@ -393,15 +455,17 @@ async function applyApprovedRenewal(
     .maybeSingle();
 
   if (casError?.code === '23505') {
-    // Lost race for the non-refund approved slot
-    await casAttemptStatus(supabase, reference, ['claimed', 'pending', 'error'], {
-      status: 'approved',
-      wompi_transaction_id: transactionId,
-      finalized_at: nowIso,
-      requires_refund: true,
-      refund_reason: 'Lost race for per-period approved slot',
-    });
+    const durable = await approveAttemptRequiresRefundDurable(
+      supabase,
+      reference,
+      transactionId,
+      'Lost race for per-period approved slot',
+      nowIso
+    );
     await persistPaidRenewalInvoice(supabase, sub, reference, amountCents, nowIso);
+    if (!durable) {
+      return false;
+    }
     console.error(
       `[billing] Per-period approved unique conflict — manual refund required`,
       { reference, periodEnd, subscriptionId: sub.id }
@@ -429,10 +493,46 @@ async function applyApprovedRenewal(
   );
 
   if (!periodResult.applied) {
-    await flagAttemptRequiresRefund(
-      supabase,
-      reference,
-      periodResult.reason || 'Period entitlement CAS failed'
+    // Already approved without refund — must durably set the flag
+    const { data: flagged } = await supabase
+      .from('billing_renewal_attempts')
+      .update({
+        requires_refund: true,
+        refund_reason: periodResult.reason || 'Period entitlement CAS failed',
+        updated_at: nowIso,
+      })
+      .eq('wompi_reference', reference)
+      .eq('status', 'approved')
+      .select('id, requires_refund')
+      .maybeSingle();
+
+    if (!flagged || flagged.requires_refund !== true) {
+      // Rollback approval to claimed so reconciliation retries with refund path
+      await supabase
+        .from('billing_renewal_attempts')
+        .update({
+          status: 'claimed',
+          finalized_at: null,
+          requires_refund: null,
+          refund_reason: null,
+          error_message:
+            periodResult.reason ||
+            'Period CAS failed; refund flag write failed — retry',
+          updated_at: nowIso,
+        })
+        .eq('wompi_reference', reference)
+        .eq('status', 'approved');
+      console.error(
+        `[billing] CRITICAL: period CAS failed and requires_refund not written — reverted to claimed`,
+        { reference, reason: periodResult.reason }
+      );
+      await persistPaidRenewalInvoice(supabase, sub, reference, amountCents, nowIso);
+      return false;
+    }
+
+    console.error(
+      `[billing] Wompi APPROVED but entitlement not applied — manual refund required`,
+      { reference, reason: periodResult.reason }
     );
     await persistPaidRenewalInvoice(supabase, sub, reference, amountCents, nowIso);
     return true;
@@ -840,15 +940,20 @@ async function processOneSubscription(
     // If all recovered as error, fall through to open a new attempt if due
   }
 
-  const { data: approved } = await supabase
+  // Exists entitlement-bearing approval (ignore requires_refund duplicates)
+  const { data: approvedRows } = await supabase
     .from('billing_renewal_attempts')
-    .select('id')
+    .select('id, requires_refund')
     .eq('subscription_id', sub.id)
     .eq('period_end', periodEnd)
     .eq('status', 'approved')
-    .maybeSingle();
+    .limit(5);
 
-  if (approved) {
+  const hasEntitlementApproval = (approvedRows || []).some(
+    a => a.requires_refund !== true
+  );
+
+  if (hasEntitlementApproval) {
     summary.skipped++;
     return;
   }

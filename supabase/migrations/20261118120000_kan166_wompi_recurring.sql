@@ -34,6 +34,12 @@ ALTER TABLE public.billing_subscriptions
 COMMENT ON COLUMN public.billing_subscriptions.billing_anchor_day IS
   'UTC day-of-month for period extension clamping (Wompi recurring).';
 
+-- At most one chargeable Wompi subscription per user (prevents dual cron charges).
+-- Verified read-only before ship: production had 0 active/past_due Wompi rows.
+CREATE UNIQUE INDEX IF NOT EXISTS billing_subscriptions_one_chargeable_wompi_uidx
+  ON public.billing_subscriptions (user_id)
+  WHERE provider = 'wompi' AND status IN ('active', 'past_due');
+
 -- ---------------------------------------------------------------------------
 -- billing_renewal_attempts: claim-before-charge idempotency for cron renewals
 -- Unique (subscription_id, period_end, attempt_number) prevents double charges.

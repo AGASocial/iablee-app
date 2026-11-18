@@ -423,11 +423,18 @@ export class WompiAdapter implements PaymentGateway {
     };
 
     if (!response.ok || !payload.data?.id) {
+      const providerMessage =
+        typeof payload.error === 'string'
+          ? payload.error
+          : payload.error
+            ? JSON.stringify(payload.error)
+            : undefined;
       throw new PaymentGatewayError(
         `Wompi source transaction failed (${response.status})`,
         'wompi',
         'WOMPI_SOURCE_CHARGE_FAILED',
-        response.status
+        response.status,
+        providerMessage
       );
     }
 

@@ -679,26 +679,25 @@ describe('day-5 final dunning attempt before downgrade', () => {
           };
         }
         if (table === 'billing_renewal_attempts') {
+          const attemptSelect = () => {
+            const node: Record<string, unknown> = {};
+            const self = () => node;
+            node.eq = jest.fn(self);
+            node.in = jest.fn(async () => ({ data: [], error: null }));
+            node.order = jest.fn(async () => ({
+              data: [
+                { attempt_number: 3, status: 'declined' },
+                { attempt_number: 2, status: 'declined' },
+                { attempt_number: 1, status: 'declined' },
+              ],
+              error: null,
+            }));
+            node.limit = jest.fn(async () => ({ data: [], error: null }));
+            node.maybeSingle = jest.fn(async () => ({ data: null, error: null }));
+            return node;
+          };
           return {
-            select: () => ({
-              eq: () => ({
-                eq: () => ({
-                  in: async () => ({ data: [], error: null }),
-                  eq: () => ({
-                    maybeSingle: async () => ({ data: null, error: null }),
-                  }),
-                  order: async () => ({
-                    data: [
-                      { attempt_number: 3, status: 'declined' },
-                      { attempt_number: 2, status: 'declined' },
-                      { attempt_number: 1, status: 'declined' },
-                    ],
-                    error: null,
-                  }),
-                  maybeSingle: async () => ({ data: null, error: null }),
-                }),
-              }),
-            }),
+            select: () => attemptSelect(),
             insert: async (row: Record<string, unknown>) => {
               insertedAttempt = row.attempt_number as number;
               return { error: null };
@@ -871,25 +870,25 @@ describe('day-5 final dunning attempt before downgrade', () => {
           };
         }
         if (table === 'billing_renewal_attempts') {
+          const attemptSelect = () => {
+            const node: Record<string, unknown> = {};
+            const self = () => node;
+            node.eq = jest.fn(self);
+            node.in = jest.fn(async () => ({ data: [], error: null }));
+            node.order = jest.fn(async () => ({
+              data: [
+                { attempt_number: 4, status: 'declined' },
+                { attempt_number: 3, status: 'declined' },
+              ],
+              error: null,
+            }));
+            // No entitlement-bearing approved (would skip before downgrade)
+            node.limit = jest.fn(async () => ({ data: [], error: null }));
+            node.maybeSingle = jest.fn(async () => ({ data: null, error: null }));
+            return node;
+          };
           return {
-            select: () => ({
-              eq: () => ({
-                eq: () => ({
-                  in: async () => ({ data: [], error: null }),
-                  eq: () => ({
-                    maybeSingle: async () => ({ data: null, error: null }),
-                  }),
-                  order: async () => ({
-                    data: [
-                      { attempt_number: 4, status: 'declined' },
-                      { attempt_number: 3, status: 'declined' },
-                    ],
-                    error: null,
-                  }),
-                  maybeSingle: async () => ({ data: null, error: null }),
-                }),
-              }),
-            }),
+            select: () => attemptSelect(),
             insert: jest.fn(async () => {
               throw new Error('should not insert new attempt');
             }),
@@ -1294,17 +1293,26 @@ describe('round-3: period CAS, failure no-op, charge timeout', () => {
             },
             update: (patch: Record<string, unknown>) => {
               if (patch.requires_refund) refundFlags.push(patch);
+              const result = {
+                data: {
+                  id: 'a1',
+                  requires_refund:
+                    patch.requires_refund === true ? true : null,
+                },
+                error: null,
+              };
               return {
                 eq: () => ({
                   in: () => ({
                     select: () => ({
-                      maybeSingle: async () =>
-                        patch.status === 'approved' || patch.requires_refund
-                          ? { data: { id: 'a1' }, error: null }
-                          : { data: { id: 'a1' }, error: null },
+                      maybeSingle: async () => result,
                     }),
                   }),
-                  eq: () => chain({ data: { id: 'a1' }, error: null }),
+                  eq: () => ({
+                    select: () => ({
+                      maybeSingle: async () => result,
+                    }),
+                  }),
                 }),
               };
             },
@@ -1519,5 +1527,370 @@ describe('round-3: period CAS, failure no-op, charge timeout', () => {
     );
     expect(ok).toBe(true);
     expect(downgradeUpdates).toBe(0);
+  });
+});
+
+describe('round-4: dunning reactivation, durable refund, approved exists', () => {
+  const periodEnd = '2026-11-10T07:00:00.000Z';
+  const subId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+  const otherSubId = 'bbbbbbbb-cccc-dddd-eeee-ffffffffffff';
+  const reference = `wompi_renew_${subId}_20261110_1`;
+  const userId = '11111111-2222-3333-4444-555555555555';
+
+  const chain = (terminal: { data?: unknown; error?: unknown } = { data: null, error: null }) => {
+    const api: Record<string, unknown> = {};
+    const self = () => api;
+    for (const m of ['select', 'eq', 'neq', 'in', 'is', 'order', 'limit', 'lt']) {
+      api[m] = jest.fn(self);
+    }
+    api.maybeSingle = jest.fn(async () => terminal);
+    (api as { then?: unknown }).then = (
+      resolve: (v: unknown) => unknown,
+      reject?: (e: unknown) => unknown
+    ) => Promise.resolve(terminal).then(resolve, reject);
+    return api;
+  };
+
+  it('refuses dunning reactivation when another chargeable Wompi sub exists', async () => {
+    const refundFlags: Record<string, unknown>[] = [];
+    let periodUpdates = 0;
+
+    const supabase = {
+      from: jest.fn((table: string) => {
+        if (table === 'billing_renewal_attempts') {
+          return {
+            select: (cols?: string) => {
+              if (cols?.includes('requires_refund') && cols.includes('wompi_reference')) {
+                return chain({ data: [], error: null });
+              }
+              return chain({
+                data: {
+                  status: 'pending',
+                  subscription_id: subId,
+                  period_end: periodEnd,
+                  amount_cents: 990000,
+                  attempt_number: 1,
+                },
+                error: null,
+              });
+            },
+            update: (patch: Record<string, unknown>) => {
+              if (patch.requires_refund) refundFlags.push(patch);
+              return {
+                eq: () => ({
+                  in: () => ({
+                    select: () => ({
+                      maybeSingle: async () => ({ data: { id: 'a1' }, error: null }),
+                    }),
+                  }),
+                  eq: () =>
+                    chain({
+                      data: { id: 'a1', requires_refund: true },
+                      error: null,
+                    }),
+                }),
+              };
+            },
+          };
+        }
+        if (table === 'billing_subscriptions') {
+          return {
+            select: () => {
+              // First select loads the canceled sub; later select finds other chargeable
+              const api = chain({
+                data: {
+                  id: subId,
+                  user_id: userId,
+                  plan_id: 'plan_premium_month',
+                  status: 'canceled',
+                  cancel_at_period_end: false,
+                  current_period_end: periodEnd,
+                  billing_anchor_day: 10,
+                  provider: 'wompi',
+                },
+                error: null,
+              });
+              // Override thenable for otherChargeable query (returns array)
+              (api as { then?: unknown }).then = (
+                resolve: (v: unknown) => unknown,
+                reject?: (e: unknown) => unknown
+              ) =>
+                Promise.resolve({
+                  data: [{ id: otherSubId }],
+                  error: null,
+                }).then(resolve, reject);
+              api.maybeSingle = jest.fn(async () => ({
+                data: {
+                  id: subId,
+                  user_id: userId,
+                  plan_id: 'plan_premium_month',
+                  status: 'canceled',
+                  cancel_at_period_end: false,
+                  current_period_end: periodEnd,
+                  billing_anchor_day: 10,
+                  provider: 'wompi',
+                },
+                error: null,
+              }));
+              return api;
+            },
+            update: () => {
+              periodUpdates++;
+              // Path 1 (active/past_due) fails; path 2 should not run after other check
+              return chain({ data: null, error: null });
+            },
+          };
+        }
+        if (table === 'billing_plans') {
+          return {
+            select: () =>
+              chain({
+                data: {
+                  name: 'Premium',
+                  interval: 'month',
+                  provider_price_map: { wompi: '990000' },
+                },
+                error: null,
+              }),
+          };
+        }
+        if (table === 'billing_invoices') {
+          return {
+            upsert: async () => ({ error: null }),
+            select: () => chain({ data: null, error: null }),
+            insert: async () => ({ error: null }),
+          };
+        }
+        if (table === 'users') {
+          return { select: () => chain({ data: { email: 'a@b.com' }, error: null }) };
+        }
+        if (table === 'billing_email_events') {
+          return {
+            insert: () => chain({ data: { id: 'e' }, error: null }),
+            delete: () => chain({ data: null, error: null }),
+          };
+        }
+        return { select: () => chain({ data: null, error: null }) };
+      }),
+    };
+
+    const ok = await applyWompiRenewalApproval(
+      supabase as never,
+      { reference, transactionId: 'tx-late', amountCents: 990000 },
+      { send: async () => ({ sent: true }) }
+    );
+    expect(ok).toBe(true);
+    expect(refundFlags.some(p => p.requires_refund === true)).toBe(true);
+    // Should not successfully reactivate (no applied period update with active)
+    expect(periodUpdates).toBeGreaterThanOrEqual(1);
+  });
+
+  it('on 23505, returns false if requires_refund cannot be written (keeps claimed)', async () => {
+    const supabase = {
+      from: jest.fn((table: string) => {
+        if (table === 'billing_renewal_attempts') {
+          return {
+            select: (cols?: string) => {
+              if (cols?.includes('requires_refund') && cols.includes('wompi_reference')) {
+                return chain({ data: [], error: null });
+              }
+              // Durable helper re-reads — still claimed
+              return chain({
+                data: {
+                  status: 'claimed',
+                  requires_refund: null,
+                  subscription_id: subId,
+                  period_end: periodEnd,
+                  amount_cents: 990000,
+                  attempt_number: 1,
+                },
+                error: null,
+              });
+            },
+            update: (patch: Record<string, unknown>) => {
+              // First update (approve without refund) hits unique violation
+              if (patch.status === 'approved' && patch.requires_refund !== true) {
+                return {
+                  eq: () => ({
+                    in: () => ({
+                      select: () => ({
+                        maybeSingle: async () => ({
+                          data: null,
+                          error: { code: '23505', message: 'unique' },
+                        }),
+                      }),
+                    }),
+                  }),
+                };
+              }
+              // Refund durable writes also fail
+              return {
+                eq: () => ({
+                  in: () => ({
+                    select: () => ({
+                      maybeSingle: async () => ({ data: null, error: null }),
+                    }),
+                  }),
+                  eq: () =>
+                    chain({ data: null, error: null }),
+                }),
+              };
+            },
+          };
+        }
+        if (table === 'billing_subscriptions') {
+          return {
+            select: () =>
+              chain({
+                data: {
+                  id: subId,
+                  user_id: userId,
+                  plan_id: 'plan_premium_month',
+                  status: 'past_due',
+                  cancel_at_period_end: false,
+                  current_period_end: periodEnd,
+                  billing_anchor_day: 10,
+                  provider: 'wompi',
+                },
+                error: null,
+              }),
+            update: () => chain({ data: { id: subId }, error: null }),
+          };
+        }
+        if (table === 'billing_plans') {
+          return {
+            select: () =>
+              chain({
+                data: {
+                  name: 'Premium',
+                  interval: 'month',
+                  provider_price_map: { wompi: '990000' },
+                },
+                error: null,
+              }),
+          };
+        }
+        if (table === 'billing_invoices') {
+          return {
+            upsert: async () => ({ error: null }),
+            select: () => chain({ data: null, error: null }),
+            insert: async () => ({ error: null }),
+          };
+        }
+        return { select: () => chain({ data: null, error: null }) };
+      }),
+    };
+
+    const ok = await applyWompiRenewalApproval(
+      supabase as never,
+      { reference, transactionId: 'tx-race', amountCents: 990000 },
+      { send: async () => ({ sent: true }) }
+    );
+    expect(ok).toBe(false);
+  });
+
+  it('skips period when entitlement-bearing approved exists among refund duplicates', async () => {
+    const emailSender = { send: jest.fn(async () => ({ sent: true })) };
+    const now = new Date('2026-11-11T08:00:00.000Z');
+    let charged = false;
+
+    const supabase = {
+      from: jest.fn((table: string) => {
+        if (table === 'billing_subscriptions') {
+          return {
+            select: () => ({
+              eq: () => ({
+                in: () => ({
+                  lte: () => ({
+                    order: () => ({
+                      order: () => ({
+                        limit: async () => ({
+                          data: [
+                            {
+                              id: subId,
+                              user_id: userId,
+                              plan_id: 'plan_premium_month',
+                              status: 'past_due',
+                              cancel_at_period_end: false,
+                              current_period_end: periodEnd,
+                              provider: 'wompi',
+                            },
+                          ],
+                          error: null,
+                        }),
+                      }),
+                    }),
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === 'billing_renewal_attempts') {
+          const attemptSelect = () => {
+            const node: Record<string, unknown> = {};
+            const self = () => node;
+            node.eq = jest.fn(self);
+            node.in = jest.fn(async () => ({ data: [], error: null }));
+            node.limit = jest.fn(async () => ({
+              data: [
+                { id: 'a-refund', requires_refund: true },
+                { id: 'a-real', requires_refund: null },
+              ],
+              error: null,
+            }));
+            node.order = jest.fn(async () => ({
+              data: [
+                { attempt_number: 2, status: 'approved' },
+                { attempt_number: 1, status: 'approved' },
+              ],
+              error: null,
+            }));
+            node.maybeSingle = jest.fn(async () => ({ data: null, error: null }));
+            return node;
+          };
+          return {
+            select: () => attemptSelect(),
+            insert: async () => {
+              charged = true;
+              return { error: null };
+            },
+          };
+        }
+        if (table === 'billing_plans') {
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({
+                  data: {
+                    name: 'Premium',
+                    interval: 'month',
+                    provider_price_map: { wompi: '990000' },
+                  },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({ data: null, error: null }),
+            }),
+          }),
+        };
+      }),
+    };
+
+    const summary = await processWompiRenewals(supabase as never, {
+      createSourceTransaction: jest.fn(),
+      getTransaction: jest.fn(),
+      findTransactionByReference: jest.fn(),
+      waitForTransactionStatus: jest.fn(),
+    } as never, { now, emailSender, timeBudgetMs: 30_000 });
+
+    expect(charged).toBe(false);
+    expect(summary.skipped).toBeGreaterThanOrEqual(1);
   });
 });
