@@ -175,12 +175,22 @@ CREATE TABLE IF NOT EXISTS public.billing_renewal_attempts (
 -- Re-runnable adds for environments that already created the table
 ALTER TABLE public.billing_renewal_attempts
   ADD COLUMN IF NOT EXISTS requires_refund boolean NULL,
-  ADD COLUMN IF NOT EXISTS refund_reason text NULL;
+  ADD COLUMN IF NOT EXISTS refund_reason text NULL,
+  ADD COLUMN IF NOT EXISTS applied_at timestamp with time zone NULL;
 
 COMMENT ON COLUMN public.billing_renewal_attempts.requires_refund IS
   'True when Wompi APPROVED but entitlement could not be applied (duplicate period / wrong sub state). Ops must refund.';
 COMMENT ON COLUMN public.billing_renewal_attempts.refund_reason IS
   'Why requires_refund was set (period already extended, user-canceled, etc.).';
+COMMENT ON COLUMN public.billing_renewal_attempts.applied_at IS
+  'Set when period entitlement was durably applied (or confirmed already applied). approved + applied_at null = needs heal.';
+
+-- Heal index: approved renewals awaiting period apply
+CREATE INDEX IF NOT EXISTS billing_renewal_attempts_unapplied_approved_idx
+  ON public.billing_renewal_attempts (subscription_id, period_end)
+  WHERE status = 'approved'
+    AND applied_at IS NULL
+    AND (requires_refund IS NOT TRUE);
 
 -- At most one entitlement-bearing approval per (subscription, period)
 CREATE UNIQUE INDEX IF NOT EXISTS billing_renewal_attempts_one_approved_per_period_uidx

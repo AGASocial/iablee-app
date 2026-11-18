@@ -843,16 +843,19 @@ export class BillingService {
    * Handle a normalized webhook event — enqueue then process.
    * Returns after persisting the event; processing runs inline but
    * the event is stored with handled=false first for queue visibility.
+   * Retries of unhandled events (handled=false) are reprocessed.
+   * Fully handled duplicates are no-ops.
    */
   async handleWebhookEvent(event: NormalizedEvent): Promise<void> {
     const eventId = await this.enqueueWebhookEvent(event);
-    if (!eventId) return; // duplicate
+    if (!eventId) return; // already handled successfully
     await this.processWebhookEvent(event, eventId);
   }
 
   /**
    * Enqueue webhook event for async processing audit trail.
-   * Returns null if duplicate (idempotency).
+   * Returns null only when a prior successful handle exists (handled=true).
+   * On unique conflict with handled=false, returns that row id for reprocessing.
    */
   async enqueueWebhookEvent(event: NormalizedEvent): Promise<string | null> {
     const { data, error } = await this.supabase
@@ -867,11 +870,31 @@ export class BillingService {
       .select('id')
       .single();
 
-    if (error) {
-      if (error.code === '23505') return null; // unique constraint — duplicate
-      throw error;
+    if (!error && data?.id) {
+      return data.id as string;
     }
-    return data.id;
+
+    if (error?.code === '23505') {
+      const { data: existing } = await this.supabase
+        .from('billing_webhook_events')
+        .select('id, handled')
+        .eq('provider', event.provider)
+        .eq('provider_event_id', event.id)
+        .maybeSingle();
+
+      if (!existing?.id) {
+        throw error;
+      }
+      // Successful prior handle — idempotent no-op
+      if (existing.handled === true) {
+        return null;
+      }
+      // Soft-fail left handled=false — reprocess on Wompi retry
+      return existing.id as string;
+    }
+
+    if (error) throw error;
+    return null;
   }
 
   /**

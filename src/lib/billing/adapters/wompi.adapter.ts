@@ -34,6 +34,32 @@ export interface WompiAdapterConfig {
   checkoutUrl?: string;
 }
 
+/** Hard cap so Wompi HTTP cannot outlive the charge lease (600s). */
+export const WOMPI_HTTP_TIMEOUT_MS = 30_000;
+
+async function fetchWithTimeout(
+  input: string,
+  init: RequestInit = {},
+  timeoutMs = WOMPI_HTTP_TIMEOUT_MS
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new PaymentGatewayError(
+        `Wompi HTTP timed out after ${timeoutMs}ms`,
+        'wompi',
+        'WOMPI_HTTP_TIMEOUT'
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export interface WompiTransactionLookup {
   id: string;
   status: string;
@@ -312,7 +338,7 @@ export class WompiAdapter implements PaymentGateway {
   async createPaymentSource(
     params: CreateWompiPaymentSourceParams
   ): Promise<WompiPaymentSourceResult> {
-    const response = await fetch(`${this.apiBase}/payment_sources`, {
+    const response = await fetchWithTimeout(`${this.apiBase}/payment_sources`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${this.config.privateKey}`,
@@ -348,7 +374,7 @@ export class WompiAdapter implements PaymentGateway {
    * Void a payment source (PUT /payment_sources/{id}/void).
    */
   async voidPaymentSource(paymentSourceId: number | string): Promise<void> {
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `${this.apiBase}/payment_sources/${encodeURIComponent(String(paymentSourceId))}/void`,
       {
         method: 'PUT',
@@ -399,7 +425,7 @@ export class WompiAdapter implements PaymentGateway {
       body.payment_method = { installments: params.installments };
     }
 
-    const response = await fetch(`${this.apiBase}/transactions`, {
+    const response = await fetchWithTimeout(`${this.apiBase}/transactions`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${this.config.privateKey}`,
@@ -558,7 +584,7 @@ export class WompiAdapter implements PaymentGateway {
   ): Promise<WompiReferenceLookupResult> {
     let response: Response;
     try {
-      response = await fetch(
+      response = await fetchWithTimeout(
         `${this.apiBase}/transactions?reference=${encodeURIComponent(reference)}`,
         {
           method: 'GET',
@@ -641,7 +667,7 @@ export class WompiAdapter implements PaymentGateway {
    * Lookup a transaction by id (server-side only; private key Bearer).
    */
   async getTransaction(transactionId: string): Promise<WompiTransactionLookup> {
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `${this.apiBase}/transactions/${encodeURIComponent(transactionId)}`,
       {
         method: 'GET',

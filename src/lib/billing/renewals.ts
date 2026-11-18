@@ -290,16 +290,23 @@ async function casApplyPeriodExtension(
 
   const { data: openFirst } = await supabase
     .from('billing_renewal_attempts')
-    .select('id')
+    .select('id, status, requires_refund')
     .eq('user_id', sub.user_id)
     .eq('period_end', FIRST_CHARGE_PERIOD_SENTINEL)
-    .in('status', ['claimed', 'pending'])
-    .limit(1);
+    .in('status', ['claimed', 'pending', 'approved'])
+    .limit(5);
 
-  if (openFirst && openFirst.length > 0) {
+  const blocksPath2 = (openFirst || []).some(
+    a =>
+      a.status === 'claimed' ||
+      a.status === 'pending' ||
+      (a.status === 'approved' && a.requires_refund !== true)
+  );
+
+  if (blocksPath2) {
     return {
       applied: false,
-      reason: 'Open first-charge attempt exists for user',
+      reason: 'Open or approved first-charge attempt exists for user',
     };
   }
 
@@ -421,6 +428,250 @@ async function approveAttemptRequiresRefundDurable(
   return false;
 }
 
+async function markAttemptAppliedAt(
+  supabase: SupabaseClient,
+  reference: string
+): Promise<boolean> {
+  const nowIso = new Date().toISOString();
+  const { data } = await supabase
+    .from('billing_renewal_attempts')
+    .update({
+      applied_at: nowIso,
+      updated_at: nowIso,
+      error_message: null,
+    })
+    .eq('wompi_reference', reference)
+    .eq('status', 'approved')
+    .is('applied_at', null)
+    .select('id, applied_at')
+    .maybeSingle();
+  if (data?.applied_at) return true;
+
+  const { data: row } = await supabase
+    .from('billing_renewal_attempts')
+    .select('applied_at')
+    .eq('wompi_reference', reference)
+    .maybeSingle();
+  return !!row?.applied_at;
+}
+
+/**
+ * Heal approved renewal whose period entitlement was never stamped (applied_at).
+ * Under lease: extend if still on attempt.period_end; stamp applied_at if already
+ * extended to the expected next end; else requires_refund.
+ */
+export async function healApprovedRenewalAttempt(
+  supabase: SupabaseClient,
+  params: {
+    reference: string;
+    transactionId?: string;
+    amountCents?: number;
+    emailSender?: BillingEmailSender;
+  }
+): Promise<{ healed: boolean; refunded: boolean; retryable?: boolean }> {
+  const emailSender = params.emailSender ?? getBillingEmailSender();
+  const { data: attempt } = await supabase
+    .from('billing_renewal_attempts')
+    .select('*')
+    .eq('wompi_reference', params.reference)
+    .maybeSingle();
+
+  if (!attempt || attempt.status !== 'approved') {
+    return { healed: false, refunded: false };
+  }
+  if (attempt.requires_refund === true) {
+    return { healed: false, refunded: true };
+  }
+  if (attempt.applied_at) {
+    return { healed: true, refunded: false };
+  }
+
+  // First-charge uses sentinel period — not a renewal heal
+  if (attempt.period_end === FIRST_CHARGE_PERIOD_SENTINEL) {
+    return { healed: false, refunded: false };
+  }
+
+  const { data: sub } = await supabase
+    .from('billing_subscriptions')
+    .select('*')
+    .eq('id', attempt.subscription_id)
+    .maybeSingle();
+
+  if (!sub) {
+    return { healed: false, refunded: false, retryable: true };
+  }
+
+  const plan = await getPlanMeta(supabase, sub.plan_id as string);
+  const planInterval = plan?.interval || 'month';
+  const periodEnd = attempt.period_end as string;
+  const anchor =
+    (sub.billing_anchor_day as number | null) ??
+    new Date(periodEnd).getUTCDate();
+  const expectedNewEnd = extendPeriodEnd(
+    periodEnd,
+    planInterval,
+    anchor
+  ).toISOString();
+  const liveEnd = sub.current_period_end as string | null;
+  const nowIso = new Date().toISOString();
+  const amountCents =
+    params.amountCents || (attempt.amount_cents as number) || 0;
+  const transactionId =
+    params.transactionId ||
+    (attempt.wompi_transaction_id as string) ||
+    params.reference;
+
+  if (liveEnd === periodEnd) {
+    const periodResult = await casApplyPeriodExtension(
+      supabase,
+      sub as SubRow,
+      periodEnd,
+      planInterval
+    );
+    if (periodResult.applied) {
+      await markAttemptAppliedAt(supabase, params.reference);
+      await persistPaidRenewalInvoice(
+        supabase,
+        sub as SubRow,
+        params.reference,
+        amountCents,
+        nowIso
+      );
+      const user = await getUserEmail(supabase, sub.user_id as string);
+      if (user && plan) {
+        await sendBillingEmailOnce(supabase, emailSender, 'renewal_success', {
+          userId: sub.user_id as string,
+          subscriptionId: sub.id as string,
+          email: user.email,
+          locale: user.locale,
+          periodKey: `${toPeriodEndYmd(periodEnd)}:renewal_success`,
+          planName: plan.name,
+          amountLabel: formatCop(amountCents),
+        });
+      }
+      return { healed: true, refunded: false };
+    }
+
+    // Still on attempt period_end but CAS failed — definitive conflict → refund;
+    // otherwise leave for retry.
+    const reason = periodResult.reason || 'Period entitlement CAS failed';
+    const definitive =
+      reason.includes('Another Wompi') ||
+      reason.includes('Open or approved first-charge') ||
+      reason.includes('Canceled not reactivatable') ||
+      reason.includes('23505');
+    if (!definitive) {
+      return { healed: false, refunded: false, retryable: true };
+    }
+    // Fall through to refund with this reason
+    const refundReason = reason;
+    let flagged = false;
+    for (let i = 0; i < 3; i++) {
+      const { data: row } = await supabase
+        .from('billing_renewal_attempts')
+        .update({
+          requires_refund: true,
+          refund_reason: refundReason,
+          wompi_transaction_id: transactionId,
+          error_message: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('wompi_reference', params.reference)
+        .eq('status', 'approved')
+        .select('id, requires_refund')
+        .maybeSingle();
+      if (row?.requires_refund === true) {
+        flagged = true;
+        break;
+      }
+    }
+    if (!flagged) {
+      await supabase
+        .from('billing_renewal_attempts')
+        .update({
+          error_message: REQUIRES_REFUND_FLAG_PENDING,
+          refund_reason: refundReason,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('wompi_reference', params.reference)
+        .eq('status', 'approved');
+      return { healed: false, refunded: false, retryable: true };
+    }
+    await persistPaidRenewalInvoice(
+      supabase,
+      sub as SubRow,
+      params.reference,
+      amountCents,
+      nowIso
+    );
+    console.error(
+      `[billing] Approved renewal could not apply period — manual refund required`,
+      { reference: params.reference, reason: refundReason }
+    );
+    return { healed: false, refunded: true };
+  }
+
+  // Already extended to the expected next period by this attempt (or equivalent)
+  if (liveEnd === expectedNewEnd) {
+    await markAttemptAppliedAt(supabase, params.reference);
+    await persistPaidRenewalInvoice(
+      supabase,
+      sub as SubRow,
+      params.reference,
+      amountCents,
+      nowIso
+    );
+    return { healed: true, refunded: false };
+  }
+
+  // Period moved elsewhere — cannot safely claim this approval applied it
+  const reason = `Approved renewal not applied (live_end=${liveEnd}, expected=${expectedNewEnd})`;
+  let flagged = false;
+  for (let i = 0; i < 3; i++) {
+    const { data: row } = await supabase
+      .from('billing_renewal_attempts')
+      .update({
+        requires_refund: true,
+        refund_reason: reason,
+        wompi_transaction_id: transactionId,
+        error_message: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('wompi_reference', params.reference)
+      .eq('status', 'approved')
+      .select('id, requires_refund')
+      .maybeSingle();
+    if (row?.requires_refund === true) {
+      flagged = true;
+      break;
+    }
+  }
+  if (!flagged) {
+    await supabase
+      .from('billing_renewal_attempts')
+      .update({
+        error_message: REQUIRES_REFUND_FLAG_PENDING,
+        refund_reason: reason,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('wompi_reference', params.reference)
+      .eq('status', 'approved');
+    return { healed: false, refunded: false, retryable: true };
+  }
+  await persistPaidRenewalInvoice(
+    supabase,
+    sub as SubRow,
+    params.reference,
+    amountCents,
+    nowIso
+  );
+  console.error(
+    `[billing] Approved renewal could not apply period — manual refund required`,
+    { reference: params.reference, reason }
+  );
+  return { healed: false, refunded: true };
+}
+
 async function applyApprovedRenewal(
   supabase: SupabaseClient,
   sub: SubRow,
@@ -435,7 +686,7 @@ async function applyApprovedRenewal(
   // Another entitlement-bearing approval already claimed this period?
   const { data: approvedPeers } = await supabase
     .from('billing_renewal_attempts')
-    .select('id, wompi_reference, requires_refund')
+    .select('id, wompi_reference, requires_refund, applied_at')
     .eq('subscription_id', sub.id)
     .eq('period_end', periodEnd)
     .eq('status', 'approved')
@@ -503,10 +754,21 @@ async function applyApprovedRenewal(
   if (!casRow?.id) {
     const { data: attempt } = await supabase
       .from('billing_renewal_attempts')
-      .select('status, requires_refund')
+      .select('status, requires_refund, applied_at')
       .eq('wompi_reference', reference)
       .maybeSingle();
     if (attempt?.status === 'approved') {
+      if (attempt.requires_refund === true || attempt.applied_at) {
+        return true;
+      }
+      // Approved but period never stamped — heal
+      const heal = await healApprovedRenewalAttempt(supabase, {
+        reference,
+        transactionId,
+        amountCents,
+        emailSender,
+      });
+      if (heal.retryable) return false;
       return true;
     }
     return false;
@@ -520,6 +782,17 @@ async function applyApprovedRenewal(
   );
 
   if (!periodResult.applied) {
+    // May already be extended to expected end (race) — try heal before refunding
+    const heal = await healApprovedRenewalAttempt(supabase, {
+      reference,
+      transactionId,
+      amountCents,
+      emailSender,
+    });
+    if (heal.healed) return true;
+    if (heal.refunded) return true;
+    if (heal.retryable) return false;
+
     const reason = periodResult.reason || 'Period entitlement CAS failed';
     // Never move approved → claimed (would free the per-period unique slot).
     let flagged = false;
@@ -565,6 +838,15 @@ async function applyApprovedRenewal(
 
     await persistPaidRenewalInvoice(supabase, sub, reference, amountCents, nowIso);
     return true;
+  }
+
+  // Two-phase: stamp applied_at after durable period extension
+  const stamped = await markAttemptAppliedAt(supabase, reference);
+  if (!stamped) {
+    console.error(
+      `[billing] Period extended but applied_at not stamped — heal will retry`,
+      { reference, periodEnd, subscriptionId: sub.id }
+    );
   }
 
   await persistPaidRenewalInvoice(supabase, sub, reference, amountCents, nowIso);
@@ -660,7 +942,14 @@ export async function applyWompiRenewalApproval(
     .maybeSingle();
 
   if (!attempt) return false;
-  if (attempt.status === 'approved') return true;
+
+  // Fully done: applied or refund-flagged
+  if (
+    attempt.status === 'approved' &&
+    (attempt.applied_at || attempt.requires_refund === true)
+  ) {
+    return true;
+  }
 
   const leaseHolder = `approve:${attempt.user_id}:${params.reference}`;
   const leased = await acquireChargeLease(
@@ -686,6 +975,23 @@ export async function applyWompiRenewalApproval(
         'Charge lease lost during renewal approval',
         'WOMPI_LEASE_CONTENTION'
       );
+    }
+
+    // Approved but period never stamped — heal (webhook redelivery / cron)
+    if (attempt.status === 'approved' && !attempt.applied_at) {
+      const heal = await healApprovedRenewalAttempt(supabase, {
+        reference: params.reference,
+        transactionId: params.transactionId,
+        amountCents: params.amountCents,
+        emailSender,
+      });
+      if (heal.retryable) {
+        throw new BillingError(
+          'Renewal approval heal not durably applied — retry',
+          'WOMPI_APPROVAL_RETRY'
+        );
+      }
+      return true;
     }
 
     const { data: sub } = await supabase
@@ -1128,22 +1434,42 @@ async function processOneSubscriptionLocked(
     }
   }
 
-  // Exists entitlement-bearing approval (ignore requires_refund duplicates)
+  // Exists fully-applied entitlement approval (ignore refunds + unapplied)
   const { data: approvedRows } = await supabase
     .from('billing_renewal_attempts')
-    .select('id, requires_refund')
+    .select('id, requires_refund, applied_at, wompi_reference, wompi_transaction_id, amount_cents')
     .eq('subscription_id', sub.id)
     .eq('period_end', periodEnd)
     .eq('status', 'approved')
     .limit(5);
 
-  const hasEntitlementApproval = (approvedRows || []).some(
-    a => a.requires_refund !== true
+  const hasAppliedEntitlement = (approvedRows || []).some(
+    a => a.requires_refund !== true && a.applied_at
   );
 
-  if (hasEntitlementApproval) {
+  if (hasAppliedEntitlement) {
     summary.skipped++;
     return;
+  }
+
+  // Heal approved-but-unapplied before charging again
+  for (const row of approvedRows || []) {
+    if (row.requires_refund === true || row.applied_at) continue;
+    const heal = await healApprovedRenewalAttempt(supabase, {
+      reference: row.wompi_reference as string,
+      transactionId: (row.wompi_transaction_id as string) || undefined,
+      amountCents: (row.amount_cents as number) || undefined,
+      emailSender,
+    });
+    summary.reconciled++;
+    if (heal.healed) {
+      summary.approved++;
+      return;
+    }
+    if (heal.retryable) {
+      summary.skipped++;
+      return;
+    }
   }
 
   const { data: priorAttempts } = await supabase
@@ -1242,6 +1568,24 @@ async function processOneSubscriptionLocked(
       installments: isCard ? 1 : undefined,
       recurrent: isCard ? true : undefined,
     });
+
+    const leaseAfterCharge = await refreshChargeLease(
+      supabase,
+      sub.user_id,
+      leaseHolder
+    );
+    if (!leaseAfterCharge) {
+      summary.errors.push({
+        subscriptionId: sub.id,
+        message: 'Lease lost after Wompi charge — left claimed for reconcile',
+      });
+      // Keep claim linked if we can still write tx id
+      await casAttemptStatus(supabase, reference, ['claimed'], {
+        wompi_transaction_id: tx.id,
+        error_message: 'LEASE_LOST_AFTER_CHARGE',
+      });
+      return;
+    }
 
     summary.charged++;
 
@@ -1491,6 +1835,31 @@ export async function processWompiRenewals(
     });
   }
 
+  // Heal approved renewals with applied_at null (crash between approve + period extend)
+  try {
+    const renewHeal = await reconcileUnappliedApprovedRenewals(supabase, {
+      emailSender,
+      deadlineMs: deadline,
+      limit: batchSize,
+    });
+    summary.reconciled += renewHeal.healed;
+    summary.approved += renewHeal.healed;
+    if (renewHeal.errors > 0) {
+      summary.errors.push({
+        subscriptionId: '-',
+        message: `Renewal apply heal errors: ${renewHeal.errors}`,
+      });
+    }
+  } catch (err) {
+    summary.errors.push({
+      subscriptionId: '-',
+      message:
+        err instanceof Error
+          ? `Renewal apply heal: ${err.message}`
+          : 'Renewal apply heal failed',
+    });
+  }
+
   let cursorPeriodEnd: string | null = null;
   let cursorId: string | null = null;
 
@@ -1573,6 +1942,85 @@ export async function processWompiRenewals(
             ? `Upcoming emails: ${err.message}`
             : 'Upcoming emails failed',
       });
+    }
+  }
+
+  return summary;
+}
+
+/**
+ * Cron pass: approved renewals missing applied_at → heal under lease.
+ */
+export async function reconcileUnappliedApprovedRenewals(
+  supabase: SupabaseClient,
+  options: {
+    limit?: number;
+    emailSender?: BillingEmailSender;
+    deadlineMs?: number;
+  } = {}
+): Promise<{ healed: number; refunded: number; errors: number }> {
+  const limit = options.limit ?? 50;
+  const deadlineMs = options.deadlineMs ?? Date.now() + 60_000;
+  const emailSender = options.emailSender ?? getBillingEmailSender();
+  const summary = { healed: 0, refunded: 0, errors: 0 };
+
+  const { data: attempts, error } = await supabase
+    .from('billing_renewal_attempts')
+    .select(
+      'wompi_reference, wompi_transaction_id, amount_cents, user_id, period_end'
+    )
+    .eq('status', 'approved')
+    .is('applied_at', null)
+    .or('requires_refund.is.null,requires_refund.eq.false')
+    .neq('period_end', FIRST_CHARGE_PERIOD_SENTINEL)
+    .order('claimed_at', { ascending: true })
+    .limit(limit);
+
+  if (error) {
+    console.error(
+      '[billing] reconcileUnappliedApprovedRenewals query failed',
+      error
+    );
+    summary.errors++;
+    return summary;
+  }
+
+  for (const attempt of attempts || []) {
+    if (Date.now() >= deadlineMs) break;
+
+    const leaseHolder = `heal-renew:${attempt.wompi_reference}`;
+    const leased = await acquireChargeLease(
+      supabase,
+      attempt.user_id as string,
+      leaseHolder
+    );
+    if (!leased) {
+      summary.errors++;
+      continue;
+    }
+
+    try {
+      const heal = await healApprovedRenewalAttempt(supabase, {
+        reference: attempt.wompi_reference as string,
+        transactionId: (attempt.wompi_transaction_id as string) || undefined,
+        amountCents: (attempt.amount_cents as number) || undefined,
+        emailSender,
+      });
+      if (heal.healed) summary.healed++;
+      else if (heal.refunded) summary.refunded++;
+      else if (heal.retryable) summary.errors++;
+    } catch (err) {
+      console.error(
+        '[billing] reconcileUnappliedApprovedRenewals heal failed',
+        err instanceof Error ? err.message : err
+      );
+      summary.errors++;
+    } finally {
+      await releaseChargeLease(
+        supabase,
+        attempt.user_id as string,
+        leaseHolder
+      );
     }
   }
 

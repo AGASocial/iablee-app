@@ -769,6 +769,22 @@ async function createWompiSourceAndSubscribeLocked(
     throw err;
   }
 
+  const leaseAfterCharge = await refreshChargeLease(
+    supabase,
+    params.userId,
+    leaseHolder
+  );
+  if (!leaseAfterCharge) {
+    await markAttemptStatus(supabase, finalReference, ['claimed'], {
+      wompi_transaction_id: tx.id,
+      error_message: 'LEASE_LOST_AFTER_CHARGE',
+    });
+    throw new BillingError(
+      'A Wompi charge is already in progress for this account',
+      'WOMPI_SUBSCRIBE_IN_PROGRESS'
+    );
+  }
+
   // CAS: only claimed → pending (never overwrite approved)
   await markAttemptStatus(supabase, finalReference, ['claimed'], {
     status: 'pending',

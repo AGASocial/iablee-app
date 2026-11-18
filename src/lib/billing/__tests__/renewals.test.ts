@@ -501,6 +501,8 @@ describe('applyWompiRenewalApproval idempotency', () => {
                 maybeSingle: async () => ({
                   data: {
                     status: 'approved',
+                    applied_at: '2026-11-10T08:00:00.000Z',
+                    requires_refund: null,
                     subscription_id: 'sub',
                     period_end: '2026-11-10T07:00:00.000Z',
                   },
@@ -562,6 +564,7 @@ describe('applyWompiRenewalApproval idempotency', () => {
                 data: {
                   status: 'error',
                   subscription_id: subId,
+                  user_id: 'u1',
                   period_end: periodEnd,
                   amount_cents: 990000,
                   attempt_number: 1,
@@ -569,21 +572,24 @@ describe('applyWompiRenewalApproval idempotency', () => {
                 error: null,
               });
             },
-            update: () => ({
-              eq: () => ({
-                in: (_c: string, statuses: string[]) => {
-                  casFrom = statuses;
-                  return {
-                    select: () => ({
-                      maybeSingle: async () =>
-                        statuses.includes('error')
-                          ? { data: { id: 'a1' }, error: null }
-                          : { data: null, error: null },
-                    }),
-                  };
-                },
-              }),
-            }),
+            update: () => {
+              const node = chain({
+                data: { id: 'a1', applied_at: '2026-11-10T08:00:00.000Z' },
+                error: null,
+              });
+              node.in = jest.fn((_c: string, statuses: string[]) => {
+                casFrom = statuses;
+                return {
+                  select: () => ({
+                    maybeSingle: async () =>
+                      statuses.includes('error')
+                        ? { data: { id: 'a1' }, error: null }
+                        : { data: null, error: null },
+                  }),
+                };
+              });
+              return node;
+            },
           };
         }
         if (table === 'billing_subscriptions') {
@@ -1136,6 +1142,7 @@ describe('applyApprovedRenewal preserves cancel_at_period_end', () => {
                 data: {
                   status: 'pending',
                   subscription_id: subId,
+                  user_id: 'u1',
                   period_end: periodEnd,
                   amount_cents: 990000,
                   attempt_number: 1,
@@ -1143,15 +1150,11 @@ describe('applyApprovedRenewal preserves cancel_at_period_end', () => {
                 error: null,
               });
             },
-            update: () => ({
-              eq: () => ({
-                in: () => ({
-                  select: () => ({
-                    maybeSingle: async () => ({ data: { id: 'a1' }, error: null }),
-                  }),
-                }),
+            update: () =>
+              chain({
+                data: { id: 'a1', applied_at: '2026-11-10T08:00:00.000Z' },
+                error: null,
               }),
-            }),
           };
         }
         if (table === 'billing_subscriptions') {
