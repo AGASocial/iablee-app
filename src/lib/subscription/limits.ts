@@ -151,27 +151,24 @@ async function countVideoAssets(
   supabase: SupabaseClient,
   userId: string
 ): Promise<number> {
+  // Create paths store the string key 'video'; some rows may use asset_types.id (uuid).
+  // Always count BOTH so the cap cannot be bypassed when the catalog row exists.
   const { data: videoType } = await supabase
     .from('asset_types')
     .select('id')
     .eq('key', 'video')
     .maybeSingle();
 
-  if (!videoType?.id) {
-    // Fallback: count by legacy key string if FK uuid lookup failed
-    const { count } = await supabase
-      .from('digital_assets')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('asset_type', 'video');
-    return count || 0;
+  const typeValues = ['video'];
+  if (videoType?.id && videoType.id !== 'video') {
+    typeValues.push(videoType.id);
   }
 
   const { count } = await supabase
     .from('digital_assets')
     .select('*', { count: 'exact', head: true })
     .eq('user_id', userId)
-    .eq('asset_type', videoType.id);
+    .in('asset_type', typeValues);
 
   return count || 0;
 }

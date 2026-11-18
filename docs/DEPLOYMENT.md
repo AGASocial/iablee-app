@@ -226,7 +226,7 @@ For OAuth (Google/Apple) and email links to work:
 - [ ] Set redirect URLs in Auth.
 - [ ] Set env vars (Supabase + optional billing + optional encryption).
 - [ ] Optional: add `handle_new_user` trigger for `public.users` sync.
-- [ ] Optional: configure Stripe/PayU/Wompi and webhooks; update `provider_price_map` (Wompi official COP amounts in `20261113140000_wompi_cop_placeholder_prices.sql`).
+- [ ] Optional: configure Stripe/PayU/Wompi and webhooks; update `provider_price_map` (Wompi official COP amounts **9.900 / 99.000**, confirmed 2026-11-17 KAN-164, in `20261118000000_kan164_free_premium_visibility.sql`; earlier `20261113140000_wompi_cop_placeholder_prices.sql` is historical placeholders only).
 - [ ] Deploy Next.js app and test login, wizard, assets, and storage.
 
 <!-- vercel-autodeploy-verify: 2026-11-05T13:00 America/Chicago -->

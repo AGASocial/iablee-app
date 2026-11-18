@@ -30,16 +30,21 @@ function makeGateway(overrides: Partial<PaymentGateway> = {}): PaymentGateway {
 /** Minimal thenable query builder for BillingService supabase calls. */
 function createSupabaseMock(opts: {
   planVisible: boolean;
+  planId?: string;
+  planInterval?: 'month' | 'year';
   existingSubscription: Record<string, unknown> | null;
 }) {
+  const planId = opts.planId ?? 'plan_necessary_month';
   const planRow = {
-    id: 'plan_necessary_month',
+    id: planId,
     name: 'Necessary',
     currency: 'USD',
-    amount_cents: 999,
-    interval: 'month',
+    amount_cents: opts.planInterval === 'year' ? 9990 : 999,
+    interval: opts.planInterval ?? 'month',
     features: {},
-    provider_price_map: { wompi: '4000000' },
+    provider_price_map: {
+      wompi: opts.planInterval === 'year' ? '8000000' : '4000000',
+    },
     is_visible: opts.planVisible,
   };
 
@@ -134,5 +139,56 @@ describe('BillingService plan visibility (KAN-164)', () => {
       subscriptionId: 'sub-1',
       checkoutSession: expect.objectContaining({ provider: 'wompi' }),
     });
+  });
+
+  it('allows Necessary month → year switch for an existing Necessary subscriber', async () => {
+    const existing = {
+      id: 'sub-1',
+      user_id: 'user-necessary',
+      plan_id: 'plan_necessary_month',
+      status: 'active',
+      provider: 'wompi',
+      provider_subscription_id: 'prov-1',
+      cancel_at_period_end: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    const supabase = createSupabaseMock({
+      planVisible: false,
+      planId: 'plan_necessary_year',
+      planInterval: 'year',
+      existingSubscription: existing,
+    });
+    const service = new BillingService(supabase as never, makeGateway());
+
+    await expect(
+      service.createSubscription({ userId: 'user-necessary', planId: 'plan_necessary_year' })
+    ).resolves.toMatchObject({
+      subscriptionId: 'sub-1',
+      checkoutSession: expect.objectContaining({ provider: 'wompi' }),
+    });
+  });
+
+  it('rejects Necessary purchase when current plan is Premium', async () => {
+    const existing = {
+      id: 'sub-prem',
+      user_id: 'user-premium',
+      plan_id: 'plan_premium_month',
+      status: 'active',
+      provider: 'wompi',
+      provider_subscription_id: 'prov-prem',
+      cancel_at_period_end: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    const supabase = createSupabaseMock({
+      planVisible: false,
+      existingSubscription: existing,
+    });
+    const service = new BillingService(supabase as never, makeGateway());
+
+    await expect(
+      service.createSubscription({ userId: 'user-premium', planId: 'plan_necessary_month' })
+    ).rejects.toBeInstanceOf(PlanNotPurchasableError);
   });
 });

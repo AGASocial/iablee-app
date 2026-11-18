@@ -1196,16 +1196,26 @@ export class BillingService {
 
   /**
    * Reject new purchases/upgrades onto hidden plans (KAN-164).
-   * Existing Necessary subscribers renewing the same plan are allowed.
+   * Existing Necessary subscribers may renew the same plan or switch
+   * plan_necessary_month ↔ plan_necessary_year. Brand-new Necessary
+   * purchases and Free/Premium → Necessary switches are rejected.
    */
+  private isNecessaryPlanFamily(planId: string): boolean {
+    return planId === 'plan_necessary_month' || planId === 'plan_necessary_year';
+  }
+
   private async assertPlanPurchasable(userId: string, plan: PlanDefinition): Promise<void> {
     if (plan.isVisible !== false) {
       return;
     }
 
     const current = await this.getUserSubscription(userId);
-    if (current && current.planId === plan.id) {
-      // Same hidden plan renewal (e.g. Necessary) — do not brick existing subscribers.
+    if (
+      current &&
+      this.isNecessaryPlanFamily(current.planId) &&
+      this.isNecessaryPlanFamily(plan.id)
+    ) {
+      // Same-plan renewal or Necessary month ↔ year switch.
       return;
     }
 

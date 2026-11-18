@@ -18,13 +18,18 @@ describe('/api/billing/plans', () => {
     jest.clearAllMocks();
   });
 
-  function mockBillingQuery(plans: unknown[] | null, error: { message: string } | null = null) {
+  function mockBillingQuery(
+    plans: unknown[] | null,
+    error: { message: string } | null = null,
+    provider = 'wompi'
+  ) {
     const mockOrder = jest.fn().mockResolvedValue({ data: plans, error });
     const mockEq = jest.fn().mockReturnValue({ order: mockOrder });
     const mockSelect = jest.fn().mockReturnValue({ eq: mockEq });
     const mockFrom = jest.fn().mockReturnValue({ select: mockSelect });
     mockGetBillingService.mockResolvedValue({
       getSupabaseClient: () => ({ from: mockFrom }),
+      getProviderName: () => provider,
     });
     return { mockFrom, mockSelect, mockEq, mockOrder };
   }
@@ -59,6 +64,7 @@ describe('/api/billing/plans', () => {
       providerPriceMap: { stripe: 'price_123' },
       isVisible: true,
     });
+    expect(data.provider).toBe('wompi');
   });
 
   it('filters to is_visible=true so hidden plans are not returned', async () => {

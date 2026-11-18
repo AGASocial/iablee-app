@@ -340,7 +340,8 @@ supabase/
 └── migrations/
     ├── 20251029000000_create_billing_tables.sql
     ├── 20251029000001_seed_billing_plans.sql
-    └── 20261113140000_wompi_cop_placeholder_prices.sql  # Official COP; apply when deploying Wompi
+    ├── 20261113140000_wompi_cop_placeholder_prices.sql  # Historical placeholders only (not official)
+    └── 20261118000000_kan164_free_premium_visibility.sql  # Official COP 9.900 / 99.000 (KAN-164, 2026-11-17)
 ```
 
 ## Security Considerations

@@ -43,6 +43,8 @@ export default function PlansPage() {
   const [billingCycle, setBillingCycle] = useState<'month' | 'year'>('month');
   const [subscribing, setSubscribing] = useState<string | null>(null);
   const [currentSubscription, setCurrentSubscription] = useState<SubscriptionWithPlan | null>(null);
+  // Prefer API-reported active gateway; fall back to public env (KAN-164).
+  const [activeProvider, setActiveProvider] = useState(PAYMENT_GATEWAY);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,12 +60,22 @@ export default function PlansPage() {
 
         if (subResponse.ok) {
           const subData = await subResponse.json();
-          if (!cancelled) setCurrentSubscription(subData.subscription);
+          if (!cancelled) {
+            setCurrentSubscription(subData.subscription);
+            if (typeof subData.config?.provider === 'string') {
+              setActiveProvider(subData.config.provider);
+            }
+          }
         }
 
         if (!plansResponse.ok) throw new Error('Failed to fetch plans');
         const plansData = await plansResponse.json();
-        if (!cancelled) setPlans(plansData.plans);
+        if (!cancelled) {
+          setPlans(plansData.plans);
+          if (typeof plansData.provider === 'string') {
+            setActiveProvider(plansData.provider);
+          }
+        }
       } catch (error) {
         if (cancelled) return;
         console.error('Error fetching plans:', error);
@@ -91,7 +103,7 @@ export default function PlansPage() {
       }
 
       const isHostedCheckout =
-        PAYMENT_GATEWAY === 'payu' || PAYMENT_GATEWAY === 'wompi';
+        activeProvider === 'payu' || activeProvider === 'wompi';
 
       if (!isHostedCheckout) {
         // Check if user has a payment method
@@ -146,7 +158,7 @@ export default function PlansPage() {
       }
 
       if (
-        (PAYMENT_GATEWAY === 'payu' || PAYMENT_GATEWAY === 'wompi') &&
+        (activeProvider === 'payu' || activeProvider === 'wompi') &&
         result.checkoutSession
       ) {
         startHostedCheckout(result.checkoutSession);
@@ -187,9 +199,9 @@ export default function PlansPage() {
   };
 
   const formatPrice = (plan: Plan) => {
-    // Production gateway is Wompi (COP). Display COP from provider_price_map.wompi
-    // — same source as checkout. Do not treat USD amountCents as COP cents.
-    if (PAYMENT_GATEWAY === 'wompi') {
+    // Display COP from provider_price_map.wompi when the active server gateway is Wompi
+    // — same source as checkout. Do not treat USD amountCents as COP cents (KAN-164).
+    if (activeProvider === 'wompi') {
       const wompiRaw = plan.providerPriceMap?.wompi;
       if (wompiRaw && /^\d+$/.test(wompiRaw.trim())) {
         const copCents = Number.parseInt(wompiRaw.trim(), 10);

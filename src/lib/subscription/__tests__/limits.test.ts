@@ -126,8 +126,8 @@ describe('KAN-164 Free and Premium limits', () => {
     });
   });
 
-  it('canCreateBeneficiary blocks Free at 1', async () => {
-    const supabase = {
+  function freePlanSupabase(beneficiaryCount: number) {
+    return {
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
           return {
@@ -164,7 +164,7 @@ describe('KAN-164 Free and Premium limits', () => {
         if (table === 'beneficiaries') {
           return {
             select: () => ({
-              eq: () => Promise.resolve({ count: 1, data: null, error: null }),
+              eq: () => Promise.resolve({ count: beneficiaryCount, data: null, error: null }),
             }),
           };
         }
@@ -175,15 +175,31 @@ describe('KAN-164 Free and Premium limits', () => {
         };
       }),
     };
+  }
 
-    const result = await canCreateBeneficiary(supabase as never, 'free-user');
+  it('canCreateBeneficiary blocks Free at 1', async () => {
+    const result = await canCreateBeneficiary(freePlanSupabase(1) as never, 'free-user');
     expect(result.allowed).toBe(false);
     expect(result.reason).toBe('beneficiaryLimitReached');
     expect(result.limit).toBe(1);
+    expect(result.current).toBe(1);
   });
 
-  it('canCreateVideoAsset enforces Premium max of 5', async () => {
-    const supabase = {
+  it('grandfathers Free user over beneficiary cap: usage 2 / limit 1 denies create only', async () => {
+    // Production may have Free users with 2 beneficiaries from the prior cap.
+    // Do not delete; only block adding more (canCreate uses >=).
+    const result = await canCreateBeneficiary(freePlanSupabase(2) as never, 'free-over-cap');
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe('beneficiaryLimitReached');
+    expect(result.limit).toBe(1);
+    expect(result.current).toBe(2);
+  });
+
+  function premiumVideoSupabase(opts: {
+    videoCountForIn: (values: string[]) => number;
+    userId: string;
+  }) {
+    return {
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
           return {
@@ -227,7 +243,20 @@ describe('KAN-164 Free and Premium limits', () => {
           return {
             select: () => ({
               eq: () => ({
-                eq: () => Promise.resolve({ count: 5, data: null, error: null }),
+                // Correct path: count key OR uuid via .in()
+                in: (_col: string, values: string[]) =>
+                  Promise.resolve({
+                    count: opts.videoCountForIn(values),
+                    data: null,
+                    error: null,
+                  }),
+                // Buggy legacy path: only .eq uuid — key-stored rows return 0
+                eq: (_col: string, value: string) =>
+                  Promise.resolve({
+                    count: value === 'video' ? opts.videoCountForIn(['video']) : 0,
+                    data: null,
+                    error: null,
+                  }),
               }),
             }),
           };
@@ -239,6 +268,13 @@ describe('KAN-164 Free and Premium limits', () => {
         };
       }),
     };
+  }
+
+  it('canCreateVideoAsset enforces Premium max of 5', async () => {
+    const supabase = premiumVideoSupabase({
+      userId: 'premium-user',
+      videoCountForIn: () => 5,
+    });
 
     const result = await canCreateVideoAsset(supabase as never, 'premium-user');
     expect(result.allowed).toBe(false);
@@ -249,58 +285,29 @@ describe('KAN-164 Free and Premium limits', () => {
 
   it('canCreateVideoAsset allows when under Premium video cap', async () => {
     clearSubscriptionCache();
-    const supabase = {
-      from: jest.fn((table: string) => {
-        if (table === 'billing_subscriptions') {
-          return {
-            select: () => ({
-              eq: () => ({
-                eq: () => ({
-                  single: () =>
-                    Promise.resolve({
-                      data: {
-                        status: 'active',
-                        plan: {
-                          id: 'plan_premium_month',
-                          name: 'Premium',
-                          features: { max_assets: -1, max_video_assets: 5 },
-                        },
-                      },
-                      error: null,
-                    }),
-                }),
-              }),
-            }),
-          };
-        }
-        if (table === 'asset_types') {
-          return {
-            select: () => ({
-              eq: () => ({
-                maybeSingle: () =>
-                  Promise.resolve({ data: { id: 'video-type-uuid' }, error: null }),
-              }),
-            }),
-          };
-        }
-        if (table === 'digital_assets') {
-          return {
-            select: () => ({
-              eq: () => ({
-                eq: () => Promise.resolve({ count: 2, data: null, error: null }),
-              }),
-            }),
-          };
-        }
-        return {
-          select: () => ({
-            eq: () => Promise.resolve({ count: 0, data: [], error: null }),
-          }),
-        };
-      }),
-    };
+    const supabase = premiumVideoSupabase({
+      userId: 'premium-under-cap',
+      videoCountForIn: () => 2,
+    });
 
     const result = await canCreateVideoAsset(supabase as never, 'premium-under-cap');
     expect(result.allowed).toBe(true);
+  });
+
+  it('canCreateVideoAsset counts asset_type=video key even when asset_types uuid exists', async () => {
+    // Rows stored as key 'video' while catalog has a uuid — UUID-only count would be 0 (bypass).
+    clearSubscriptionCache();
+    const supabase = premiumVideoSupabase({
+      userId: 'premium-key-stored',
+      videoCountForIn: (values) => {
+        // Key-stored rows only contribute when 'video' is included in the filter.
+        return values.includes('video') ? 5 : 0;
+      },
+    });
+
+    const result = await canCreateVideoAsset(supabase as never, 'premium-key-stored');
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe('videoLimitReached');
+    expect(result.current).toBe(5);
   });
 });

@@ -186,12 +186,15 @@ export default function BillingPage() {
     }
   };
 
+  // Prefer API-reported active gateway; fall back to public env (KAN-164).
+  const activeProvider = provider || PAYMENT_GATEWAY;
+
   const formatPrice = (
     amountCents: number,
     currency: string,
     providerPriceMap?: Partial<Record<string, string>>
   ) => {
-    if (PAYMENT_GATEWAY === 'wompi') {
+    if (activeProvider === 'wompi') {
       const wompiRaw = providerPriceMap?.wompi;
       if (wompiRaw && /^\d+$/.test(wompiRaw.trim())) {
         const copPesos = Number.parseInt(wompiRaw.trim(), 10) / 100;

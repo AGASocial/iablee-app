@@ -33,9 +33,18 @@ export async function GET() {
       isVisible: plan.is_visible !== false,
     }));
 
-    return successResponse({ plans: transformedPlans || [] }, 200, {
-      'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400',
-    });
+    return successResponse(
+      {
+        plans: transformedPlans || [],
+        // Active server gateway — UI should prefer this over NEXT_PUBLIC_PAYMENT_GATEWAY
+        // so COP formatting matches the real checkout provider (KAN-164).
+        provider: billingService.getProviderName(),
+      },
+      200,
+      {
+        'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400',
+      }
+    );
   } catch (error) {
     console.error('Error fetching plans:', error);
     return errorResponse(

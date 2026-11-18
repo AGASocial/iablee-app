@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAuthenticatedRouteClient } from '@/lib/supabase-server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { canCreateVideoAsset, isVideoAssetType } from '@/lib/subscription/limits';
 
 export async function PUT(
     request: Request,
@@ -21,6 +22,43 @@ export async function PUT(
             valid_until, description, files, custom_fields,
             beneficiary_id, status, fileMetadata
         } = body;
+
+        // Enforce video cap when a type change would turn a non-video into a video.
+        if (asset_type !== undefined) {
+            const { data: existing, error: existingError } = await supabaseAdmin
+                .from('digital_assets')
+                .select('asset_type')
+                .eq('id', assetId)
+                .eq('user_id', user.id)
+                .maybeSingle();
+
+            if (existingError) {
+                console.error('Supabase error fetching asset for update:', existingError);
+                return NextResponse.json({ error: existingError.message }, { status: 500 });
+            }
+            if (!existing) {
+                return NextResponse.json({ error: 'Asset not found' }, { status: 404 });
+            }
+
+            const becomingVideo = await isVideoAssetType(supabase, asset_type);
+            if (becomingVideo) {
+                const alreadyVideo = await isVideoAssetType(supabase, existing.asset_type as string);
+                if (!alreadyVideo) {
+                    const videoCheck = await canCreateVideoAsset(supabase, user.id);
+                    if (!videoCheck.allowed) {
+                        return NextResponse.json(
+                            {
+                                error: 'LIMIT_REACHED',
+                                message: videoCheck.reason,
+                                limit: videoCheck.limit,
+                                current: videoCheck.current,
+                            },
+                            { status: 403 }
+                        );
+                    }
+                }
+            }
+        }
 
         const updateData: Record<string, unknown> = {};
         if (asset_type !== undefined) updateData.asset_type = asset_type;
