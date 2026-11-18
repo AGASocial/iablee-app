@@ -18,6 +18,7 @@ import type {
   UpdateSubscriptionRequest,
   CancelSubscriptionRequest,
 } from '@/lib/billing';
+import { PlanNotPurchasableError, PlanNotFoundError } from '@/lib/billing/types';
 
 export async function GET() {
   try {
@@ -99,6 +100,12 @@ export async function POST(request: NextRequest) {
     return successResponse(result, 201);
   } catch (error) {
     console.error('Error creating subscription:', error);
+    if (error instanceof PlanNotPurchasableError) {
+      return errorResponse(error.message, 400);
+    }
+    if (error instanceof PlanNotFoundError) {
+      return errorResponse(error.message, 404);
+    }
     return errorResponse(
       error instanceof Error ? error.message : 'Failed to create subscription',
       500
@@ -139,6 +146,12 @@ export async function PATCH(request: NextRequest) {
     return successResponse({ success: true });
   } catch (error) {
     console.error('Error updating subscription:', error);
+    if (error instanceof PlanNotPurchasableError) {
+      return errorResponse(error.message, 400);
+    }
+    if (error instanceof PlanNotFoundError) {
+      return errorResponse(error.message, 404);
+    }
     return errorResponse(
       error instanceof Error ? error.message : 'Failed to update subscription',
       500

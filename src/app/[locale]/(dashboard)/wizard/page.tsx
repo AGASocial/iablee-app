@@ -262,12 +262,16 @@ export default function WizardPage() {
   };
 
   const checkSubscriptionLimits = async () => {
-    const [assetRes, beneficiaryRes] = await Promise.all([
+    const isVideo = assetData.assetType === "video";
+    const [assetRes, beneficiaryRes, videoRes] = await Promise.all([
       fetch("/api/subscription/check-limit?type=asset"),
       fetch("/api/subscription/check-limit?type=beneficiary"),
+      isVideo
+        ? fetch("/api/subscription/check-limit?type=video")
+        : Promise.resolve(null),
     ]);
 
-    if (!assetRes.ok || !beneficiaryRes.ok) {
+    if (!assetRes.ok || !beneficiaryRes.ok || (videoRes && !videoRes.ok)) {
       throw new Error("errorSavingAsset");
     }
 
@@ -279,6 +283,12 @@ export default function WizardPage() {
     }
     if (!beneficiaryLimit.allowed) {
       throw new Error("beneficiaryLimitReached");
+    }
+    if (videoRes) {
+      const videoLimit = (await videoRes.json()) as LimitCheckResponse;
+      if (!videoLimit.allowed) {
+        throw new Error("videoLimitReached");
+      }
     }
   };
 

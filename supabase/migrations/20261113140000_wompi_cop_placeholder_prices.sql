@@ -1,12 +1,14 @@
 -- Wompi COP amount-in-cents for provider_price_map.wompi
 -- KAN-139
 --
--- Official COP prices confirmed 2026-11-13 (KAN-139).
--- Values must match src/lib/billing/wompi-pricing.ts (WOMPI_PLAN_AMOUNT_COP_CENTS).
+-- NOTE (KAN-164, 2026-11-17): The Premium amounts below (80k/800k COP) and the
+-- "confirmed 2026-11-13" wording were unconfirmed placeholders. Official Premium
+-- Wompi prices are 9.900 / 99.000 COP in
+-- 20261118000000_kan164_free_premium_visibility.sql. Necessary amounts here remain
+-- legacy fallbacks for hidden-plan renewals only. Do not rewrite this SQL body.
 -- Filename retained (…_placeholder_…) to avoid migration history/apply confusion.
 --
--- amount-in-cents: 4000000 = 40,000.00 COP
--- Previously unapplied while prices were pending confirmation; ready to apply when deploying Wompi.
+-- amount-in-cents: 4000000 = 40,000.00 COP (legacy Necessary)
 -- This migration is intentionally NOT applied by the agent; run manually when ready.
 
 UPDATE public.billing_plans

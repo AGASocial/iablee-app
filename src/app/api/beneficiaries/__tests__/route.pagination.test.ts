@@ -80,4 +80,30 @@ describe('GET /api/beneficiaries pagination contract', () => {
 
     expect(response.status).toBe(401);
   });
+
+  it('lists beneficiaries even when usage is over Free cap (grandfather)', async () => {
+    // Free cap is 1; existing users may have 2 — GET must still succeed (no create check).
+    const overCapRows = [
+      { id: 'ben-a', full_name: 'Alice', email: 'a@example.com' },
+      { id: 'ben-b', full_name: 'Bob', email: 'b@example.com' },
+    ];
+    const supabase = createSupabaseMock(overCapRows);
+    mockGetAuthenticatedContext.mockResolvedValue({
+      ok: true,
+      ctx: {
+        user: { id: 'free-over-cap' },
+        supabase,
+        hasSecuritySession: true,
+        hasPin: false,
+        pinRequired: false,
+      },
+    });
+
+    const request = new NextRequest('http://localhost/api/beneficiaries?limit=20');
+    const response = await GET(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data).toHaveLength(2);
+  });
 });

@@ -36,8 +36,10 @@ test.describe("09 billing", () => {
                 interval: "month",
                 features: {
                   max_assets: -1,
-                  max_beneficiaries: -1,
-                  max_storage_mb: 10000,
+                  max_beneficiaries: 10,
+                  max_storage_mb: 5000,
+                  max_file_size_mb: 100,
+                  max_video_assets: 5,
                   priority_support: true,
                 },
               },
@@ -93,7 +95,7 @@ test.describe("09 billing", () => {
         contentType: "application/json",
         body: JSON.stringify({
           plan: "premium",
-          limits: { maxAssets: -1, maxBeneficiaries: -1, maxStorageMb: 10000 },
+          limits: { maxAssets: -1, maxBeneficiaries: 10, maxStorageMb: 5000, maxFileSizeMb: 100, maxVideoAssets: 5 },
           usage: { assetsCount: 0, beneficiariesCount: 0, storageUsedMb: 0 },
           canCreateAsset: true,
           canCreateBeneficiary: true,

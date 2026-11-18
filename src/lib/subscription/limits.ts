@@ -9,6 +9,8 @@ export interface SubscriptionLimits {
   maxBeneficiaries: number;
   maxStorageMb: number;
   maxFileSizeMb: number;
+  /** -1 = no separate video cap */
+  maxVideoAssets: number;
   prioritySupport: boolean;
   advancedSecurity: boolean;
 }
@@ -17,6 +19,8 @@ export interface UsageStats {
   assetsCount: number;
   beneficiariesCount: number;
   storageUsedMb: number;
+  /** Present when counted (e.g. video limit checks); omitted from default status fetches. */
+  videoAssetsCount?: number;
 }
 
 interface PlanRecord {
@@ -66,11 +70,14 @@ function limitsFromPlan(plan: PlanRecord | null): SubscriptionLimits {
   }
 
   const features = plan.features as Record<string, unknown>;
+  const maxVideo =
+    typeof features.max_video_assets === 'number' ? (features.max_video_assets as number) : -1;
   return {
     maxAssets: (features.max_assets as number) || 0,
     maxBeneficiaries: (features.max_beneficiaries as number) || 0,
     maxStorageMb: (features.max_storage_mb as number) || 100,
     maxFileSizeMb: (features.max_file_size_mb as number) || 10,
+    maxVideoAssets: maxVideo,
     prioritySupport: (features.priority_support as boolean) || false,
     advancedSecurity: (features.advanced_security as boolean) || false,
   };
@@ -85,11 +92,14 @@ async function fetchFreePlanLimits(supabase: SupabaseClient): Promise<Subscripti
 
   if (freePlan) {
     const features = freePlan.features as Record<string, unknown>;
+    const maxVideo =
+      typeof features.max_video_assets === 'number' ? (features.max_video_assets as number) : -1;
     return {
       maxAssets: (features.max_assets as number) || 3,
-      maxBeneficiaries: (features.max_beneficiaries as number) || 2,
+      maxBeneficiaries: (features.max_beneficiaries as number) || 1,
       maxStorageMb: (features.max_storage_mb as number) || 50,
       maxFileSizeMb: (features.max_file_size_mb as number) || 10,
+      maxVideoAssets: maxVideo,
       prioritySupport: false,
       advancedSecurity: false,
     };
@@ -128,12 +138,39 @@ export async function getSubscriptionLimits(
 export function getFreeTrialLimits(): SubscriptionLimits {
   return {
     maxAssets: 3,
-    maxBeneficiaries: 2,
+    maxBeneficiaries: 1,
     maxStorageMb: 50,
     maxFileSizeMb: 10,
+    maxVideoAssets: -1,
     prioritySupport: false,
     advancedSecurity: false,
   };
+}
+
+async function countVideoAssets(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<number> {
+  // Create paths store the string key 'video'; some rows may use asset_types.id (uuid).
+  // Always count BOTH so the cap cannot be bypassed when the catalog row exists.
+  const { data: videoType } = await supabase
+    .from('asset_types')
+    .select('id')
+    .eq('key', 'video')
+    .maybeSingle();
+
+  const typeValues = ['video'];
+  if (videoType?.id && videoType.id !== 'video') {
+    typeValues.push(videoType.id);
+  }
+
+  const { count } = await supabase
+    .from('digital_assets')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .in('asset_type', typeValues);
+
+  return count || 0;
 }
 
 export async function getUsageStats(
@@ -191,6 +228,54 @@ export async function canCreateAsset(
   }
 
   return { allowed: true };
+}
+
+/**
+ * Enforce max_video_assets (KAN-164 Premium = 5). No-op when cap is -1/absent.
+ */
+export async function canCreateVideoAsset(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<{ allowed: boolean; reason?: string; limit?: number; current?: number }> {
+  const [limits, videoAssetsCount] = await Promise.all([
+    getSubscriptionLimits(supabase, userId),
+    countVideoAssets(supabase, userId),
+  ]);
+
+  if (limits.maxVideoAssets === -1) {
+    return { allowed: true };
+  }
+
+  if (videoAssetsCount >= limits.maxVideoAssets) {
+    return {
+      allowed: false,
+      reason: 'videoLimitReached',
+      limit: limits.maxVideoAssets,
+      current: videoAssetsCount,
+    };
+  }
+
+  return { allowed: true };
+}
+
+/**
+ * Resolve whether an asset_type value (uuid or key) refers to the video type.
+ */
+export async function isVideoAssetType(
+  supabase: SupabaseClient,
+  assetType: string
+): Promise<boolean> {
+  if (assetType === 'video') {
+    return true;
+  }
+
+  const { data } = await supabase
+    .from('asset_types')
+    .select('key')
+    .eq('id', assetType)
+    .maybeSingle();
+
+  return data?.key === 'video';
 }
 
 export async function canCreateBeneficiary(

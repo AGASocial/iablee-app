@@ -1,10 +1,14 @@
 /**
  * Check Limit API Route
- * GET /api/subscription/check-limit?type=asset|beneficiary
+ * GET /api/subscription/check-limit?type=asset|beneficiary|video
  */
 
 import { createAuthenticatedRouteClient } from '@/lib/supabase-server';
-import { canCreateAsset, canCreateBeneficiary } from '@/lib/subscription/limits';
+import {
+  canCreateAsset,
+  canCreateBeneficiary,
+  canCreateVideoAsset,
+} from '@/lib/subscription/limits';
 import { NextRequest } from 'next/server';
 
 export async function GET(request: NextRequest) {
@@ -19,7 +23,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type');
 
-    if (!type || !['asset', 'beneficiary'].includes(type)) {
+    if (!type || !['asset', 'beneficiary', 'video'].includes(type)) {
       return Response.json({ error: 'Invalid type parameter' }, { status: 400 });
     }
 
@@ -27,6 +31,8 @@ export async function GET(request: NextRequest) {
     let result;
     if (type === 'asset') {
       result = await canCreateAsset(supabase, user.id);
+    } else if (type === 'video') {
+      result = await canCreateVideoAsset(supabase, user.id);
     } else {
       result = await canCreateBeneficiary(supabase, user.id);
     }
