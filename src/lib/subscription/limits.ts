@@ -4,8 +4,11 @@
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import {
-  hasPaidEntitlement,
-  hasStatusBasedEntitlement,
+  CAPE_FALLBACK_STATUSES,
+  capePaidThroughCpeFloorIso,
+  LIVE_CHARGEABLE_STATUSES,
+  selectBestEntitledSubscription,
+  subscriptionGrantsPaidEntitlement,
 } from '@/lib/billing/dunning';
 
 export { PREMIUM_TOTAL_STORAGE_MB, PREMIUM_TOTAL_STORAGE_BYTES } from '@/lib/subscription/storage-limits';
@@ -33,12 +36,15 @@ interface PlanRecord {
   id: string;
   name: string;
   features: Record<string, unknown>;
+  amount_cents?: number | null;
 }
 
 interface SubscriptionRecord {
   status: string;
   provider?: string | null;
   current_period_end?: string | null;
+  cancel_at_period_end?: boolean | null;
+  canceled_reason?: string | null;
   plan: PlanRecord | PlanRecord[] | null;
 }
 
@@ -58,50 +64,65 @@ function setCache(userId: string, subscription: SubscriptionRecord | null, limit
   requestCache.set(userId, { subscription, limits, ts: Date.now() });
 }
 
+const ENTITLEMENT_SUB_SELECT =
+  `status, provider, current_period_end, cancel_at_period_end, canceled_reason, plan:billing_plans(id, name, features, amount_cents)`;
+
 /**
  * Fetch the subscription that currently grants paid entitlements.
- * Wompi: period end + grace / past_due dunning window.
- * Stripe/PayU: status-based only (ignore current_period_end) — pre-KAN-166.
+ * CAPE paid-through until current_period_end (KAN-168). Prefers highest product
+ * tier (plan id prefix: premium > necessary) among entitled rows — not
+ * amount_cents. See subscriptionGrantsPaidEntitlement / entitledPlanRank.
+ *
+ * Two queries (no mixed-status LIMIT): all live chargeable rows, plus CAPE
+ * paid-through candidates filtered at the query level so tombstones cannot
+ * crowd out entitled rows.
  */
 async function fetchActiveSubscription(
   supabase: SupabaseClient,
   userId: string
 ): Promise<SubscriptionRecord | null> {
-  const { data: subscriptions } = await supabase
-    .from('billing_subscriptions')
-    .select(
-      `status, provider, current_period_end, plan:billing_plans(id, name, features)`
-    )
-    .eq('user_id', userId)
-    .in('status', ['active', 'past_due', 'trialing'])
-    .order('updated_at', { ascending: false })
-    .limit(5);
+  const [liveResult, capeResult] = await Promise.all([
+    supabase
+      .from('billing_subscriptions')
+      .select(ENTITLEMENT_SUB_SELECT)
+      .eq('user_id', userId)
+      .in('status', [...LIVE_CHARGEABLE_STATUSES])
+      .order('updated_at', { ascending: false }),
+    supabase
+      .from('billing_subscriptions')
+      .select(ENTITLEMENT_SUB_SELECT)
+      .eq('user_id', userId)
+      .eq('cancel_at_period_end', true)
+      .in('status', [...CAPE_FALLBACK_STATUSES])
+      .gt('current_period_end', capePaidThroughCpeFloorIso())
+      .order('updated_at', { ascending: false }),
+  ]);
 
-  if (!subscriptions?.length) {
+  const subscriptions = [
+    ...((liveResult.data || []) as SubscriptionRecord[]),
+    ...((capeResult.data || []) as SubscriptionRecord[]),
+  ];
+
+  if (!subscriptions.length) {
     return null;
   }
 
-  for (const row of subscriptions) {
-    const sub = row as SubscriptionRecord;
-    if (sub.provider === 'wompi') {
-      if (
-        hasPaidEntitlement({
-          status: sub.status,
-          currentPeriodEnd: sub.current_period_end,
-        })
-      ) {
-        return sub;
-      }
-      continue;
-    }
+  const resolvePlan = (sub: SubscriptionRecord): PlanRecord | null => {
+    if (!sub.plan) return null;
+    return Array.isArray(sub.plan) ? sub.plan[0] ?? null : sub.plan;
+  };
 
-    // Stripe / PayU / others: status-based only (do not apply period-end lockout)
-    if (hasStatusBasedEntitlement(sub.status)) {
-      return sub;
-    }
-  }
-
-  return null;
+  return selectBestEntitledSubscription(subscriptions, {
+    isEntitled: (sub) =>
+      subscriptionGrantsPaidEntitlement({
+        status: sub.status,
+        provider: sub.provider,
+        currentPeriodEnd: sub.current_period_end,
+        cancelAtPeriodEnd: sub.cancel_at_period_end,
+        canceledReason: sub.canceled_reason,
+      }),
+    getPlanId: (sub) => resolvePlan(sub)?.id,
+  });
 }
 
 function limitsFromPlan(plan: PlanRecord | null): SubscriptionLimits {

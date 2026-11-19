@@ -35,6 +35,15 @@ import { resolveWompiAmountInCents } from './wompi-pricing';
 import { persistByProviderId } from './persistence';
 import { parseWompiReference as parseWompiRefDetailed } from './wompi-references';
 import {
+  CAPE_FALLBACK_STATUSES,
+  capePaidThroughCpeFloorIso,
+  isCanceledSubscriptionStatus,
+  LIVE_CHARGEABLE_STATUSES,
+  selectManagementSubscription,
+  subscriptionGrantsPaidEntitlement,
+  toEpochMs,
+} from './dunning';
+import {
   applyWompiRenewalApproval,
   applyWompiRenewalFailure,
 } from './renewals';
@@ -93,23 +102,63 @@ export class BillingService {
   }
 
   /**
-   * Get user's active subscription
+   * Management current subscription for billing GET / DELETE / PATCH ownership,
+   * assertPlanPurchasable, and upgrade/supersede flows.
+   *
+   * Two queries (no mixed-status LIMIT): (a) all live chargeable rows
+   * (active/trialing/past_due — develop semantics, Stripe past_due stays visible);
+   * (b) only if none, CAPE paid-through candidates filtered at the query level.
+   *
+   * Entitlement ranking (limits / storage / asset-types / UI plan badge) lives
+   * in selectBestEntitledSubscription / fetchActiveSubscription — not here.
    */
   async getUserSubscription(userId: string): Promise<Subscription | null> {
-    const { data, error } = await this.supabase
+    const pick = (
+      rows: Record<string, unknown>[]
+    ): Record<string, unknown> | null =>
+      selectManagementSubscription(rows, {
+        getStatus: (row) => row.status as string,
+        isPaidThroughEntitled: (row) =>
+          subscriptionGrantsPaidEntitlement({
+            status: row.status as string,
+            provider: row.provider as string | null,
+            currentPeriodEnd: row.current_period_end as string | null,
+            cancelAtPeriodEnd: row.cancel_at_period_end as boolean | null,
+            canceledReason: row.canceled_reason as string | null,
+          }),
+      });
+
+    const { data: live, error: liveError } = await this.supabase
       .from('billing_subscriptions')
       .select('*')
       .eq('user_id', userId)
-      .in('status', ['active', 'trialing', 'past_due'])
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .in('status', [...LIVE_CHARGEABLE_STATUSES])
+      .order('created_at', { ascending: false });
 
-    if (error) {
+    if (liveError) {
       throw new BillingError('Failed to fetch subscription', 'FETCH_SUBSCRIPTION_FAILED');
     }
 
-    return data ? this.mapSubscriptionFromDb(data) : null;
+    const fromLive = pick((live || []) as Record<string, unknown>[]);
+    if (fromLive) {
+      return this.mapSubscriptionFromDb(fromLive);
+    }
+
+    const { data: cape, error: capeError } = await this.supabase
+      .from('billing_subscriptions')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('cancel_at_period_end', true)
+      .in('status', [...CAPE_FALLBACK_STATUSES])
+      .gt('current_period_end', capePaidThroughCpeFloorIso())
+      .order('created_at', { ascending: false });
+
+    if (capeError) {
+      throw new BillingError('Failed to fetch subscription', 'FETCH_SUBSCRIPTION_FAILED');
+    }
+
+    const fromCape = pick((cape || []) as Record<string, unknown>[]);
+    return fromCape ? this.mapSubscriptionFromDb(fromCape) : null;
   }
 
   /**
@@ -740,6 +789,18 @@ export class BillingService {
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (planId) updates.plan_id = planId;
     if (cancelAtPeriodEnd !== undefined) updates.cancel_at_period_end = cancelAtPeriodEnd;
+    // Resume after period-end flip: reactivate so undo-cancel works while CPE is future.
+    if (
+      cancelAtPeriodEnd === false &&
+      isCanceledSubscriptionStatus(subscription.status as string)
+    ) {
+      const cpeMs = toEpochMs(subscription.current_period_end as string | null);
+      if (cpeMs != null && cpeMs > Date.now()) {
+        updates.status = 'active';
+        updates.canceled_at = null;
+        updates.canceled_reason = null;
+      }
+    }
     // Update the current_period_end with the value from Stripe
     if (result && result.currentPeriodEnd) updates.current_period_end = result.currentPeriodEnd.toISOString();
 
@@ -795,9 +856,13 @@ export class BillingService {
     };
 
     if (!atPeriodEnd) {
+      // Immediate revoke: CAPE=false denies paid-through. Also clamp CPE so the
+      // UI/SQL never show a misleading future end date after instant cancel.
+      const nowIso = new Date().toISOString();
       updates.status = 'canceled';
-      updates.canceled_at = new Date().toISOString();
+      updates.canceled_at = nowIso;
       updates.canceled_reason = 'user';
+      updates.current_period_end = nowIso;
     } else if (!subscription.current_period_end) {
       // If current_period_end is not set (e.g. PayU subscriptions), compute it
       // based on the plan's billing interval from the most recent invoice paid_at or creation date
@@ -946,6 +1011,21 @@ export class BillingService {
   }
 
   /**
+   * Resolve CAPE for subscription.updated webhooks.
+   * When DB already has CAPE and Stripe status is canceled, preserve CAPE even
+   * if the canceled object omits/falsifies cancel_at_period_end (period-end race).
+   */
+  private resolveWebhookCancelAtPeriodEnd(
+    data: SubscriptionEventData,
+    existingCape: boolean | null | undefined
+  ): boolean {
+    if (existingCape === true && isCanceledSubscriptionStatus(data.status)) {
+      return true;
+    }
+    return data.cancelAtPeriodEnd === true;
+  }
+
+  /**
    * Handle subscription created/updated events
    */
   private async handleSubscriptionEvent(data: SubscriptionEventData): Promise<void> {
@@ -968,31 +1048,39 @@ export class BillingService {
     }
 
     const provider = this.gateway.getName();
-    const payload: Record<string, unknown> = {
+
+    // Prefer match on provider_subscription_id (Stripe / first checkout).
+    const { data: byProviderId } = await this.supabase
+      .from('billing_subscriptions')
+      .select('id, cancel_at_period_end')
+      .eq('provider_subscription_id', data.subscriptionId)
+      .maybeSingle();
+
+    const payloadBase: Record<string, unknown> = {
       user_id: userId,
       status: data.status,
       current_period_start: data.currentPeriodStart,
       current_period_end: data.currentPeriodEnd,
-      cancel_at_period_end: data.cancelAtPeriodEnd || false,
       provider,
       provider_customer_id: data.customerId,
     };
 
     if (data.planId) {
-      payload.plan_id = data.planId;
+      payloadBase.plan_id = data.planId;
     }
 
-    // Prefer match on provider_subscription_id (Stripe / first checkout).
-    const { data: byProviderId } = await this.supabase
-      .from('billing_subscriptions')
-      .select('id')
-      .eq('provider_subscription_id', data.subscriptionId)
-      .maybeSingle();
-
     if (byProviderId?.id) {
+      const payload = {
+        ...payloadBase,
+        cancel_at_period_end: this.resolveWebhookCancelAtPeriodEnd(
+          data,
+          byProviderId.cancel_at_period_end as boolean | null
+        ),
+        updated_at: new Date().toISOString(),
+      };
       const { error } = await this.supabase
         .from('billing_subscriptions')
-        .update({ ...payload, updated_at: new Date().toISOString() })
+        .update(payload)
         .eq('id', byProviderId.id);
       if (error) throw error;
       return;
@@ -1002,7 +1090,7 @@ export class BillingService {
     // user's current row and do NOT overwrite provider_subscription_id yet.
     const { data: byUserProvider } = await this.supabase
       .from('billing_subscriptions')
-      .select('id')
+      .select('id, cancel_at_period_end')
       .eq('user_id', userId)
       .eq('provider', provider)
       .in('status', ['active', 'past_due', 'incomplete', 'trialing', 'unpaid'])
@@ -1011,9 +1099,17 @@ export class BillingService {
       .maybeSingle();
 
     if (byUserProvider?.id) {
+      const payload = {
+        ...payloadBase,
+        cancel_at_period_end: this.resolveWebhookCancelAtPeriodEnd(
+          data,
+          byUserProvider.cancel_at_period_end as boolean | null
+        ),
+        updated_at: new Date().toISOString(),
+      };
       const { error } = await this.supabase
         .from('billing_subscriptions')
-        .update({ ...payload, updated_at: new Date().toISOString() })
+        .update(payload)
         .eq('id', byUserProvider.id);
       if (error) throw error;
       return;
@@ -1024,19 +1120,52 @@ export class BillingService {
       'billing_subscriptions',
       'provider_subscription_id',
       data.subscriptionId,
-      payload
+      {
+        ...payloadBase,
+        cancel_at_period_end: data.cancelAtPeriodEnd === true,
+      }
     );
   }
 
   /**
-   * Handle subscription canceled event
+   * Handle subscription canceled event (e.g. Stripe customer.subscription.deleted).
+   * DB CAPE true → status canceled only (keep CAPE/CPE; entitlement ends at CPE),
+   * even if CPE is still slightly in the future (clock skew / early delete).
+   * DB CAPE false → mid-period force-cancel: clear CAPE and clamp CPE.
    */
   private async handleSubscriptionCanceled(data: SubscriptionEventData): Promise<void> {
+    const nowIso = data.canceledAt || new Date().toISOString();
+
+    const { data: existing } = await this.supabase
+      .from('billing_subscriptions')
+      .select('id, cancel_at_period_end, current_period_end')
+      .eq('provider_subscription_id', data.subscriptionId)
+      .maybeSingle();
+
+    const cape = existing?.cancel_at_period_end === true;
+
+    // Scheduled period-end cancel: never clear CAPE or clamp CPE on delete.
+    if (cape) {
+      await this.supabase
+        .from('billing_subscriptions')
+        .update({
+          status: 'canceled',
+          canceled_at: nowIso,
+          updated_at: nowIso,
+        })
+        .eq('provider_subscription_id', data.subscriptionId);
+      return;
+    }
+
+    // Mid-period / immediate revoke (DB CAPE false): fail closed.
     await this.supabase
       .from('billing_subscriptions')
       .update({
         status: 'canceled',
-        canceled_at: data.canceledAt || new Date().toISOString(),
+        cancel_at_period_end: false,
+        canceled_at: nowIso,
+        current_period_end: nowIso,
+        updated_at: nowIso,
       })
       .eq('provider_subscription_id', data.subscriptionId);
   }
@@ -1404,6 +1533,7 @@ export class BillingService {
       currentPeriodEnd: data.current_period_end ? new Date(data.current_period_end as string) : undefined,
       cancelAtPeriodEnd: data.cancel_at_period_end as boolean,
       canceledAt: data.canceled_at ? new Date(data.canceled_at as string) : undefined,
+      canceledReason: (data.canceled_reason as string | null | undefined) ?? null,
       createdAt: new Date(data.created_at as string),
       updatedAt: new Date(data.updated_at as string),
     };

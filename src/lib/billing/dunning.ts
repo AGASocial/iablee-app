@@ -22,6 +22,27 @@ export const ENTITLEMENT_GRACE_MS = 24 * 60 * 60 * 1000;
 /** How long past_due may retain Premium (through final retry day). */
 export const DUNNING_WINDOW_DAYS = 5;
 
+/**
+ * Chargeable / live statuses (develop getUserSubscription semantics).
+ * Queried without a mixed-status LIMIT so canceled tombstones cannot starve them.
+ */
+export const LIVE_CHARGEABLE_STATUSES = ['active', 'trialing', 'past_due'] as const;
+
+/**
+ * CAPE paid-through fallback statuses (canceled after period-end flip).
+ * Live CAPE rows (still active/trialing/past_due) are covered by LIVE_CHARGEABLE_STATUSES.
+ */
+export const CAPE_FALLBACK_STATUSES = ['canceled', 'cancelled'] as const;
+
+/**
+ * Lower bound for CAPE candidate `current_period_end` filter.
+ * Wompi grace (CPE + 1d) is the widest paid-through window; Stripe/PayU end at CPE.
+ * `cpe > now - grace` includes every provider that could still be entitled.
+ */
+export function capePaidThroughCpeFloorIso(now: Date = new Date()): string {
+  return new Date(now.getTime() - ENTITLEMENT_GRACE_MS).toISOString();
+}
+
 export const UPCOMING_RENEWAL_DAYS = 3;
 
 /**
@@ -161,9 +182,149 @@ export function extendPeriodEnd(
 }
 
 /**
+ * Revocation reasons that must NOT keep paid-through even when
+ * cancel_at_period_end is still true (tombstones / dunning / supersede).
+ * Mirrors SQL `subscription_grants_paid_entitlement`.
+ */
+export const PAID_THROUGH_REVOKE_REASONS = [
+  'dunning',
+  'superseded',
+  'expired_resubscribe',
+] as const;
+
+/** Normalize subscription status for case-insensitive comparisons (TS + SQL). */
+export function normalizeSubscriptionStatus(status: string): string {
+  return status.trim().toLowerCase();
+}
+
+/** True for canceled / cancelled spelling variants (case-insensitive). */
+export function isCanceledSubscriptionStatus(status: string): boolean {
+  const s = normalizeSubscriptionStatus(status);
+  return s === 'canceled' || s === 'cancelled';
+}
+
+export function isPaidThroughRevokeReason(
+  reason: string | null | undefined
+): boolean {
+  if (reason == null || reason === '') return false;
+  const normalized = reason.trim().toLowerCase();
+  return (PAID_THROUGH_REVOKE_REASONS as readonly string[]).includes(normalized);
+}
+
+export function isFreePlanId(planId: string | null | undefined): boolean {
+  return !planId || planId === 'plan_free';
+}
+
+/**
+ * Product-tier ranks for entitled paid rows.
+ * Mirrored in SQL `resolve_user_max_storage_mb` (KAN-168 migration).
+ *
+ * Rule: plan id prefix — `plan_premium_*` > `plan_necessary_*` > other paid.
+ * Do NOT use `amount_cents` (Premium display USD can be lower than Necessary).
+ */
+export const PLAN_TIER_RANK = {
+  premium: 300,
+  necessary: 200,
+  otherPaid: 100,
+  free: -1,
+} as const;
+
+/**
+ * Rank among entitled paid rows by product tier (plan id prefix).
+ * Free plans return -1. Ties preserve caller order (updated_at DESC).
+ */
+export function entitledPlanRank(planId: string | null | undefined): number {
+  if (isFreePlanId(planId)) return PLAN_TIER_RANK.free;
+  const id = planId as string;
+  if (id.startsWith('plan_premium_')) return PLAN_TIER_RANK.premium;
+  if (id.startsWith('plan_necessary_')) return PLAN_TIER_RANK.necessary;
+  return PLAN_TIER_RANK.otherPaid;
+}
+
+/**
+ * Instant when paid-through entitlement ends (Wompi includes +1d grace).
+ * Null when period end is missing/invalid.
+ */
+export function paidThroughEntitlementEndMs(params: {
+  provider?: string | null;
+  currentPeriodEnd: Date | string;
+  graceMs?: number;
+}): number | null {
+  const end =
+    typeof params.currentPeriodEnd === 'string'
+      ? new Date(params.currentPeriodEnd)
+      : params.currentPeriodEnd;
+  if (!Number.isFinite(end.getTime())) return null;
+  const grace =
+    params.provider === 'wompi'
+      ? (params.graceMs ?? ENTITLEMENT_GRACE_MS)
+      : 0;
+  return end.getTime() + grace;
+}
+
+/**
+ * Pick the highest-tier entitled non-free row. Caller should pass rows
+ * ordered by updated_at DESC so equal ranks keep the newest.
+ */
+export function selectBestEntitledSubscription<T>(
+  rows: T[],
+  opts: {
+    isEntitled: (row: T) => boolean;
+    getPlanId: (row: T) => string | null | undefined;
+  }
+): T | null {
+  let best: T | null = null;
+  let bestRank = -Infinity;
+  for (const row of rows) {
+    if (!opts.isEntitled(row)) continue;
+    const planId = opts.getPlanId(row);
+    if (isFreePlanId(planId)) continue;
+    const rank = entitledPlanRank(planId);
+    if (rank > bestRank) {
+      bestRank = rank;
+      best = row;
+    }
+  }
+  return best;
+}
+
+/**
+ * Management "current subscription" (billing API ownership / purchasable /
+ * upgrade), distinct from entitlement ranking.
+ *
+ * Matches pre-KAN-168 develop: prefer newest `active` | `trialing` | `past_due`
+ * (incl. Stripe past_due that does not grant entitlements). If none, fall back
+ * to a CAPE paid-through canceled row.
+ *
+ * Prefer two DB queries (live chargeable, then CAPE fallback) rather than a
+ * mixed-status LIMIT window. When passing a merged list, order by `created_at` DESC.
+ */
+export function selectManagementSubscription<T>(
+  rows: T[],
+  opts: {
+    getStatus: (row: T) => string;
+    isPaidThroughEntitled: (row: T) => boolean;
+  }
+): T | null {
+  for (const row of rows) {
+    const status = normalizeSubscriptionStatus(opts.getStatus(row));
+    if (status === 'active' || status === 'trialing' || status === 'past_due') {
+      return row;
+    }
+  }
+  for (const row of rows) {
+    if (opts.isPaidThroughEntitled(row)) {
+      return row;
+    }
+  }
+  return null;
+}
+
+/**
  * Whether a Wompi subscription still grants paid entitlements
  * (period end + grace / past_due dunning window).
- * Stripe/PayU must NOT use this — they stay status-based.
+ * Does not handle canceled/CAPE — use {@link subscriptionGrantsPaidEntitlement}.
+ * Stripe/PayU must NOT use this for active paths — they stay status-based.
  */
 export function hasPaidEntitlement(params: {
   status: string;
@@ -173,7 +334,8 @@ export function hasPaidEntitlement(params: {
 }): boolean {
   const now = params.now ?? new Date();
   const graceMs = params.graceMs ?? ENTITLEMENT_GRACE_MS;
-  const { status, currentPeriodEnd } = params;
+  const status = normalizeSubscriptionStatus(params.status);
+  const { currentPeriodEnd } = params;
 
   if (status === 'past_due') {
     if (!currentPeriodEnd) return true;
@@ -203,8 +365,75 @@ export function hasPaidEntitlement(params: {
 
 /**
  * Status-only entitlement for Stripe/PayU (pre-KAN-166 behavior).
- * Ignores current_period_end entirely.
+ * Ignores current_period_end entirely. Does not grant canceled/CAPE.
  */
 export function hasStatusBasedEntitlement(status: string): boolean {
-  return status === 'active' || status === 'trialing';
+  const s = normalizeSubscriptionStatus(status);
+  return s === 'active' || s === 'trialing';
+}
+
+/**
+ * Unified paid entitlement (KAN-168). Mirrors SQL
+ * `subscription_grants_paid_entitlement`.
+ *
+ * Paid-through applies ONLY when cancel_at_period_end = true (user period-end
+ * cancel): status may be active/trialing/past_due, or canceled after cron/webhook
+ * flips at period end. Requires known current_period_end (NULL → Free).
+ * Wompi keeps +1 day grace on that path; Stripe/PayU end at CPE.
+ *
+ * Any cancel without CAPE (immediate, refunds, chargebacks, admin, Wompi
+ * void/decline, dunning, superseded, expired_resubscribe, mid-period
+ * subscription.deleted) → no paid-through. Revoke reasons also deny
+ * paid-through even if CAPE is still true.
+ */
+export function subscriptionGrantsPaidEntitlement(params: {
+  status: string;
+  provider?: string | null;
+  currentPeriodEnd?: Date | string | null;
+  cancelAtPeriodEnd?: boolean | null;
+  canceledReason?: string | null;
+  now?: Date;
+  graceMs?: number;
+}): boolean {
+  const now = params.now ?? new Date();
+  const graceMs = params.graceMs ?? ENTITLEMENT_GRACE_MS;
+  const status = normalizeSubscriptionStatus(params.status);
+
+  // Paid-through: CAPE is the sole user period-end signal.
+  if (params.cancelAtPeriodEnd === true) {
+    if (isPaidThroughRevokeReason(params.canceledReason)) {
+      return false;
+    }
+    const statusOk =
+      status === 'active' ||
+      status === 'trialing' ||
+      status === 'past_due' ||
+      isCanceledSubscriptionStatus(status);
+    if (!statusOk) {
+      return false;
+    }
+    if (params.currentPeriodEnd == null) {
+      return false;
+    }
+    const end =
+      typeof params.currentPeriodEnd === 'string'
+        ? new Date(params.currentPeriodEnd)
+        : params.currentPeriodEnd;
+    if (!Number.isFinite(end.getTime())) {
+      return false;
+    }
+    const grace = params.provider === 'wompi' ? graceMs : 0;
+    return now.getTime() <= end.getTime() + grace;
+  }
+
+  if (params.provider === 'wompi') {
+    return hasPaidEntitlement({
+      status,
+      currentPeriodEnd: params.currentPeriodEnd,
+      now,
+      graceMs,
+    });
+  }
+
+  return hasStatusBasedEntitlement(status);
 }

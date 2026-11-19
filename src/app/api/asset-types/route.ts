@@ -1,6 +1,16 @@
 import { NextResponse } from 'next/server';
 import { createAuthenticatedRouteClient } from '@/lib/supabase-server';
 import { getCachedAssetTypesForPlan, getCachedAssetTypeByKey } from '@/lib/server/asset-types-cache';
+import {
+    CAPE_FALLBACK_STATUSES,
+    capePaidThroughCpeFloorIso,
+    LIVE_CHARGEABLE_STATUSES,
+    selectBestEntitledSubscription,
+    subscriptionGrantsPaidEntitlement,
+} from '@/lib/billing/dunning';
+
+const ASSET_TYPES_SUB_SELECT =
+    'plan_id, status, provider, current_period_end, cancel_at_period_end, canceled_reason, plan:billing_plans(id, amount_cents)';
 
 export async function GET(request: Request) {
     const { supabase, user } = await createAuthenticatedRouteClient();
@@ -25,14 +35,43 @@ export async function GET(request: Request) {
     }
 
     try {
-    const { data: subscription } = await supabase
-            .from('billing_subscriptions')
-            .select('plan_id')
-            .eq('user_id', user.id)
-            .eq('status', 'active')
-            .single();
+        // Two queries (no mixed-status LIMIT): live chargeable + CAPE candidates.
+        const [liveResult, capeResult] = await Promise.all([
+            supabase
+                .from('billing_subscriptions')
+                .select(ASSET_TYPES_SUB_SELECT)
+                .eq('user_id', user.id)
+                .in('status', [...LIVE_CHARGEABLE_STATUSES])
+                .order('updated_at', { ascending: false }),
+            supabase
+                .from('billing_subscriptions')
+                .select(ASSET_TYPES_SUB_SELECT)
+                .eq('user_id', user.id)
+                .eq('cancel_at_period_end', true)
+                .in('status', [...CAPE_FALLBACK_STATUSES])
+                .gt('current_period_end', capePaidThroughCpeFloorIso())
+                .order('updated_at', { ascending: false }),
+        ]);
 
-        const resolvedPlanId = subscription?.plan_id || 'plan_free';
+        const subscriptions = [...(liveResult.data || []), ...(capeResult.data || [])];
+
+        const best = selectBestEntitledSubscription(subscriptions, {
+            isEntitled: (sub) =>
+                subscriptionGrantsPaidEntitlement({
+                    status: sub.status as string,
+                    provider: sub.provider as string | null,
+                    currentPeriodEnd: sub.current_period_end as string | null,
+                    cancelAtPeriodEnd: sub.cancel_at_period_end as boolean | null,
+                    canceledReason: sub.canceled_reason as string | null,
+                }),
+            getPlanId: (sub) => {
+                const plan = sub.plan as { id?: string } | { id?: string }[] | null;
+                if (Array.isArray(plan)) return plan[0]?.id ?? (sub.plan_id as string);
+                return plan?.id ?? (sub.plan_id as string);
+            },
+        });
+        const resolvedPlanId = (best?.plan_id as string) || 'plan_free';
+
         const data = await getCachedAssetTypesForPlan(resolvedPlanId);
 
         return NextResponse.json(data, {

@@ -84,6 +84,7 @@ export interface Subscription {
   currentPeriodEnd?: Date;
   cancelAtPeriodEnd: boolean;
   canceledAt?: Date;
+  canceledReason?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

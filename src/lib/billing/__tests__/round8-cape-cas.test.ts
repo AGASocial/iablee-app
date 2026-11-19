@@ -694,5 +694,11 @@ describe('round-8: immediate cancel canceled_reason=user', () => {
     expect(updates[0].status).toBe('canceled');
     expect(updates[0].canceled_reason).toBe('user');
     expect(updates[0].canceled_at).toBeTruthy();
+    expect(updates[0].cancel_at_period_end).toBe(false);
+    // Clamp CPE so immediate cancel cannot leave a misleading future end.
+    expect(updates[0].current_period_end).toBeTruthy();
+    expect(new Date(updates[0].current_period_end as string).getTime()).toBeLessThanOrEqual(
+      Date.now() + 1000
+    );
   });
 });
