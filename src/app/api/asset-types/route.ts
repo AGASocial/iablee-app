@@ -2,9 +2,15 @@ import { NextResponse } from 'next/server';
 import { createAuthenticatedRouteClient } from '@/lib/supabase-server';
 import { getCachedAssetTypesForPlan, getCachedAssetTypeByKey } from '@/lib/server/asset-types-cache';
 import {
+    CAPE_FALLBACK_STATUSES,
+    capePaidThroughCpeFloorIso,
+    LIVE_CHARGEABLE_STATUSES,
     selectBestEntitledSubscription,
     subscriptionGrantsPaidEntitlement,
 } from '@/lib/billing/dunning';
+
+const ASSET_TYPES_SUB_SELECT =
+    'plan_id, status, provider, current_period_end, cancel_at_period_end, canceled_reason, plan:billing_plans(id, amount_cents)';
 
 export async function GET(request: Request) {
     const { supabase, user } = await createAuthenticatedRouteClient();
@@ -29,17 +35,27 @@ export async function GET(request: Request) {
     }
 
     try {
-        const { data: subscriptions } = await supabase
-            .from('billing_subscriptions')
-            .select(
-                'plan_id, status, provider, current_period_end, cancel_at_period_end, canceled_reason, plan:billing_plans(id, amount_cents)'
-            )
-            .eq('user_id', user.id)
-            .in('status', ['active', 'past_due', 'trialing', 'canceled', 'cancelled'])
-            .order('updated_at', { ascending: false })
-            .limit(10);
+        // Two queries (no mixed-status LIMIT): live chargeable + CAPE candidates.
+        const [liveResult, capeResult] = await Promise.all([
+            supabase
+                .from('billing_subscriptions')
+                .select(ASSET_TYPES_SUB_SELECT)
+                .eq('user_id', user.id)
+                .in('status', [...LIVE_CHARGEABLE_STATUSES])
+                .order('updated_at', { ascending: false }),
+            supabase
+                .from('billing_subscriptions')
+                .select(ASSET_TYPES_SUB_SELECT)
+                .eq('user_id', user.id)
+                .eq('cancel_at_period_end', true)
+                .in('status', [...CAPE_FALLBACK_STATUSES])
+                .gt('current_period_end', capePaidThroughCpeFloorIso())
+                .order('updated_at', { ascending: false }),
+        ]);
 
-        const best = selectBestEntitledSubscription(subscriptions || [], {
+        const subscriptions = [...(liveResult.data || []), ...(capeResult.data || [])];
+
+        const best = selectBestEntitledSubscription(subscriptions, {
             isEntitled: (sub) =>
                 subscriptionGrantsPaidEntitlement({
                     status: sub.status as string,

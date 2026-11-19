@@ -4,6 +4,9 @@
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import {
+  CAPE_FALLBACK_STATUSES,
+  capePaidThroughCpeFloorIso,
+  LIVE_CHARGEABLE_STATUSES,
   selectBestEntitledSubscription,
   subscriptionGrantsPaidEntitlement,
 } from '@/lib/billing/dunning';
@@ -61,27 +64,46 @@ function setCache(userId: string, subscription: SubscriptionRecord | null, limit
   requestCache.set(userId, { subscription, limits, ts: Date.now() });
 }
 
+const ENTITLEMENT_SUB_SELECT =
+  `status, provider, current_period_end, cancel_at_period_end, canceled_reason, plan:billing_plans(id, name, features, amount_cents)`;
+
 /**
  * Fetch the subscription that currently grants paid entitlements.
  * CAPE paid-through until current_period_end (KAN-168). Prefers highest product
  * tier (plan id prefix: premium > necessary) among entitled rows — not
  * amount_cents. See subscriptionGrantsPaidEntitlement / entitledPlanRank.
+ *
+ * Two queries (no mixed-status LIMIT): all live chargeable rows, plus CAPE
+ * paid-through candidates filtered at the query level so tombstones cannot
+ * crowd out entitled rows.
  */
 async function fetchActiveSubscription(
   supabase: SupabaseClient,
   userId: string
 ): Promise<SubscriptionRecord | null> {
-  const { data: subscriptions } = await supabase
-    .from('billing_subscriptions')
-    .select(
-      `status, provider, current_period_end, cancel_at_period_end, canceled_reason, plan:billing_plans(id, name, features, amount_cents)`
-    )
-    .eq('user_id', userId)
-    .in('status', ['active', 'past_due', 'trialing', 'canceled', 'cancelled'])
-    .order('updated_at', { ascending: false })
-    .limit(10);
+  const [liveResult, capeResult] = await Promise.all([
+    supabase
+      .from('billing_subscriptions')
+      .select(ENTITLEMENT_SUB_SELECT)
+      .eq('user_id', userId)
+      .in('status', [...LIVE_CHARGEABLE_STATUSES])
+      .order('updated_at', { ascending: false }),
+    supabase
+      .from('billing_subscriptions')
+      .select(ENTITLEMENT_SUB_SELECT)
+      .eq('user_id', userId)
+      .eq('cancel_at_period_end', true)
+      .in('status', [...CAPE_FALLBACK_STATUSES])
+      .gt('current_period_end', capePaidThroughCpeFloorIso())
+      .order('updated_at', { ascending: false }),
+  ]);
 
-  if (!subscriptions?.length) {
+  const subscriptions = [
+    ...((liveResult.data || []) as SubscriptionRecord[]),
+    ...((capeResult.data || []) as SubscriptionRecord[]),
+  ];
+
+  if (!subscriptions.length) {
     return null;
   }
 
@@ -90,7 +112,7 @@ async function fetchActiveSubscription(
     return Array.isArray(sub.plan) ? sub.plan[0] ?? null : sub.plan;
   };
 
-  return selectBestEntitledSubscription(subscriptions as SubscriptionRecord[], {
+  return selectBestEntitledSubscription(subscriptions, {
     isEntitled: (sub) =>
       subscriptionGrantsPaidEntitlement({
         status: sub.status,

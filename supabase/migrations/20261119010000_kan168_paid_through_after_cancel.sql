@@ -92,6 +92,9 @@ BEGIN
   -- Prefer highest product tier among entitled paid plans; ignore plan_free.
   -- Tier rule mirrors dunning.ts entitledPlanRank (plan id prefix, NOT amount_cents):
   -- plan_premium_* (300) > plan_necessary_* (200) > other paid (100); tie → newest updated_at.
+  -- Entitlement is filtered in WHERE (no pre-rank LIMIT window), so canceled
+  -- tombstones that fail subscription_grants_paid_entitlement cannot starve live rows.
+  -- LIMIT 1 applies only AFTER tier + updated_at ranking.
   SELECT (bp.features->>'max_storage_mb')::numeric
   INTO v_max_mb
   FROM public.billing_subscriptions bs

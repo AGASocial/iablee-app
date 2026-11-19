@@ -22,6 +22,27 @@ export const ENTITLEMENT_GRACE_MS = 24 * 60 * 60 * 1000;
 /** How long past_due may retain Premium (through final retry day). */
 export const DUNNING_WINDOW_DAYS = 5;
 
+/**
+ * Chargeable / live statuses (develop getUserSubscription semantics).
+ * Queried without a mixed-status LIMIT so canceled tombstones cannot starve them.
+ */
+export const LIVE_CHARGEABLE_STATUSES = ['active', 'trialing', 'past_due'] as const;
+
+/**
+ * CAPE paid-through fallback statuses (canceled after period-end flip).
+ * Live CAPE rows (still active/trialing/past_due) are covered by LIVE_CHARGEABLE_STATUSES.
+ */
+export const CAPE_FALLBACK_STATUSES = ['canceled', 'cancelled'] as const;
+
+/**
+ * Lower bound for CAPE candidate `current_period_end` filter.
+ * Wompi grace (CPE + 1d) is the widest paid-through window; Stripe/PayU end at CPE.
+ * `cpe > now - grace` includes every provider that could still be entitled.
+ */
+export function capePaidThroughCpeFloorIso(now: Date = new Date()): string {
+  return new Date(now.getTime() - ENTITLEMENT_GRACE_MS).toISOString();
+}
+
 export const UPCOMING_RENEWAL_DAYS = 3;
 
 /**
@@ -273,8 +294,10 @@ export function selectBestEntitledSubscription<T>(
  *
  * Matches pre-KAN-168 develop: prefer newest `active` | `trialing` | `past_due`
  * (incl. Stripe past_due that does not grant entitlements). If none, fall back
- * to a CAPE paid-through canceled row. Caller should pass rows ordered by
- * `created_at` DESC.
+ * to a CAPE paid-through canceled row.
+ *
+ * Prefer two DB queries (live chargeable, then CAPE fallback) rather than a
+ * mixed-status LIMIT window. When passing a merged list, order by `created_at` DESC.
  */
 export function selectManagementSubscription<T>(
   rows: T[],

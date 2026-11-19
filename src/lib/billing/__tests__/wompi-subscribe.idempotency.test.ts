@@ -52,6 +52,9 @@ function chain(terminal: { data?: unknown; error?: unknown }) {
     'is',
     'neq',
     'lt',
+    'gt',
+    'gte',
+    'lte',
   ]) {
     api[m] = jest.fn(self);
   }
@@ -70,29 +73,20 @@ describe('createWompiSourceAndSubscribe first-charge idempotency', () => {
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
           return {
-            select: () => ({
-              eq: () => ({
-                eq: () => ({
-                  in: () => ({
-                    order: () => ({
-                      limit: async () => ({
-                        data: [
-                          {
-                            id: subId,
-                            status: 'active',
-                            current_period_end: new Date(
-                              Date.now() + 86400000
-                            ).toISOString(),
-                            plan_id: planId,
-                          },
-                        ],
-                        error: null,
-                      }),
-                    }),
-                  }),
-                }),
+            select: () =>
+              chain({
+                data: [
+                  {
+                    id: subId,
+                    status: 'active',
+                    current_period_end: new Date(
+                      Date.now() + 86400000
+                    ).toISOString(),
+                    plan_id: planId,
+                  },
+                ],
+                error: null,
               }),
-            }),
           };
         }
         return {};
@@ -135,7 +129,8 @@ describe('createWompiSourceAndSubscribe first-charge idempotency', () => {
           return {
             select: () => {
               subSelect++;
-              if (subSelect === 1) {
+              if (subSelect <= 2) {
+                // live + CAPE findBlockingSubscription queries
                 return chain({ data: [], error: null });
               }
               return chain({
@@ -224,7 +219,8 @@ describe('createWompiSourceAndSubscribe first-charge idempotency', () => {
           return {
             select: () => {
               subSelect++;
-              if (subSelect === 1) {
+              if (subSelect <= 2) {
+                // live + CAPE findBlockingSubscription queries
                 return chain({ data: [], error: null });
               }
               return chain({
@@ -340,21 +336,6 @@ describe('createWompiSourceAndSubscribe first-charge idempotency', () => {
   it('surfaces claim failure after DECLINED as error, not fake PENDING', async () => {
     const declinedRef = `wompi_first_${userId}_${planId}_${subId}_1`;
 
-    const chain = (terminal: { data?: unknown; error?: unknown }) => {
-      const api: Record<string, unknown> = {};
-      const self = () => api;
-      for (const m of ['select', 'eq', 'in', 'order', 'limit', 'update', 'insert', 'is', 'neq']) {
-        api[m] = jest.fn(self);
-      }
-      api.maybeSingle = jest.fn(async () => terminal);
-      api.single = jest.fn(async () => terminal);
-      (api as { then?: unknown }).then = (
-        resolve: (v: unknown) => unknown,
-        reject?: (e: unknown) => unknown
-      ) => Promise.resolve(terminal).then(resolve, reject);
-      return api;
-    };
-
     let subSelect = 0;
     const supabase = {
       from: jest.fn((table: string) => {
@@ -362,7 +343,8 @@ describe('createWompiSourceAndSubscribe first-charge idempotency', () => {
           return {
             select: () => {
               subSelect++;
-              if (subSelect === 1) {
+              if (subSelect <= 2) {
+                // live + CAPE findBlockingSubscription queries
                 return chain({ data: [], error: null });
               }
               return chain({
@@ -429,7 +411,8 @@ describe('createWompiSourceAndSubscribe first-charge idempotency', () => {
           return {
             select: () => {
               subSelect++;
-              if (subSelect === 1) {
+              if (subSelect <= 2) {
+                // live + CAPE findBlockingSubscription queries
                 return chain({ data: [], error: null });
               }
               return chain({
@@ -690,33 +673,81 @@ describe('activateFirstCharge idempotency', () => {
 });
 
 describe('findBlockingSubscription', () => {
-  it('blocks past_due even when current_period_end is in the past', async () => {
-    const past = new Date(Date.now() - 3 * 86400000).toISOString();
-    const supabase = {
+  function filterBlockingRows(
+    rows: Record<string, unknown>[],
+    filters: { statuses?: string[]; cape?: boolean; cpeGt?: string }
+  ) {
+    let filtered = rows;
+    if (filters.statuses) {
+      const set = new Set(filters.statuses.map((s) => s.toLowerCase()));
+      filtered = filtered.filter((r) => set.has(String(r.status).toLowerCase()));
+    }
+    if (filters.cape === true) {
+      filtered = filtered.filter((r) => r.cancel_at_period_end === true);
+    }
+    if (filters.cpeGt) {
+      const floor = new Date(filters.cpeGt).getTime();
+      filtered = filtered.filter((r) => {
+        if (r.current_period_end == null) return false;
+        return new Date(r.current_period_end as string).getTime() > floor;
+      });
+    }
+    return filtered;
+  }
+
+  function mockSelectRows(rows: Record<string, unknown>[]) {
+    const filters: { statuses?: string[]; cape?: boolean; cpeGt?: string } = {};
+    const api: Record<string, unknown> = {};
+    const self = () => api;
+    api.eq = (col: string, val: unknown) => {
+      if (col === 'cancel_at_period_end') filters.cape = val === true;
+      return self();
+    };
+    api.in = (col: string, vals: string[]) => {
+      if (col === 'status') filters.statuses = vals;
+      return self();
+    };
+    api.gt = (col: string, val: string) => {
+      if (col === 'current_period_end') filters.cpeGt = val;
+      return self();
+    };
+    type Terminal = {
+      limit: () => Terminal;
+      then: (
+        resolve: (v: unknown) => unknown,
+        reject?: (e: unknown) => unknown
+      ) => Promise<unknown>;
+    };
+    const terminal = (): Terminal => ({
+      limit: () => terminal(),
+      then: (resolve, reject) =>
+        Promise.resolve({
+          data: filterBlockingRows(rows, filters),
+          error: null,
+        }).then(resolve, reject),
+    });
+    api.order = () => terminal();
+    return api;
+  }
+
+  function mockBlockingSupabase(rows: Record<string, unknown>[]) {
+    return {
       from: () => ({
-        select: () => ({
-          eq: () => ({
-            eq: () => ({
-              in: () => ({
-                order: () => ({
-                  limit: async () => ({
-                    data: [
-                      {
-                        id: subId,
-                        status: 'past_due',
-                        current_period_end: past,
-                        plan_id: planId,
-                      },
-                    ],
-                    error: null,
-                  }),
-                }),
-              }),
-            }),
-          }),
-        }),
+        select: () => mockSelectRows(rows),
       }),
     };
+  }
+
+  it('blocks past_due even when current_period_end is in the past', async () => {
+    const past = new Date(Date.now() - 3 * 86400000).toISOString();
+    const supabase = mockBlockingSupabase([
+      {
+        id: subId,
+        status: 'past_due',
+        current_period_end: past,
+        plan_id: planId,
+      },
+    ]);
 
     const blocked = await findBlockingSubscription(supabase as never, userId);
     expect(blocked?.id).toBe(subId);
@@ -725,31 +756,14 @@ describe('findBlockingSubscription', () => {
 
   it('blocks active within entitlement grace after period end', async () => {
     const justEnded = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
-    const supabase = {
-      from: () => ({
-        select: () => ({
-          eq: () => ({
-            eq: () => ({
-              in: () => ({
-                order: () => ({
-                  limit: async () => ({
-                    data: [
-                      {
-                        id: subId,
-                        status: 'active',
-                        current_period_end: justEnded,
-                        plan_id: planId,
-                      },
-                    ],
-                    error: null,
-                  }),
-                }),
-              }),
-            }),
-          }),
-        }),
-      }),
-    };
+    const supabase = mockBlockingSupabase([
+      {
+        id: subId,
+        status: 'active',
+        current_period_end: justEnded,
+        plan_id: planId,
+      },
+    ]);
 
     const blocked = await findBlockingSubscription(supabase as never, userId);
     expect(blocked?.id).toBe(subId);
@@ -758,34 +772,17 @@ describe('findBlockingSubscription', () => {
   it('allows resubscribe during Wompi grace after CAPE canceled period end', async () => {
     // CPE passed but within +1d grace: still entitled, must not block Upgrade.
     const justEnded = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
-    const supabase = {
-      from: () => ({
-        select: () => ({
-          eq: () => ({
-            eq: () => ({
-              in: () => ({
-                order: () => ({
-                  limit: async () => ({
-                    data: [
-                      {
-                        id: subId,
-                        status: 'canceled',
-                        current_period_end: justEnded,
-                        plan_id: planId,
-                        cancel_at_period_end: true,
-                        canceled_reason: 'user',
-                        plan: { amount_cents: 490000 },
-                      },
-                    ],
-                    error: null,
-                  }),
-                }),
-              }),
-            }),
-          }),
-        }),
-      }),
-    };
+    const supabase = mockBlockingSupabase([
+      {
+        id: subId,
+        status: 'canceled',
+        current_period_end: justEnded,
+        plan_id: planId,
+        cancel_at_period_end: true,
+        canceled_reason: 'user',
+        plan: { amount_cents: 490000 },
+      },
+    ]);
 
     const blocked = await findBlockingSubscription(supabase as never, userId);
     expect(blocked).toBeNull();
@@ -793,74 +790,72 @@ describe('findBlockingSubscription', () => {
 
   it('blocks CAPE canceled while current_period_end still in the future', async () => {
     const future = new Date(Date.now() + 3 * 86400000).toISOString();
-    const supabase = {
-      from: () => ({
-        select: () => ({
-          eq: () => ({
-            eq: () => ({
-              in: () => ({
-                order: () => ({
-                  limit: async () => ({
-                    data: [
-                      {
-                        id: subId,
-                        status: 'canceled',
-                        current_period_end: future,
-                        plan_id: planId,
-                        cancel_at_period_end: true,
-                        canceled_reason: 'user',
-                        plan: { amount_cents: 490000 },
-                      },
-                    ],
-                    error: null,
-                  }),
-                }),
-              }),
-            }),
-          }),
-        }),
-      }),
-    };
+    const supabase = mockBlockingSupabase([
+      {
+        id: subId,
+        status: 'canceled',
+        current_period_end: future,
+        plan_id: planId,
+        cancel_at_period_end: true,
+        canceled_reason: 'user',
+        plan: { amount_cents: 490000 },
+      },
+    ]);
 
     const blocked = await findBlockingSubscription(supabase as never, userId);
     expect(blocked?.id).toBe(subId);
   });
 
+  it('does not starve older past_due behind >10 newer canceled tombstones', async () => {
+    const past = new Date(Date.now() - 3 * 86400000).toISOString();
+    const pastDue = {
+      id: subId,
+      status: 'past_due',
+      current_period_end: past,
+      plan_id: planId,
+      cancel_at_period_end: false,
+    };
+    const tombstones = Array.from({ length: 12 }, (_, i) => ({
+      id: `canceled-${i}`,
+      status: 'canceled',
+      current_period_end: past,
+      plan_id: planId,
+      cancel_at_period_end: false,
+      canceled_reason: 'expired_resubscribe',
+    }));
+    const blocked = await findBlockingSubscription(
+      mockBlockingSupabase([...tombstones, pastDue]) as never,
+      userId
+    );
+    expect(blocked?.id).toBe(subId);
+    expect(blocked?.status).toBe('past_due');
+  });
+
   it('tombstones expired active past grace with no open attempt, then allows subscribe', async () => {
     const expired = new Date(Date.now() - 3 * 86400000).toISOString();
     let tombstonePayload: Record<string, unknown> | null = null;
-    let tableCalls = 0;
+    let selectCalls = 0;
 
     const supabase = {
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
-          tableCalls++;
-          if (tableCalls === 1) {
-            return {
-              select: () => ({
-                eq: () => ({
-                  eq: () => ({
-                    in: () => ({
-                      order: () => ({
-                        limit: async () => ({
-                          data: [
-                            {
-                              id: subId,
-                              status: 'active',
-                              current_period_end: expired,
-                              plan_id: planId,
-                            },
-                          ],
-                          error: null,
-                        }),
-                      }),
-                    }),
-                  }),
-                }),
-              }),
-            };
-          }
           return {
+            select: () => {
+              selectCalls++;
+              // live query (1) + CAPE fallback after tombstone (2)
+              return mockSelectRows(
+                selectCalls === 1
+                  ? [
+                      {
+                        id: subId,
+                        status: 'active',
+                        current_period_end: expired,
+                        plan_id: planId,
+                      },
+                    ]
+                  : []
+              );
+            },
             update: (payload: Record<string, unknown>) => {
               tombstonePayload = payload;
               return {
@@ -912,27 +907,15 @@ describe('findBlockingSubscription', () => {
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
           return {
-            select: () => ({
-              eq: () => ({
-                eq: () => ({
-                  in: () => ({
-                    order: () => ({
-                      limit: async () => ({
-                        data: [
-                          {
-                            id: subId,
-                            status: 'active',
-                            current_period_end: expired,
-                            plan_id: planId,
-                          },
-                        ],
-                        error: null,
-                      }),
-                    }),
-                  }),
-                }),
-              }),
-            }),
+            select: () =>
+              mockSelectRows([
+                {
+                  id: subId,
+                  status: 'active',
+                  current_period_end: expired,
+                  plan_id: planId,
+                },
+              ]),
             update: () => {
               throw new Error('must not tombstone while approved exists');
             },
@@ -972,27 +955,15 @@ describe('findBlockingSubscription', () => {
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
           return {
-            select: () => ({
-              eq: () => ({
-                eq: () => ({
-                  in: () => ({
-                    order: () => ({
-                      limit: async () => ({
-                        data: [
-                          {
-                            id: subId,
-                            status: 'active',
-                            current_period_end: expired,
-                            plan_id: planId,
-                          },
-                        ],
-                        error: null,
-                      }),
-                    }),
-                  }),
-                }),
-              }),
-            }),
+            select: () =>
+              mockSelectRows([
+                {
+                  id: subId,
+                  status: 'active',
+                  current_period_end: expired,
+                  plan_id: planId,
+                },
+              ]),
             update: () => {
               throw new Error('must not tombstone while attempt open');
             },
@@ -1074,7 +1045,7 @@ describe('createSourceTransaction inconclusive keeps claimed', () => {
           return {
             select: () => {
               subSelect++;
-              if (subSelect === 1) return chain({ data: [], error: null });
+              if (subSelect <= 2) return chain({ data: [], error: null }); // live + CAPE
               return chain({
                 data: [incompleteRow],
                 error: null,

@@ -383,6 +383,9 @@ describe('round-5: concurrent dual subscribe', () => {
         'insert',
         'is',
         'neq',
+        'gt',
+        'gte',
+        'lte',
       ]) {
         api[m] = jest.fn(self);
       }
@@ -476,31 +479,46 @@ describe('round-5: concurrent dual subscribe', () => {
 describe('round-5: tombstone blocked while approved exists', () => {
   it('does not tombstone expired active when non-refund approved exists', async () => {
     const expired = new Date(Date.now() - 3 * 86400000).toISOString();
+    const chain = (terminal: { data?: unknown; error?: unknown }) => {
+      const api: Record<string, unknown> = {};
+      const self = () => api;
+      for (const m of [
+        'select',
+        'eq',
+        'in',
+        'order',
+        'limit',
+        'update',
+        'gt',
+        'gte',
+        'lte',
+      ]) {
+        api[m] = jest.fn(self);
+      }
+      api.maybeSingle = jest.fn(async () => terminal);
+      (api as { then?: unknown }).then = (
+        resolve: (v: unknown) => unknown,
+        reject?: (e: unknown) => unknown
+      ) => Promise.resolve(terminal).then(resolve, reject);
+      return api;
+    };
+
     const supabase = {
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
           return {
-            select: () => ({
-              eq: () => ({
-                eq: () => ({
-                  in: () => ({
-                    order: () => ({
-                      limit: async () => ({
-                        data: [
-                          {
-                            id: oldSubId,
-                            status: 'active',
-                            current_period_end: expired,
-                            plan_id: planId,
-                          },
-                        ],
-                        error: null,
-                      }),
-                    }),
-                  }),
-                }),
+            select: () =>
+              chain({
+                data: [
+                  {
+                    id: oldSubId,
+                    status: 'active',
+                    current_period_end: expired,
+                    plan_id: planId,
+                  },
+                ],
+                error: null,
               }),
-            }),
             update: () => {
               throw new Error('must not tombstone while approved exists');
             },
@@ -508,22 +526,17 @@ describe('round-5: tombstone blocked while approved exists', () => {
         }
         if (table === 'billing_renewal_attempts') {
           return {
-            select: () => ({
-              eq: () => ({
-                in: () => ({
-                  limit: async () => ({
-                    data: [
-                      {
-                        id: 'a1',
-                        status: 'approved',
-                        requires_refund: null,
-                      },
-                    ],
-                    error: null,
-                  }),
-                }),
+            select: () =>
+              chain({
+                data: [
+                  {
+                    id: 'a1',
+                    status: 'approved',
+                    requires_refund: null,
+                  },
+                ],
+                error: null,
               }),
-            }),
           };
         }
         return {};

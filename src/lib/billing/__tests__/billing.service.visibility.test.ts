@@ -27,6 +27,29 @@ function makeGateway(overrides: Partial<PaymentGateway> = {}): PaymentGateway {
   } as unknown as PaymentGateway;
 }
 
+/** Filter rows the way getUserSubscription's two queries do (live vs CAPE). */
+function filterSubscriptionRows(
+  rows: Record<string, unknown>[],
+  filters: { statuses?: string[]; cape?: boolean; cpeGt?: string }
+): Record<string, unknown>[] {
+  let filtered = rows;
+  if (filters.statuses) {
+    const set = new Set(filters.statuses.map((s) => s.toLowerCase()));
+    filtered = filtered.filter((r) => set.has(String(r.status).toLowerCase()));
+  }
+  if (filters.cape === true) {
+    filtered = filtered.filter((r) => r.cancel_at_period_end === true);
+  }
+  if (filters.cpeGt) {
+    const floor = new Date(filters.cpeGt).getTime();
+    filtered = filtered.filter((r) => {
+      if (r.current_period_end == null) return false;
+      return new Date(r.current_period_end as string).getTime() > floor;
+    });
+  }
+  return filtered;
+}
+
 /** Minimal thenable query builder for BillingService supabase calls. */
 function createSupabaseMock(opts: {
   planVisible: boolean;
@@ -57,6 +80,7 @@ function createSupabaseMock(opts: {
     api.upsert = jest.fn(self);
     api.eq = jest.fn(self);
     api.in = jest.fn(self);
+    api.gt = jest.fn(self);
     api.order = jest.fn(self);
     api.limit = jest.fn(self);
     api.single = jest.fn(async () => {
@@ -83,23 +107,47 @@ function createSupabaseMock(opts: {
         api.single = jest.fn(async () => ({ data: planRow, error: null }));
       }
       if (table === 'billing_subscriptions') {
-        // getUserSubscription awaits .limit(N); other paths use .limit().maybeSingle().
-        api.limit = jest.fn(() => {
-          const listResult = {
-            data: opts.existingSubscription ? [opts.existingSubscription] : [],
-            error: null,
-          };
-          return {
-            maybeSingle: jest.fn(async () => ({
-              data: opts.existingSubscription,
-              error: null,
-            })),
-            then: (
-              resolve: (v: unknown) => unknown,
-              reject?: (e: unknown) => unknown
-            ) => Promise.resolve(listResult).then(resolve, reject),
-          };
+        const filters: { statuses?: string[]; cape?: boolean; cpeGt?: string } = {};
+        const listResult = () => ({
+          data: opts.existingSubscription
+            ? filterSubscriptionRows([opts.existingSubscription], filters)
+            : [],
+          error: null,
         });
+        api.eq = jest.fn((col: string, val: unknown) => {
+          if (col === 'cancel_at_period_end') filters.cape = val === true;
+          return api;
+        });
+        api.in = jest.fn((col: string, vals: string[]) => {
+          if (col === 'status') filters.statuses = vals;
+          return api;
+        });
+        api.gt = jest.fn((col: string, val: string) => {
+          if (col === 'current_period_end') filters.cpeGt = val;
+          return api;
+        });
+        // getUserSubscription awaits .order(); other paths use .limit().maybeSingle().
+        type Terminal = {
+          maybeSingle: jest.Mock;
+          limit: jest.Mock;
+          then: (
+            resolve: (v: unknown) => unknown,
+            reject?: (e: unknown) => unknown
+          ) => Promise<unknown>;
+        };
+        const terminal = (): Terminal => ({
+          maybeSingle: jest.fn(async () => ({
+            data: opts.existingSubscription,
+            error: null,
+          })),
+          limit: jest.fn(() => terminal()),
+          then: (
+            resolve: (v: unknown) => unknown,
+            reject?: (e: unknown) => unknown
+          ) => Promise.resolve(listResult()).then(resolve, reject),
+        });
+        api.order = jest.fn(() => terminal());
+        api.limit = jest.fn(() => terminal());
         api.maybeSingle = jest.fn(async () => ({
           data: opts.existingSubscription,
           error: null,
@@ -223,18 +271,36 @@ describe('BillingService getUserSubscription management lookup (KAN-168)', () =>
   function makeListSupabase(rows: Record<string, unknown>[]) {
     return {
       from: jest.fn(() => {
+        const filters: { statuses?: string[]; cape?: boolean; cpeGt?: string } = {};
         const api: Record<string, unknown> = {};
         const self = () => api;
         api.select = jest.fn(self);
-        api.eq = jest.fn(self);
-        api.in = jest.fn(self);
-        api.order = jest.fn(self);
-        api.limit = jest.fn(() => ({
+        api.eq = jest.fn((col: string, val: unknown) => {
+          if (col === 'cancel_at_period_end') filters.cape = val === true;
+          return api;
+        });
+        api.in = jest.fn((col: string, vals: string[]) => {
+          if (col === 'status') filters.statuses = vals;
+          return api;
+        });
+        api.gt = jest.fn((col: string, val: string) => {
+          if (col === 'current_period_end') filters.cpeGt = val;
+          return api;
+        });
+        type ListTerminal = {
           then: (
             resolve: (v: unknown) => unknown,
             reject?: (e: unknown) => unknown
-          ) => Promise.resolve({ data: rows, error: null }).then(resolve, reject),
-        }));
+          ) => Promise<unknown>;
+        };
+        const terminal = (): ListTerminal => ({
+          then: (resolve, reject) =>
+            Promise.resolve({
+              data: filterSubscriptionRows(rows, filters),
+              error: null,
+            }).then(resolve, reject),
+        });
+        api.order = jest.fn(() => terminal());
         return api;
       }),
     };
@@ -324,5 +390,75 @@ describe('BillingService getUserSubscription management lookup (KAN-168)', () =>
 
     const sub = await service.getUserSubscription('user-1');
     expect(sub?.id).toBe('sub-cape');
+  });
+
+  it('does not starve older past_due behind >10 newer canceled tombstones', async () => {
+    const pastDue = {
+      id: 'sub-past-due-old',
+      user_id: 'user-1',
+      plan_id: 'plan_premium_month',
+      status: 'past_due',
+      provider: 'stripe',
+      provider_subscription_id: 'sub_pd_old',
+      cancel_at_period_end: false,
+      current_period_end: '2026-11-10T00:00:00.000Z',
+      created_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-11-11T00:00:00.000Z',
+    };
+    const tombstones = Array.from({ length: 12 }, (_, i) => ({
+      id: `sub-canceled-${i}`,
+      user_id: 'user-1',
+      plan_id: 'plan_premium_month',
+      status: 'canceled',
+      provider: 'stripe',
+      provider_subscription_id: `sub_tomb_${i}`,
+      cancel_at_period_end: false,
+      canceled_reason: 'user',
+      current_period_end: '2026-10-01T00:00:00.000Z',
+      created_at: `2026-11-${String(i + 1).padStart(2, '0')}T00:00:00.000Z`,
+      updated_at: `2026-11-${String(i + 1).padStart(2, '0')}T12:00:00.000Z`,
+    }));
+    const service = new BillingService(
+      makeListSupabase([...tombstones, pastDue]) as never,
+      makeGateway({ getName: () => 'stripe' })
+    );
+
+    const sub = await service.getUserSubscription('user-1');
+    expect(sub?.id).toBe('sub-past-due-old');
+    expect(sub?.status).toBe('past_due');
+  });
+
+  it('does not starve older Wompi past_due behind >10 newer canceled tombstones', async () => {
+    const pastDue = {
+      id: 'sub-wompi-pd',
+      user_id: 'user-1',
+      plan_id: 'plan_premium_month',
+      status: 'past_due',
+      provider: 'wompi',
+      provider_subscription_id: null,
+      cancel_at_period_end: false,
+      current_period_end: '2026-11-10T00:00:00.000Z',
+      created_at: '2026-01-15T00:00:00.000Z',
+      updated_at: '2026-11-12T00:00:00.000Z',
+    };
+    const tombstones = Array.from({ length: 15 }, (_, i) => ({
+      id: `sub-wompi-canceled-${i}`,
+      user_id: 'user-1',
+      plan_id: 'plan_necessary_month',
+      status: i % 2 === 0 ? 'canceled' : 'cancelled',
+      provider: 'wompi',
+      cancel_at_period_end: false,
+      canceled_reason: 'expired_resubscribe',
+      current_period_end: '2026-09-01T00:00:00.000Z',
+      created_at: `2026-12-${String((i % 28) + 1).padStart(2, '0')}T00:00:00.000Z`,
+      updated_at: `2026-12-${String((i % 28) + 1).padStart(2, '0')}T08:00:00.000Z`,
+    }));
+    const service = new BillingService(
+      makeListSupabase([...tombstones, pastDue]) as never,
+      makeGateway({ getName: () => 'wompi' })
+    );
+
+    const sub = await service.getUserSubscription('user-1');
+    expect(sub?.id).toBe('sub-wompi-pd');
   });
 });

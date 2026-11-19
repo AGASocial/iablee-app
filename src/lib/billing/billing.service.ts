@@ -35,7 +35,10 @@ import { resolveWompiAmountInCents } from './wompi-pricing';
 import { persistByProviderId } from './persistence';
 import { parseWompiReference as parseWompiRefDetailed } from './wompi-references';
 import {
+  CAPE_FALLBACK_STATUSES,
+  capePaidThroughCpeFloorIso,
   isCanceledSubscriptionStatus,
+  LIVE_CHARGEABLE_STATUSES,
   selectManagementSubscription,
   subscriptionGrantsPaidEntitlement,
   toEpochMs,
@@ -102,39 +105,60 @@ export class BillingService {
    * Management current subscription for billing GET / DELETE / PATCH ownership,
    * assertPlanPurchasable, and upgrade/supersede flows.
    *
-   * Develop semantics: newest `active` | `trialing` | `past_due` by created_at
-   * (Stripe past_due remains visible even when it does not grant entitlements).
-   * Plus KAN-168: CAPE paid-through canceled rows when no chargeable row exists.
+   * Two queries (no mixed-status LIMIT): (a) all live chargeable rows
+   * (active/trialing/past_due — develop semantics, Stripe past_due stays visible);
+   * (b) only if none, CAPE paid-through candidates filtered at the query level.
    *
    * Entitlement ranking (limits / storage / asset-types / UI plan badge) lives
    * in selectBestEntitledSubscription / fetchActiveSubscription — not here.
    */
   async getUserSubscription(userId: string): Promise<Subscription | null> {
-    const { data, error } = await this.supabase
+    const pick = (
+      rows: Record<string, unknown>[]
+    ): Record<string, unknown> | null =>
+      selectManagementSubscription(rows, {
+        getStatus: (row) => row.status as string,
+        isPaidThroughEntitled: (row) =>
+          subscriptionGrantsPaidEntitlement({
+            status: row.status as string,
+            provider: row.provider as string | null,
+            currentPeriodEnd: row.current_period_end as string | null,
+            cancelAtPeriodEnd: row.cancel_at_period_end as boolean | null,
+            canceledReason: row.canceled_reason as string | null,
+          }),
+      });
+
+    const { data: live, error: liveError } = await this.supabase
       .from('billing_subscriptions')
       .select('*')
       .eq('user_id', userId)
-      .in('status', ['active', 'trialing', 'past_due', 'canceled', 'cancelled'])
-      .order('created_at', { ascending: false })
-      .limit(10);
+      .in('status', [...LIVE_CHARGEABLE_STATUSES])
+      .order('created_at', { ascending: false });
 
-    if (error) {
+    if (liveError) {
       throw new BillingError('Failed to fetch subscription', 'FETCH_SUBSCRIPTION_FAILED');
     }
 
-    const current = selectManagementSubscription(data || [], {
-      getStatus: (row) => row.status as string,
-      isPaidThroughEntitled: (row) =>
-        subscriptionGrantsPaidEntitlement({
-          status: row.status as string,
-          provider: row.provider as string | null,
-          currentPeriodEnd: row.current_period_end as string | null,
-          cancelAtPeriodEnd: row.cancel_at_period_end as boolean | null,
-          canceledReason: row.canceled_reason as string | null,
-        }),
-    });
+    const fromLive = pick((live || []) as Record<string, unknown>[]);
+    if (fromLive) {
+      return this.mapSubscriptionFromDb(fromLive);
+    }
 
-    return current ? this.mapSubscriptionFromDb(current) : null;
+    const { data: cape, error: capeError } = await this.supabase
+      .from('billing_subscriptions')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('cancel_at_period_end', true)
+      .in('status', [...CAPE_FALLBACK_STATUSES])
+      .gt('current_period_end', capePaidThroughCpeFloorIso())
+      .order('created_at', { ascending: false });
+
+    if (capeError) {
+      throw new BillingError('Failed to fetch subscription', 'FETCH_SUBSCRIPTION_FAILED');
+    }
+
+    const fromCape = pick((cape || []) as Record<string, unknown>[]);
+    return fromCape ? this.mapSubscriptionFromDb(fromCape) : null;
   }
 
   /**

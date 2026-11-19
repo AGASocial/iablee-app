@@ -11,6 +11,61 @@ import {
   PREMIUM_TOTAL_STORAGE_MB,
 } from '@/lib/subscription/limits';
 
+
+/** Filter-aware billing_subscriptions chain for live + CAPE two-query fetches. */
+function mockBillingSubscriptionsFrom(rows: Record<string, unknown>[]) {
+  return {
+    select: () => {
+      const filters: { statuses?: string[]; cape?: boolean; cpeGt?: string } = {};
+      const api: Record<string, unknown> = {};
+      const self = () => api;
+      const resolve = () => {
+        let filtered = rows;
+        if (filters.statuses) {
+          const set = new Set(filters.statuses.map((s) => s.toLowerCase()));
+          filtered = filtered.filter((r) => set.has(String(r.status).toLowerCase()));
+        }
+        if (filters.cape === true) {
+          filtered = filtered.filter((r) => r.cancel_at_period_end === true);
+        }
+        if (filters.cpeGt) {
+          const floor = new Date(filters.cpeGt).getTime();
+          filtered = filtered.filter((r) => {
+            if (r.current_period_end == null) return false;
+            return new Date(r.current_period_end as string).getTime() > floor;
+          });
+        }
+        return { data: filtered, error: null };
+      };
+      type Terminal = {
+        limit: () => Terminal;
+        then: (
+          res: (v: unknown) => unknown,
+          rej?: (e: unknown) => unknown
+        ) => Promise<unknown>;
+      };
+      const terminal = (): Terminal => ({
+        limit: () => terminal(),
+        then: (res, rej) => Promise.resolve(resolve()).then(res, rej),
+      });
+      api.eq = (col: string, val: unknown) => {
+        if (col === 'cancel_at_period_end') filters.cape = val === true;
+        return self();
+      };
+      api.in = (col: string, vals: string[]) => {
+        if (col === 'status') filters.statuses = vals;
+        return self();
+      };
+      api.gt = (col: string, val: string) => {
+        if (col === 'current_period_end') filters.cpeGt = val;
+        return self();
+      };
+      api.order = () => terminal();
+      return api;
+    },
+  };
+}
+
 describe('getSubscriptionStatus query groups', () => {
   beforeEach(() => {
     clearSubscriptionCache();
@@ -18,39 +73,51 @@ describe('getSubscriptionStatus query groups', () => {
 
   it('uses at most 2 DB query groups (subscription + parallel usage)', async () => {
     let queryGroupCount = 0;
-    const inFlight = new Set<Promise<unknown>>();
 
     const trackQuery = <T>(promise: Promise<T>): Promise<T> => {
       queryGroupCount++;
-      inFlight.add(promise);
-      return promise.finally(() => inFlight.delete(promise));
+      return promise;
     };
-
-    const subscriptionPromise = Promise.resolve({
-      data: [
-        {
-          status: 'active',
-          provider: 'wompi',
-          current_period_end: new Date(Date.now() + 86400000).toISOString(),
-          plan: { id: 'plan_pro', name: 'Pro', features: { max_assets: 50 } },
-        },
-      ],
-      error: null,
-    });
 
     const supabase = {
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
+          const base = mockBillingSubscriptionsFrom([
+            {
+              status: 'active',
+              provider: 'wompi',
+              current_period_end: new Date(Date.now() + 86400000).toISOString(),
+              plan: { id: 'plan_pro', name: 'Pro', features: { max_assets: 50 } },
+            },
+          ]);
           return {
-            select: () => ({
-              eq: () => ({
-                in: () => ({
-                  order: () => ({
-                    limit: () => trackQuery(subscriptionPromise),
-                  }),
-                }),
-              }),
-            }),
+            select: () => {
+              const chain = base.select() as {
+                eq: (...args: unknown[]) => unknown;
+                in: (...args: unknown[]) => unknown;
+                gt: (...args: unknown[]) => unknown;
+                order: () => {
+                  then: (
+                    res: (v: unknown) => unknown,
+                    rej?: (e: unknown) => unknown
+                  ) => Promise<unknown>;
+                };
+              };
+              const origOrder = chain.order.bind(chain);
+              chain.order = () => {
+                const term = origOrder();
+                return {
+                  then: (
+                    res: (v: unknown) => unknown,
+                    rej?: (e: unknown) => unknown
+                  ) =>
+                    trackQuery(
+                      new Promise((resolve, reject) => term.then(resolve, reject))
+                    ).then(res, rej),
+                };
+              };
+              return chain;
+            },
           };
         }
         if (table === 'digital_assets' || table === 'beneficiaries') {
@@ -79,7 +146,8 @@ describe('getSubscriptionStatus query groups', () => {
     const result = await getSubscriptionStatus(supabase as never, 'user-1');
 
     expect(result.hasSubscription).toBe(true);
-    expect(queryGroupCount).toBeLessThanOrEqual(4);
+    // live + CAPE subscription queries + usage (assets, beneficiaries, attachments)
+    expect(queryGroupCount).toBeLessThanOrEqual(5);
     expect(result.usage.storageUsedMb).toBeGreaterThan(0);
   });
 
@@ -89,28 +157,14 @@ describe('getSubscriptionStatus query groups', () => {
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
           subscriptionCalls++;
-          return {
-            select: () => ({
-              eq: () => ({
-                in: () => ({
-                  order: () => ({
-                    limit: () =>
-                      Promise.resolve({
-                        data: [
-                          {
-                            status: 'active',
-                            provider: 'wompi',
-                            current_period_end: new Date(Date.now() + 86400000).toISOString(),
-                            plan: { id: 'plan_pro', name: 'Pro', features: { max_assets: 50 } },
-                          },
-                        ],
-                        error: null,
-                      }),
-                  }),
-                }),
-              }),
-            }),
-          };
+          return mockBillingSubscriptionsFrom([
+            {
+              status: 'active',
+              provider: 'wompi',
+              current_period_end: new Date(Date.now() + 86400000).toISOString(),
+              plan: { id: 'plan_pro', name: 'Pro', features: { max_assets: 50 } },
+            },
+          ]);
         }
         return {
           select: () => ({
@@ -123,7 +177,8 @@ describe('getSubscriptionStatus query groups', () => {
     await getSubscriptionStatus(supabase as never, 'user-cached');
     await getSubscriptionStatus(supabase as never, 'user-cached');
 
-    expect(subscriptionCalls).toBe(1);
+    // live + CAPE queries on first fetch; second call hits request cache
+    expect(subscriptionCalls).toBe(2);
   });
 
   it('Stripe active with expired current_period_end still entitles (status-based)', async () => {
@@ -132,14 +187,7 @@ describe('getSubscriptionStatus query groups', () => {
     const supabase = {
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
-          return {
-            select: () => ({
-              eq: () => ({
-                in: () => ({
-                  order: () => ({
-                    limit: () =>
-                      Promise.resolve({
-                        data: [
+          return mockBillingSubscriptionsFrom([
                           {
                             status: 'active',
                             provider: 'stripe',
@@ -150,14 +198,7 @@ describe('getSubscriptionStatus query groups', () => {
                               features: { max_assets: 50, max_beneficiaries: 10 },
                             },
                           },
-                        ],
-                        error: null,
-                      }),
-                  }),
-                }),
-              }),
-            }),
-          };
+                        ]);
         }
         return {
           select: () => ({
@@ -178,14 +219,7 @@ describe('getSubscriptionStatus query groups', () => {
     const supabase = {
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
-          return {
-            select: () => ({
-              eq: () => ({
-                in: () => ({
-                  order: () => ({
-                    limit: () =>
-                      Promise.resolve({
-                        data: [
+          return mockBillingSubscriptionsFrom([
                           {
                             status: 'active',
                             provider: 'payu',
@@ -196,14 +230,7 @@ describe('getSubscriptionStatus query groups', () => {
                               features: { max_assets: -1 },
                             },
                           },
-                        ],
-                        error: null,
-                      }),
-                  }),
-                }),
-              }),
-            }),
-          };
+                        ]);
         }
         return {
           select: () => ({
@@ -224,14 +251,7 @@ describe('getSubscriptionStatus query groups', () => {
     const supabase = {
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
-          return {
-            select: () => ({
-              eq: () => ({
-                in: () => ({
-                  order: () => ({
-                    limit: () =>
-                      Promise.resolve({
-                        data: [
+          return mockBillingSubscriptionsFrom([
                           {
                             status: 'active',
                             provider: 'wompi',
@@ -242,14 +262,7 @@ describe('getSubscriptionStatus query groups', () => {
                               features: { max_assets: 50 },
                             },
                           },
-                        ],
-                        error: null,
-                      }),
-                  }),
-                }),
-              }),
-            }),
-          };
+                        ]);
         }
         if (table === 'billing_plans') {
           return {
@@ -291,14 +304,7 @@ describe('getSubscriptionStatus query groups', () => {
     const supabase = {
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
-          return {
-            select: () => ({
-              eq: () => ({
-                in: () => ({
-                  order: () => ({
-                    limit: () =>
-                      Promise.resolve({
-                        data: [
+          return mockBillingSubscriptionsFrom([
                           {
                             status: 'canceled',
                             provider: 'stripe',
@@ -312,14 +318,7 @@ describe('getSubscriptionStatus query groups', () => {
                               features: { max_assets: 50, max_beneficiaries: 10 },
                             },
                           },
-                        ],
-                        error: null,
-                      }),
-                  }),
-                }),
-              }),
-            }),
-          };
+                        ]);
         }
         return {
           select: () => ({
@@ -341,14 +340,7 @@ describe('getSubscriptionStatus query groups', () => {
     const supabase = {
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
-          return {
-            select: () => ({
-              eq: () => ({
-                in: () => ({
-                  order: () => ({
-                    limit: () =>
-                      Promise.resolve({
-                        data: [
+          return mockBillingSubscriptionsFrom([
                           {
                             status: 'canceled',
                             provider: 'stripe',
@@ -362,14 +354,7 @@ describe('getSubscriptionStatus query groups', () => {
                               features: { max_assets: 50 },
                             },
                           },
-                        ],
-                        error: null,
-                      }),
-                  }),
-                }),
-              }),
-            }),
-          };
+                        ]);
         }
         if (table === 'billing_plans') {
           return {
@@ -411,14 +396,7 @@ describe('getSubscriptionStatus query groups', () => {
     const supabase = {
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
-          return {
-            select: () => ({
-              eq: () => ({
-                in: () => ({
-                  order: () => ({
-                    limit: () =>
-                      Promise.resolve({
-                        data: [
+          return mockBillingSubscriptionsFrom([
                           {
                             status: 'active',
                             provider: 'stripe',
@@ -444,14 +422,7 @@ describe('getSubscriptionStatus query groups', () => {
                               features: { max_assets: -1 },
                             },
                           },
-                        ],
-                        error: null,
-                      }),
-                  }),
-                }),
-              }),
-            }),
-          };
+                        ]);
         }
         return {
           select: () => ({
@@ -466,20 +437,60 @@ describe('getSubscriptionStatus query groups', () => {
     expect(result.limits.maxAssets).toBe(-1);
   });
 
+  it('does not starve older entitled past_due behind >10 newer canceled tombstones', async () => {
+    clearSubscriptionCache();
+    const future = new Date(Date.now() + 7 * 86400000).toISOString();
+    const pastDue = {
+      status: 'past_due',
+      provider: 'wompi',
+      current_period_end: future,
+      cancel_at_period_end: false,
+      plan: {
+        id: 'plan_premium_month',
+        name: 'Premium',
+        amount_cents: 490000,
+        features: { max_assets: -1, max_storage_mb: 5120 },
+      },
+    };
+    const tombstones = Array.from({ length: 12 }, (_, i) => ({
+      status: 'canceled',
+      provider: 'wompi',
+      current_period_end: '2026-01-01T00:00:00.000Z',
+      cancel_at_period_end: false,
+      canceled_reason: 'expired_resubscribe',
+      plan: {
+        id: `plan_necessary_month`,
+        name: `Tombstone ${i}`,
+        amount_cents: 999,
+        features: { max_assets: 50 },
+      },
+    }));
+    const supabase = {
+      from: jest.fn((table: string) => {
+        if (table === 'billing_subscriptions') {
+          return mockBillingSubscriptionsFrom([...tombstones, pastDue]);
+        }
+        return {
+          select: () => ({
+            eq: () => Promise.resolve({ count: 0, data: [], error: null }),
+          }),
+        };
+      }),
+    };
+
+    const result = await getSubscriptionStatus(supabase as never, 'starve-past-due');
+    expect(result.hasSubscription).toBe(true);
+    expect(result.limits.maxAssets).toBe(-1);
+    expect(result.limits.maxStorageMb).toBe(5120);
+  });
+
   it('Premium 148 wins over Necessary 999 by tier (KAN-168)', async () => {
     clearSubscriptionCache();
     const future = new Date(Date.now() + 7 * 86400000).toISOString();
     const supabase = {
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
-          return {
-            select: () => ({
-              eq: () => ({
-                in: () => ({
-                  order: () => ({
-                    limit: () =>
-                      Promise.resolve({
-                        data: [
+          return mockBillingSubscriptionsFrom([
                           {
                             status: 'active',
                             provider: 'stripe',
@@ -504,14 +515,7 @@ describe('getSubscriptionStatus query groups', () => {
                               features: { max_assets: -1, max_storage_mb: 5120 },
                             },
                           },
-                        ],
-                        error: null,
-                      }),
-                  }),
-                }),
-              }),
-            }),
-          };
+                        ]);
         }
         return {
           select: () => ({
@@ -533,14 +537,7 @@ describe('getSubscriptionStatus query groups', () => {
     const supabase = {
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
-          return {
-            select: () => ({
-              eq: () => ({
-                in: () => ({
-                  order: () => ({
-                    limit: () =>
-                      Promise.resolve({
-                        data: [
+          return mockBillingSubscriptionsFrom([
                           {
                             status: 'canceled',
                             provider: 'stripe',
@@ -552,14 +549,7 @@ describe('getSubscriptionStatus query groups', () => {
                               features: { max_assets: 50 },
                             },
                           },
-                        ],
-                        error: null,
-                      }),
-                  }),
-                }),
-              }),
-            }),
-          };
+                        ]);
         }
         if (table === 'billing_plans') {
           return {
@@ -600,14 +590,7 @@ describe('getSubscriptionStatus query groups', () => {
     const supabase = {
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
-          return {
-            select: () => ({
-              eq: () => ({
-                in: () => ({
-                  order: () => ({
-                    limit: () =>
-                      Promise.resolve({
-                        data: [
+          return mockBillingSubscriptionsFrom([
                           {
                             status: 'canceled',
                             provider: 'payu',
@@ -619,14 +602,7 @@ describe('getSubscriptionStatus query groups', () => {
                               features: { max_assets: 50 },
                             },
                           },
-                        ],
-                        error: null,
-                      }),
-                  }),
-                }),
-              }),
-            }),
-          };
+                        ]);
         }
         if (table === 'billing_plans') {
           return {
@@ -680,17 +656,7 @@ describe('KAN-164 Free and Premium limits', () => {
     return {
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
-          return {
-            select: () => ({
-              eq: () => ({
-                in: () => ({
-                  order: () => ({
-                    limit: () => Promise.resolve({ data: [], error: null }),
-                  }),
-                }),
-              }),
-            }),
-          };
+          return mockBillingSubscriptionsFrom([]);
         }
         if (table === 'billing_plans') {
           return {
@@ -754,38 +720,24 @@ describe('KAN-164 Free and Premium limits', () => {
     return {
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
-          return {
-            select: () => ({
-              eq: () => ({
-                in: () => ({
-                  order: () => ({
-                    limit: () =>
-                      Promise.resolve({
-                        data: [
-                          {
-                            status: 'active',
-                            provider: 'wompi',
-                            current_period_end: new Date(Date.now() + 86400000).toISOString(),
-                            plan: {
-                              id: 'plan_premium_month',
-                              name: 'Premium',
-                              features: {
-                                max_assets: -1,
-                                max_beneficiaries: 10,
-                                max_storage_mb: 5000,
-                                max_file_size_mb: 100,
-                                max_video_assets: 5,
-                              },
-                            },
-                          },
-                        ],
-                        error: null,
-                      }),
-                  }),
-                }),
-              }),
-            }),
-          };
+          return mockBillingSubscriptionsFrom([
+            {
+              status: 'active',
+              provider: 'wompi',
+              current_period_end: new Date(Date.now() + 86400000).toISOString(),
+              plan: {
+                id: 'plan_premium_month',
+                name: 'Premium',
+                features: {
+                  max_assets: -1,
+                  max_beneficiaries: 10,
+                  max_storage_mb: 5000,
+                  max_file_size_mb: 100,
+                  max_video_assets: 5,
+                },
+              },
+            },
+          ]);
         }
         if (table === 'asset_types') {
           return {
@@ -873,14 +825,7 @@ describe('KAN-164 Free and Premium limits', () => {
     return {
       from: jest.fn((table: string) => {
         if (table === 'billing_subscriptions') {
-          return {
-            select: () => ({
-              eq: () => ({
-                in: () => ({
-                  order: () => ({
-                    limit: () =>
-                      Promise.resolve({
-                        data: [
+          return mockBillingSubscriptionsFrom([
                           {
                             status: 'active',
                             provider: 'wompi',
@@ -897,14 +842,7 @@ describe('KAN-164 Free and Premium limits', () => {
                               },
                             },
                           },
-                        ],
-                        error: null,
-                      }),
-                  }),
-                }),
-              }),
-            }),
-          };
+                        ]);
         }
         if (table === 'asset_attachments') {
           return {
