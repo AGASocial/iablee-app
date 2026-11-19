@@ -63,8 +63,9 @@ function setCache(userId: string, subscription: SubscriptionRecord | null, limit
 
 /**
  * Fetch the subscription that currently grants paid entitlements.
- * CAPE paid-through until current_period_end (KAN-168). Prefers highest-value
- * non-free plan among entitled rows. See subscriptionGrantsPaidEntitlement.
+ * CAPE paid-through until current_period_end (KAN-168). Prefers highest product
+ * tier (plan id prefix: premium > necessary) among entitled rows — not
+ * amount_cents. See subscriptionGrantsPaidEntitlement / entitledPlanRank.
  */
 async function fetchActiveSubscription(
   supabase: SupabaseClient,

@@ -144,3 +144,50 @@ describe('/api/billing/subscriptions DELETE cancel defaults (KAN-168)', () => {
     }
   });
 });
+
+describe('/api/billing/subscriptions DELETE ownership (KAN-168 past_due)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetAuthenticatedUserId.mockResolvedValue('user-1');
+    mockCancelSubscription.mockResolvedValue(undefined);
+  });
+
+  it('allows DELETE when management current sub is Stripe past_due matching id', async () => {
+    mockGetUserSubscription.mockResolvedValue({
+      id: 'sub-past-due',
+      planId: 'plan_premium_month',
+      status: 'past_due',
+      provider: 'stripe',
+    });
+
+    const request = new NextRequest(
+      'http://localhost/api/billing/subscriptions?subscriptionId=sub-past-due',
+      { method: 'DELETE' }
+    );
+    const response = await DELETE(request);
+    expect(response.status).toBe(200);
+    expect(mockCancelSubscription).toHaveBeenCalledWith({
+      subscriptionId: 'sub-past-due',
+      atPeriodEnd: true,
+    });
+  });
+
+  it('404s DELETE when past_due management sub id does not match', async () => {
+    mockGetUserSubscription.mockResolvedValue({
+      id: 'sub-past-due',
+      planId: 'plan_premium_month',
+      status: 'past_due',
+      provider: 'stripe',
+    });
+
+    const request = new NextRequest(
+      'http://localhost/api/billing/subscriptions?subscriptionId=sub-other',
+      { method: 'DELETE' }
+    );
+    const response = await DELETE(request);
+    const data = await response.json();
+    expect(response.status).toBe(404);
+    expect(data.error).toMatch(/not found/i);
+    expect(mockCancelSubscription).not.toHaveBeenCalled();
+  });
+});

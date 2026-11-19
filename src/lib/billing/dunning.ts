@@ -268,6 +268,36 @@ export function selectBestEntitledSubscription<T>(
 }
 
 /**
+ * Management "current subscription" (billing API ownership / purchasable /
+ * upgrade), distinct from entitlement ranking.
+ *
+ * Matches pre-KAN-168 develop: prefer newest `active` | `trialing` | `past_due`
+ * (incl. Stripe past_due that does not grant entitlements). If none, fall back
+ * to a CAPE paid-through canceled row. Caller should pass rows ordered by
+ * `created_at` DESC.
+ */
+export function selectManagementSubscription<T>(
+  rows: T[],
+  opts: {
+    getStatus: (row: T) => string;
+    isPaidThroughEntitled: (row: T) => boolean;
+  }
+): T | null {
+  for (const row of rows) {
+    const status = normalizeSubscriptionStatus(opts.getStatus(row));
+    if (status === 'active' || status === 'trialing' || status === 'past_due') {
+      return row;
+    }
+  }
+  for (const row of rows) {
+    if (opts.isPaidThroughEntitled(row)) {
+      return row;
+    }
+  }
+  return null;
+}
+
+/**
  * Whether a Wompi subscription still grants paid entitlements
  * (period end + grace / past_due dunning window).
  * Does not handle canceled/CAPE — use {@link subscriptionGrantsPaidEntitlement}.

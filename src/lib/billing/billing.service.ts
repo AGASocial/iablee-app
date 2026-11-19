@@ -36,7 +36,7 @@ import { persistByProviderId } from './persistence';
 import { parseWompiReference as parseWompiRefDetailed } from './wompi-references';
 import {
   isCanceledSubscriptionStatus,
-  selectBestEntitledSubscription,
+  selectManagementSubscription,
   subscriptionGrantsPaidEntitlement,
   toEpochMs,
 } from './dunning';
@@ -99,24 +99,32 @@ export class BillingService {
   }
 
   /**
-   * Get user's paid-entitled subscription (incl. CAPE paid-through).
-   * Prefers highest product tier among entitled rows (premium > necessary).
+   * Management current subscription for billing GET / DELETE / PATCH ownership,
+   * assertPlanPurchasable, and upgrade/supersede flows.
+   *
+   * Develop semantics: newest `active` | `trialing` | `past_due` by created_at
+   * (Stripe past_due remains visible even when it does not grant entitlements).
+   * Plus KAN-168: CAPE paid-through canceled rows when no chargeable row exists.
+   *
+   * Entitlement ranking (limits / storage / asset-types / UI plan badge) lives
+   * in selectBestEntitledSubscription / fetchActiveSubscription — not here.
    */
   async getUserSubscription(userId: string): Promise<Subscription | null> {
     const { data, error } = await this.supabase
       .from('billing_subscriptions')
-      .select('*, plan:billing_plans(id, amount_cents)')
+      .select('*')
       .eq('user_id', userId)
       .in('status', ['active', 'trialing', 'past_due', 'canceled', 'cancelled'])
-      .order('updated_at', { ascending: false })
+      .order('created_at', { ascending: false })
       .limit(10);
 
     if (error) {
       throw new BillingError('Failed to fetch subscription', 'FETCH_SUBSCRIPTION_FAILED');
     }
 
-    const best = selectBestEntitledSubscription(data || [], {
-      isEntitled: (row) =>
+    const current = selectManagementSubscription(data || [], {
+      getStatus: (row) => row.status as string,
+      isPaidThroughEntitled: (row) =>
         subscriptionGrantsPaidEntitlement({
           status: row.status as string,
           provider: row.provider as string | null,
@@ -124,14 +132,9 @@ export class BillingService {
           cancelAtPeriodEnd: row.cancel_at_period_end as boolean | null,
           canceledReason: row.canceled_reason as string | null,
         }),
-      getPlanId: (row) => {
-        const plan = row.plan as { id?: string } | { id?: string }[] | null;
-        if (Array.isArray(plan)) return plan[0]?.id ?? (row.plan_id as string);
-        return plan?.id ?? (row.plan_id as string);
-      },
     });
 
-    return best ? this.mapSubscriptionFromDb(best) : null;
+    return current ? this.mapSubscriptionFromDb(current) : null;
   }
 
   /**

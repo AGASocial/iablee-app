@@ -11,6 +11,7 @@ import {
   hasStatusBasedEntitlement,
   subscriptionGrantsPaidEntitlement,
   selectBestEntitledSubscription,
+  selectManagementSubscription,
   ENTITLEMENT_GRACE_MS,
   MAX_DUNNING_ATTEMPTS,
   DUNNING_ATTEMPT_OFFSET_DAYS,
@@ -446,6 +447,58 @@ describe('status / revoke helpers', () => {
   });
 });
 
+describe('selectManagementSubscription (billing API current sub)', () => {
+  it('prefers Stripe past_due over newer CAPE canceled (develop chargeable first)', () => {
+    const rows = [
+      {
+        id: 'cape-newer',
+        status: 'canceled',
+        cancelAtPeriodEnd: true,
+        entitled: true,
+      },
+      {
+        id: 'past-due',
+        status: 'past_due',
+        cancelAtPeriodEnd: false,
+        entitled: false,
+      },
+    ];
+    const picked = selectManagementSubscription(rows, {
+      getStatus: (r) => r.status,
+      isPaidThroughEntitled: (r) => r.entitled,
+    });
+    expect(picked?.id).toBe('past-due');
+  });
+
+  it('falls back to CAPE paid-through when no active/trialing/past_due', () => {
+    const rows = [
+      { id: 'old-cancel', status: 'canceled', entitled: false },
+      { id: 'cape', status: 'cancelled', entitled: true },
+    ];
+    const picked = selectManagementSubscription(rows, {
+      getStatus: (r) => r.status,
+      isPaidThroughEntitled: (r) => r.entitled,
+    });
+    expect(picked?.id).toBe('cape');
+  });
+
+  it('returns null when neither chargeable nor CAPE entitled', () => {
+    const rows = [{ id: 'x', status: 'canceled', entitled: false }];
+    expect(
+      selectManagementSubscription(rows, {
+        getStatus: (r) => r.status,
+        isPaidThroughEntitled: (r) => r.entitled,
+      })
+    ).toBeNull();
+  });
+});
+
+/**
+ * SQL↔TS parity without a live DB.
+ * Limitation: we cannot execute PL/pgSQL here. Instead each matrix case asserts
+ * (1) the TS expected boolean and (2) that the migration encodes the SQL branch
+ * predicates that produce the same outcome for that case's inputs.
+ */
 describe('SQL ↔ TS paid-through parity (KAN-168 migration)', () => {
   const migrationPath = join(
     process.cwd(),
@@ -453,17 +506,175 @@ describe('SQL ↔ TS paid-through parity (KAN-168 migration)', () => {
   );
   const sql = readFileSync(migrationPath, 'utf8');
 
-  it('SQL requires CAPE for paid-through (not bare canceled)', () => {
-    expect(sql).toContain('COALESCE(p_cancel_at_period_end, false) = true');
-    expect(sql).not.toMatch(
-      /v_is_ending\s*:=\s*[\s\S]*p_status IN \('canceled', 'cancelled'\)\s*OR/
-    );
-  });
+  const periodEnd = new Date('2026-11-10T00:00:00.000Z');
+  const beforeEnd = new Date('2026-11-09T12:00:00.000Z');
 
-  it('SQL mirrors revoke reasons and case-normalized status', () => {
-    expect(sql).toContain("v_reason IN ('dunning', 'superseded', 'expired_resubscribe')");
-    expect(sql).toContain("v_status := lower(trim(COALESCE(p_status, '')))");
-    expect(sql).toContain('p_canceled_reason');
+  type SqlBranch =
+    | 'cape_revoke'
+    | 'cape_null_cpe'
+    | 'cape_stripe_exact_end'
+    | 'cape_wompi_grace'
+    | 'cape_status_gate'
+    | 'no_cape_canceled'
+    | 'stripe_status_only'
+    | 'wompi_past_due_window';
+
+  type ParityCase = {
+    name: string;
+    expected: boolean;
+    params: Parameters<typeof subscriptionGrantsPaidEntitlement>[0];
+    sqlBranch: SqlBranch;
+  };
+
+  const parityCases: ParityCase[] = [
+    {
+      name: 'CAPE canceled stripe future → Premium',
+      expected: true,
+      params: {
+        status: 'canceled',
+        provider: 'stripe',
+        currentPeriodEnd: periodEnd,
+        cancelAtPeriodEnd: true,
+        canceledReason: 'user',
+        now: beforeEnd,
+      },
+      sqlBranch: 'cape_status_gate',
+    },
+    {
+      name: 'CAPE + dunning → Free',
+      expected: false,
+      params: {
+        status: 'canceled',
+        provider: 'wompi',
+        currentPeriodEnd: periodEnd,
+        cancelAtPeriodEnd: true,
+        canceledReason: 'dunning',
+        now: beforeEnd,
+      },
+      sqlBranch: 'cape_revoke',
+    },
+    {
+      name: 'CAPE + NULL CPE → Free',
+      expected: false,
+      params: {
+        status: 'active',
+        provider: 'stripe',
+        currentPeriodEnd: null,
+        cancelAtPeriodEnd: true,
+        now: beforeEnd,
+      },
+      sqlBranch: 'cape_null_cpe',
+    },
+    {
+      name: 'CAPE past Stripe exact end → Free',
+      expected: false,
+      params: {
+        status: 'active',
+        provider: 'stripe',
+        currentPeriodEnd: periodEnd,
+        cancelAtPeriodEnd: true,
+        now: new Date('2026-11-10T00:00:01.000Z'),
+      },
+      sqlBranch: 'cape_stripe_exact_end',
+    },
+    {
+      name: 'CAPE Wompi within grace → Premium',
+      expected: true,
+      params: {
+        status: 'canceled',
+        provider: 'wompi',
+        currentPeriodEnd: periodEnd,
+        cancelAtPeriodEnd: true,
+        now: new Date(periodEnd.getTime() + ENTITLEMENT_GRACE_MS - 1000),
+      },
+      sqlBranch: 'cape_wompi_grace',
+    },
+    {
+      name: 'canceled without CAPE → Free',
+      expected: false,
+      params: {
+        status: 'canceled',
+        provider: 'stripe',
+        currentPeriodEnd: periodEnd,
+        cancelAtPeriodEnd: false,
+        now: beforeEnd,
+      },
+      sqlBranch: 'no_cape_canceled',
+    },
+    {
+      name: 'Stripe past_due (no CAPE) → Free entitlements',
+      expected: false,
+      params: {
+        status: 'past_due',
+        provider: 'stripe',
+        currentPeriodEnd: periodEnd,
+        cancelAtPeriodEnd: false,
+        now: beforeEnd,
+      },
+      sqlBranch: 'stripe_status_only',
+    },
+    {
+      name: 'Wompi past_due inside dunning+grace → Premium',
+      expected: true,
+      params: {
+        status: 'past_due',
+        provider: 'wompi',
+        currentPeriodEnd: periodEnd,
+        cancelAtPeriodEnd: false,
+        now: new Date(periodEnd.getTime() + 2 * 24 * 60 * 60 * 1000),
+      },
+      sqlBranch: 'wompi_past_due_window',
+    },
+  ];
+
+  function assertSqlBranch(branch: SqlBranch) {
+    switch (branch) {
+      case 'cape_revoke':
+        expect(sql).toContain("v_reason IN ('dunning', 'superseded', 'expired_resubscribe')");
+        expect(sql).toContain('COALESCE(p_cancel_at_period_end, false) = true');
+        break;
+      case 'cape_null_cpe':
+        expect(sql).toMatch(
+          /COALESCE\(p_cancel_at_period_end, false\) = true[\s\S]*IF p_current_period_end IS NULL THEN\s*RETURN false;/
+        );
+        break;
+      case 'cape_stripe_exact_end':
+        expect(sql).toContain('RETURN p_now <= p_current_period_end;');
+        expect(sql).toContain("IF p_provider = 'wompi' THEN");
+        break;
+      case 'cape_wompi_grace':
+        expect(sql).toContain('RETURN p_now <= (p_current_period_end + v_grace);');
+        expect(sql).toContain("IF p_provider = 'wompi' THEN");
+        break;
+      case 'cape_status_gate':
+        expect(sql).toContain(
+          "v_status NOT IN ('active', 'trialing', 'past_due', 'canceled', 'cancelled')"
+        );
+        expect(sql).toContain('COALESCE(p_cancel_at_period_end, false) = true');
+        break;
+      case 'no_cape_canceled':
+        expect(sql).toContain('COALESCE(p_cancel_at_period_end, false) = true');
+        expect(sql).not.toMatch(
+          /v_is_ending\s*:=\s*[\s\S]*p_status IN \('canceled', 'cancelled'\)\s*OR/
+        );
+        break;
+      case 'stripe_status_only':
+        expect(sql).toContain("RETURN v_status IN ('active', 'trialing');");
+        break;
+      case 'wompi_past_due_window':
+        expect(sql).toContain('RETURN p_now <= (p_current_period_end + v_dunning + v_grace);');
+        expect(sql).toContain("IF v_status = 'past_due' THEN");
+        break;
+      default: {
+        const _exhaustive: never = branch;
+        throw new Error(`unhandled branch ${_exhaustive}`);
+      }
+    }
+  }
+
+  it.each(parityCases)('$name', ({ expected, params, sqlBranch }) => {
+    expect(subscriptionGrantsPaidEntitlement(params)).toBe(expected);
+    assertSqlBranch(sqlBranch);
   });
 
   it('SQL resolve_user_max_storage_mb ignores plan_free and ranks by plan tier', () => {

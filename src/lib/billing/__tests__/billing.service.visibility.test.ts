@@ -83,7 +83,7 @@ function createSupabaseMock(opts: {
         api.single = jest.fn(async () => ({ data: planRow, error: null }));
       }
       if (table === 'billing_subscriptions') {
-        // getUserSubscription awaits .limit(5); other paths use .limit().maybeSingle().
+        // getUserSubscription awaits .limit(N); other paths use .limit().maybeSingle().
         api.limit = jest.fn(() => {
           const listResult = {
             data: opts.existingSubscription ? [opts.existingSubscription] : [],
@@ -216,5 +216,113 @@ describe('BillingService plan visibility (KAN-164)', () => {
     await expect(
       service.createSubscription({ userId: 'user-premium', planId: 'plan_necessary_month' })
     ).rejects.toBeInstanceOf(PlanNotPurchasableError);
+  });
+});
+
+describe('BillingService getUserSubscription management lookup (KAN-168)', () => {
+  function makeListSupabase(rows: Record<string, unknown>[]) {
+    return {
+      from: jest.fn(() => {
+        const api: Record<string, unknown> = {};
+        const self = () => api;
+        api.select = jest.fn(self);
+        api.eq = jest.fn(self);
+        api.in = jest.fn(self);
+        api.order = jest.fn(self);
+        api.limit = jest.fn(() => ({
+          then: (
+            resolve: (v: unknown) => unknown,
+            reject?: (e: unknown) => unknown
+          ) => Promise.resolve({ data: rows, error: null }).then(resolve, reject),
+        }));
+        return api;
+      }),
+    };
+  }
+
+  it('returns Stripe past_due even though it does not grant entitlements', async () => {
+    const pastDue = {
+      id: 'sub-past-due',
+      user_id: 'user-1',
+      plan_id: 'plan_premium_month',
+      status: 'past_due',
+      provider: 'stripe',
+      provider_subscription_id: 'sub_stripe_pd',
+      cancel_at_period_end: false,
+      current_period_end: '2026-11-10T00:00:00.000Z',
+      created_at: '2026-10-01T00:00:00.000Z',
+      updated_at: '2026-11-11T00:00:00.000Z',
+    };
+    const service = new BillingService(
+      makeListSupabase([pastDue]) as never,
+      makeGateway({ getName: () => 'stripe' })
+    );
+
+    const sub = await service.getUserSubscription('user-1');
+    expect(sub).toMatchObject({
+      id: 'sub-past-due',
+      status: 'past_due',
+      planId: 'plan_premium_month',
+      provider: 'stripe',
+    });
+  });
+
+  it('prefers past_due over a newer CAPE canceled row', async () => {
+    const rows = [
+      {
+        id: 'sub-cape',
+        user_id: 'user-1',
+        plan_id: 'plan_premium_month',
+        status: 'canceled',
+        provider: 'stripe',
+        provider_subscription_id: 'sub_old',
+        cancel_at_period_end: true,
+        current_period_end: '2026-12-01T00:00:00.000Z',
+        created_at: '2026-11-01T00:00:00.000Z',
+        updated_at: '2026-11-15T00:00:00.000Z',
+      },
+      {
+        id: 'sub-past-due',
+        user_id: 'user-1',
+        plan_id: 'plan_premium_month',
+        status: 'past_due',
+        provider: 'stripe',
+        provider_subscription_id: 'sub_pd',
+        cancel_at_period_end: false,
+        current_period_end: '2026-11-10T00:00:00.000Z',
+        created_at: '2026-10-01T00:00:00.000Z',
+        updated_at: '2026-11-11T00:00:00.000Z',
+      },
+    ];
+    const service = new BillingService(
+      makeListSupabase(rows) as never,
+      makeGateway({ getName: () => 'stripe' })
+    );
+
+    const sub = await service.getUserSubscription('user-1');
+    expect(sub?.id).toBe('sub-past-due');
+  });
+
+  it('falls back to CAPE paid-through canceled when no chargeable row', async () => {
+    const cape = {
+      id: 'sub-cape',
+      user_id: 'user-1',
+      plan_id: 'plan_premium_month',
+      status: 'canceled',
+      provider: 'stripe',
+      provider_subscription_id: 'sub_cape',
+      cancel_at_period_end: true,
+      canceled_reason: 'user',
+      current_period_end: '2099-12-01T00:00:00.000Z',
+      created_at: '2026-11-01T00:00:00.000Z',
+      updated_at: '2026-11-15T00:00:00.000Z',
+    };
+    const service = new BillingService(
+      makeListSupabase([cape]) as never,
+      makeGateway({ getName: () => 'stripe' })
+    );
+
+    const sub = await service.getUserSubscription('user-1');
+    expect(sub?.id).toBe('sub-cape');
   });
 });
