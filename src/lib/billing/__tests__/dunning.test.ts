@@ -1,6 +1,8 @@
 /**
  * @jest-environment node
  */
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import {
   getDueDunningAttempt,
   isPastFinalDunningDay,
@@ -8,6 +10,7 @@ import {
   hasPaidEntitlement,
   hasStatusBasedEntitlement,
   subscriptionGrantsPaidEntitlement,
+  selectBestEntitledSubscription,
   ENTITLEMENT_GRACE_MS,
   MAX_DUNNING_ATTEMPTS,
   DUNNING_ATTEMPT_OFFSET_DAYS,
@@ -15,6 +18,10 @@ import {
   clampUtcMonthDay,
   sameInstant,
   toEpochMs,
+  normalizeSubscriptionStatus,
+  isCanceledSubscriptionStatus,
+  isPaidThroughRevokeReason,
+  PAID_THROUGH_REVOKE_REASONS,
 } from '../dunning';
 
 describe('dunning schedule', () => {
@@ -168,121 +175,265 @@ describe('hasStatusBasedEntitlement (Stripe/PayU)', () => {
   });
 });
 
-describe('subscriptionGrantsPaidEntitlement (KAN-168 paid-through)', () => {
+describe('subscriptionGrantsPaidEntitlement (KAN-168 CAPE paid-through)', () => {
   const periodEnd = new Date('2026-11-10T00:00:00.000Z');
+  const beforeEnd = new Date('2026-11-09T12:00:00.000Z');
 
-  it('canceled with future period end → Premium (all providers)', () => {
-    expect(
-      subscriptionGrantsPaidEntitlement({
-        status: 'canceled',
-        provider: 'stripe',
-        currentPeriodEnd: periodEnd,
-        now: new Date('2026-11-09T12:00:00.000Z'),
-      })
-    ).toBe(true);
-    expect(
-      subscriptionGrantsPaidEntitlement({
-        status: 'cancelled',
-        provider: 'payu',
-        currentPeriodEnd: periodEnd,
-        now: new Date('2026-11-09T12:00:00.000Z'),
-      })
-    ).toBe(true);
-    expect(
-      subscriptionGrantsPaidEntitlement({
-        status: 'canceled',
-        provider: 'wompi',
-        currentPeriodEnd: periodEnd,
-        now: new Date('2026-11-09T12:00:00.000Z'),
-      })
-    ).toBe(true);
-  });
+  type Case = {
+    name: string;
+    expected: boolean;
+    params: Parameters<typeof subscriptionGrantsPaidEntitlement>[0];
+  };
 
-  it('canceled with past period end → Free', () => {
-    expect(
-      subscriptionGrantsPaidEntitlement({
-        status: 'canceled',
-        provider: 'stripe',
-        currentPeriodEnd: periodEnd,
-        now: new Date('2026-11-11T00:00:01.000Z'),
-      })
-    ).toBe(false);
-  });
-
-  it('canceled with NULL current_period_end → Free (fail closed)', () => {
-    expect(
-      subscriptionGrantsPaidEntitlement({
-        status: 'canceled',
-        provider: 'stripe',
-        currentPeriodEnd: null,
-        now: new Date('2026-11-09T00:00:00.000Z'),
-      })
-    ).toBe(false);
-    expect(
-      subscriptionGrantsPaidEntitlement({
-        status: 'canceled',
-        provider: 'wompi',
-        currentPeriodEnd: null,
-        cancelAtPeriodEnd: true,
-        now: new Date('2026-11-09T00:00:00.000Z'),
-      })
-    ).toBe(false);
-  });
-
-  it('cancel_at_period_end active with future period → Premium', () => {
-    expect(
-      subscriptionGrantsPaidEntitlement({
+  const cases: Case[] = [
+    // Positive: CAPE + active/canceled + future CPE
+    {
+      name: 'CAPE active stripe future → Premium',
+      expected: true,
+      params: {
         status: 'active',
         provider: 'stripe',
         currentPeriodEnd: periodEnd,
         cancelAtPeriodEnd: true,
-        now: new Date('2026-11-09T00:00:00.000Z'),
-      })
-    ).toBe(true);
-  });
-
-  it('cancel_at_period_end past period → Free (Stripe exact end)', () => {
-    expect(
-      subscriptionGrantsPaidEntitlement({
+        now: beforeEnd,
+      },
+    },
+    {
+      name: 'CAPE canceled after cron flip → Premium',
+      expected: true,
+      params: {
+        status: 'canceled',
+        provider: 'stripe',
+        currentPeriodEnd: periodEnd,
+        cancelAtPeriodEnd: true,
+        canceledReason: 'user',
+        now: beforeEnd,
+      },
+    },
+    {
+      name: 'CAPE cancelled spelling + case → Premium',
+      expected: true,
+      params: {
+        status: 'CANCELLED',
+        provider: 'payu',
+        currentPeriodEnd: periodEnd,
+        cancelAtPeriodEnd: true,
+        now: beforeEnd,
+      },
+    },
+    {
+      name: 'CAPE Wompi within +1d grace → Premium',
+      expected: true,
+      params: {
+        status: 'canceled',
+        provider: 'wompi',
+        currentPeriodEnd: periodEnd,
+        cancelAtPeriodEnd: true,
+        now: new Date(periodEnd.getTime() + ENTITLEMENT_GRACE_MS - 1000),
+      },
+    },
+    {
+      name: 'CAPE Wompi exact grace boundary → Premium',
+      expected: true,
+      params: {
+        status: 'canceled',
+        provider: 'wompi',
+        currentPeriodEnd: periodEnd,
+        cancelAtPeriodEnd: true,
+        now: new Date(periodEnd.getTime() + ENTITLEMENT_GRACE_MS),
+      },
+    },
+    // Negative: no CAPE / revoke / fail-closed
+    {
+      name: 'canceled without CAPE + future CPE → Free',
+      expected: false,
+      params: {
+        status: 'canceled',
+        provider: 'stripe',
+        currentPeriodEnd: periodEnd,
+        cancelAtPeriodEnd: false,
+        now: beforeEnd,
+      },
+    },
+    {
+      name: 'canceled CAPE omitted (webhook mid-period) → Free',
+      expected: false,
+      params: {
+        status: 'canceled',
+        provider: 'stripe',
+        currentPeriodEnd: periodEnd,
+        now: beforeEnd,
+      },
+    },
+    {
+      name: 'immediate cancel CAPE=false → Free',
+      expected: false,
+      params: {
+        status: 'canceled',
+        provider: 'wompi',
+        currentPeriodEnd: periodEnd,
+        cancelAtPeriodEnd: false,
+        canceledReason: 'user',
+        now: beforeEnd,
+      },
+    },
+    {
+      name: 'CAPE + dunning reason → Free',
+      expected: false,
+      params: {
+        status: 'canceled',
+        provider: 'wompi',
+        currentPeriodEnd: periodEnd,
+        cancelAtPeriodEnd: true,
+        canceledReason: 'dunning',
+        now: beforeEnd,
+      },
+    },
+    {
+      name: 'CAPE + superseded → Free',
+      expected: false,
+      params: {
+        status: 'canceled',
+        provider: 'wompi',
+        currentPeriodEnd: periodEnd,
+        cancelAtPeriodEnd: true,
+        canceledReason: 'superseded',
+        now: beforeEnd,
+      },
+    },
+    {
+      name: 'CAPE + expired_resubscribe → Free',
+      expected: false,
+      params: {
+        status: 'canceled',
+        provider: 'wompi',
+        currentPeriodEnd: periodEnd,
+        cancelAtPeriodEnd: true,
+        canceledReason: 'expired_resubscribe',
+        now: beforeEnd,
+      },
+    },
+    {
+      name: 'CAPE + NULL CPE → Free (fail closed)',
+      expected: false,
+      params: {
+        status: 'active',
+        provider: 'stripe',
+        currentPeriodEnd: null,
+        cancelAtPeriodEnd: true,
+        now: beforeEnd,
+      },
+    },
+    {
+      name: 'CAPE + invalid CPE → Free',
+      expected: false,
+      params: {
+        status: 'active',
+        provider: 'stripe',
+        currentPeriodEnd: 'not-a-date',
+        cancelAtPeriodEnd: true,
+        now: beforeEnd,
+      },
+    },
+    {
+      name: 'CAPE past Stripe exact end → Free',
+      expected: false,
+      params: {
         status: 'active',
         provider: 'stripe',
         currentPeriodEnd: periodEnd,
         cancelAtPeriodEnd: true,
         now: new Date('2026-11-10T00:00:01.000Z'),
-      })
-    ).toBe(false);
+      },
+    },
+    {
+      name: 'CAPE Wompi after grace → Free',
+      expected: false,
+      params: {
+        status: 'canceled',
+        provider: 'wompi',
+        currentPeriodEnd: periodEnd,
+        cancelAtPeriodEnd: true,
+        now: new Date(periodEnd.getTime() + ENTITLEMENT_GRACE_MS + 1000),
+      },
+    },
+  ];
+
+  it.each(cases)('$name', ({ expected, params }) => {
+    expect(subscriptionGrantsPaidEntitlement(params)).toBe(expected);
   });
 
-  it('Wompi canceled keeps +1 day grace after period end', () => {
-    const withinGrace = new Date(periodEnd.getTime() + ENTITLEMENT_GRACE_MS - 1000);
-    const afterGrace = new Date(periodEnd.getTime() + ENTITLEMENT_GRACE_MS + 1000);
+  it('normalizes status case for non-CAPE Wompi active', () => {
     expect(
       subscriptionGrantsPaidEntitlement({
-        status: 'canceled',
+        status: 'ACTIVE',
         provider: 'wompi',
         currentPeriodEnd: periodEnd,
-        now: withinGrace,
+        cancelAtPeriodEnd: false,
+        now: beforeEnd,
       })
     ).toBe(true);
-    expect(
-      subscriptionGrantsPaidEntitlement({
-        status: 'canceled',
-        provider: 'wompi',
-        currentPeriodEnd: periodEnd,
-        now: afterGrace,
-      })
-    ).toBe(false);
+  });
+});
+
+describe('selectBestEntitledSubscription ranking', () => {
+  it('ignores plan_free and prefers higher amount_cents', () => {
+    const rows = [
+      { id: 'free', planId: 'plan_free', amount: 0, entitled: true },
+      { id: 'month', planId: 'plan_premium_month', amount: 999, entitled: true },
+      { id: 'year', planId: 'plan_premium_year', amount: 9990, entitled: true },
+    ];
+    const best = selectBestEntitledSubscription(rows, {
+      isEntitled: (r) => r.entitled,
+      getPlanId: (r) => r.planId,
+      getAmountCents: (r) => r.amount,
+    });
+    expect(best?.id).toBe('year');
+  });
+});
+
+describe('status / revoke helpers', () => {
+  it('normalizes and detects canceled spellings', () => {
+    expect(normalizeSubscriptionStatus(' Canceled ')).toBe('canceled');
+    expect(isCanceledSubscriptionStatus('CANCELLED')).toBe(true);
+    expect(isCanceledSubscriptionStatus('active')).toBe(false);
   });
 
-  it('Wompi grace boundary: exactly period_end + grace still entitles', () => {
-    expect(
-      subscriptionGrantsPaidEntitlement({
-        status: 'canceled',
-        provider: 'wompi',
-        currentPeriodEnd: periodEnd,
-        now: new Date(periodEnd.getTime() + ENTITLEMENT_GRACE_MS),
-      })
-    ).toBe(true);
+  it('lists revoke reasons used by SQL+TS', () => {
+    expect([...PAID_THROUGH_REVOKE_REASONS]).toEqual([
+      'dunning',
+      'superseded',
+      'expired_resubscribe',
+    ]);
+    expect(isPaidThroughRevokeReason('Dunning')).toBe(true);
+    expect(isPaidThroughRevokeReason('user')).toBe(false);
+  });
+});
+
+describe('SQL ↔ TS paid-through parity (KAN-168 migration)', () => {
+  const migrationPath = join(
+    process.cwd(),
+    'supabase/migrations/20261119010000_kan168_paid_through_after_cancel.sql'
+  );
+  const sql = readFileSync(migrationPath, 'utf8');
+
+  it('SQL requires CAPE for paid-through (not bare canceled)', () => {
+    expect(sql).toContain('COALESCE(p_cancel_at_period_end, false) = true');
+    expect(sql).not.toMatch(
+      /v_is_ending\s*:=\s*[\s\S]*p_status IN \('canceled', 'cancelled'\)\s*OR/
+    );
+  });
+
+  it('SQL mirrors revoke reasons and case-normalized status', () => {
+    expect(sql).toContain("v_reason IN ('dunning', 'superseded', 'expired_resubscribe')");
+    expect(sql).toContain("v_status := lower(trim(COALESCE(p_status, '')))");
+    expect(sql).toContain('p_canceled_reason');
+  });
+
+  it('SQL resolve_user_max_storage_mb ignores plan_free and ranks by amount_cents', () => {
+    expect(sql).toContain("bp.id IS DISTINCT FROM 'plan_free'");
+    expect(sql).toContain('ORDER BY COALESCE(bp.amount_cents, 0) DESC');
+    expect(sql).toContain('bs.canceled_reason');
   });
 });
 

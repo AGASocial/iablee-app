@@ -2,13 +2,14 @@
  * @jest-environment node
  */
 import { NextRequest } from 'next/server';
-import { POST, PATCH } from '../route';
+import { POST, PATCH, DELETE } from '../route';
 import { PlanNotPurchasableError } from '@/lib/billing/types';
 
 const mockGetAuthenticatedUserId = jest.fn();
 const mockCreateSubscription = jest.fn();
 const mockUpdateSubscription = jest.fn();
 const mockGetUserSubscription = jest.fn();
+const mockCancelSubscription = jest.fn();
 
 jest.mock('@/lib/billing/server', () => ({
   getAuthenticatedUserId: (...args: unknown[]) => mockGetAuthenticatedUserId(...args),
@@ -16,6 +17,7 @@ jest.mock('@/lib/billing/server', () => ({
     createSubscription: mockCreateSubscription,
     updateSubscription: mockUpdateSubscription,
     getUserSubscription: mockGetUserSubscription,
+    cancelSubscription: mockCancelSubscription,
   })),
   errorResponse: (message: string, status = 400) =>
     Response.json({ error: message }, { status }),
@@ -89,5 +91,40 @@ describe('/api/billing/subscriptions hidden-plan gating (KAN-164)', () => {
 
     expect(response.status).toBe(400);
     expect(data.error).toMatch(/not available for purchase/i);
+  });
+});
+
+describe('/api/billing/subscriptions DELETE cancel defaults (KAN-168)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetAuthenticatedUserId.mockResolvedValue('user-1');
+    mockGetUserSubscription.mockResolvedValue({ id: 'sub-1', planId: 'plan_premium_month' });
+    mockCancelSubscription.mockResolvedValue(undefined);
+  });
+
+  it('defaults atPeriodEnd=true when query param omitted', async () => {
+    const request = new NextRequest(
+      'http://localhost/api/billing/subscriptions?subscriptionId=sub-1',
+      { method: 'DELETE' }
+    );
+    const response = await DELETE(request);
+    expect(response.status).toBe(200);
+    expect(mockCancelSubscription).toHaveBeenCalledWith({
+      subscriptionId: 'sub-1',
+      atPeriodEnd: true,
+    });
+  });
+
+  it('immediate cancel only when atPeriodEnd=false explicitly', async () => {
+    const request = new NextRequest(
+      'http://localhost/api/billing/subscriptions?subscriptionId=sub-1&atPeriodEnd=false',
+      { method: 'DELETE' }
+    );
+    const response = await DELETE(request);
+    expect(response.status).toBe(200);
+    expect(mockCancelSubscription).toHaveBeenCalledWith({
+      subscriptionId: 'sub-1',
+      atPeriodEnd: false,
+    });
   });
 });

@@ -168,7 +168,9 @@ export async function DELETE(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const subscriptionId = searchParams.get('subscriptionId');
-    const atPeriodEnd = searchParams.get('atPeriodEnd') === 'true';
+    // Default at-period-end; immediate only when explicitly atPeriodEnd=false.
+    const atPeriodEndParam = searchParams.get('atPeriodEnd');
+    const atPeriodEnd = atPeriodEndParam === null ? true : atPeriodEndParam === 'true';
 
     if (!subscriptionId) {
       return errorResponse('Subscription ID is required', 400);

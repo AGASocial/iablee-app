@@ -755,6 +755,77 @@ describe('findBlockingSubscription', () => {
     expect(blocked?.id).toBe(subId);
   });
 
+  it('allows resubscribe during Wompi grace after CAPE canceled period end', async () => {
+    // CPE passed but within +1d grace: still entitled, must not block Upgrade.
+    const justEnded = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
+    const supabase = {
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              in: () => ({
+                order: () => ({
+                  limit: async () => ({
+                    data: [
+                      {
+                        id: subId,
+                        status: 'canceled',
+                        current_period_end: justEnded,
+                        plan_id: planId,
+                        cancel_at_period_end: true,
+                        canceled_reason: 'user',
+                        plan: { amount_cents: 490000 },
+                      },
+                    ],
+                    error: null,
+                  }),
+                }),
+              }),
+            }),
+          }),
+        }),
+      }),
+    };
+
+    const blocked = await findBlockingSubscription(supabase as never, userId);
+    expect(blocked).toBeNull();
+  });
+
+  it('blocks CAPE canceled while current_period_end still in the future', async () => {
+    const future = new Date(Date.now() + 3 * 86400000).toISOString();
+    const supabase = {
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              in: () => ({
+                order: () => ({
+                  limit: async () => ({
+                    data: [
+                      {
+                        id: subId,
+                        status: 'canceled',
+                        current_period_end: future,
+                        plan_id: planId,
+                        cancel_at_period_end: true,
+                        canceled_reason: 'user',
+                        plan: { amount_cents: 490000 },
+                      },
+                    ],
+                    error: null,
+                  }),
+                }),
+              }),
+            }),
+          }),
+        }),
+      }),
+    };
+
+    const blocked = await findBlockingSubscription(supabase as never, userId);
+    expect(blocked?.id).toBe(subId);
+  });
+
   it('tombstones expired active past grace with no open attempt, then allows subscribe', async () => {
     const expired = new Date(Date.now() - 3 * 86400000).toISOString();
     let tombstonePayload: Record<string, unknown> | null = null;

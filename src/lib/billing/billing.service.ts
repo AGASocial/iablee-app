@@ -34,7 +34,12 @@ import {
 import { resolveWompiAmountInCents } from './wompi-pricing';
 import { persistByProviderId } from './persistence';
 import { parseWompiReference as parseWompiRefDetailed } from './wompi-references';
-import { subscriptionGrantsPaidEntitlement } from './dunning';
+import {
+  isCanceledSubscriptionStatus,
+  selectBestEntitledSubscription,
+  subscriptionGrantsPaidEntitlement,
+  toEpochMs,
+} from './dunning';
 import {
   applyWompiRenewalApproval,
   applyWompiRenewalFailure,
@@ -94,35 +99,47 @@ export class BillingService {
   }
 
   /**
-   * Get user's paid-entitled subscription (incl. canceled / CAPE paid-through).
+   * Get user's paid-entitled subscription (incl. CAPE paid-through).
+   * Prefers highest-value non-free plan among entitled rows.
    */
   async getUserSubscription(userId: string): Promise<Subscription | null> {
     const { data, error } = await this.supabase
       .from('billing_subscriptions')
-      .select('*')
+      .select('*, plan:billing_plans(id, amount_cents)')
       .eq('user_id', userId)
       .in('status', ['active', 'trialing', 'past_due', 'canceled', 'cancelled'])
       .order('updated_at', { ascending: false })
-      .limit(5);
+      .limit(10);
 
     if (error) {
       throw new BillingError('Failed to fetch subscription', 'FETCH_SUBSCRIPTION_FAILED');
     }
 
-    for (const row of data || []) {
-      if (
+    const best = selectBestEntitledSubscription(data || [], {
+      isEntitled: (row) =>
         subscriptionGrantsPaidEntitlement({
           status: row.status as string,
           provider: row.provider as string | null,
           currentPeriodEnd: row.current_period_end as string | null,
           cancelAtPeriodEnd: row.cancel_at_period_end as boolean | null,
-        })
-      ) {
-        return this.mapSubscriptionFromDb(row);
-      }
-    }
+          canceledReason: row.canceled_reason as string | null,
+        }),
+      getPlanId: (row) => {
+        const plan = row.plan as { id?: string } | { id?: string }[] | null;
+        if (Array.isArray(plan)) return plan[0]?.id ?? (row.plan_id as string);
+        return plan?.id ?? (row.plan_id as string);
+      },
+      getAmountCents: (row) => {
+        const plan = row.plan as
+          | { amount_cents?: number }
+          | { amount_cents?: number }[]
+          | null;
+        if (Array.isArray(plan)) return plan[0]?.amount_cents ?? null;
+        return plan?.amount_cents ?? null;
+      },
+    });
 
-    return null;
+    return best ? this.mapSubscriptionFromDb(best) : null;
   }
 
   /**
@@ -753,6 +770,18 @@ export class BillingService {
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (planId) updates.plan_id = planId;
     if (cancelAtPeriodEnd !== undefined) updates.cancel_at_period_end = cancelAtPeriodEnd;
+    // Resume after period-end flip: reactivate so undo-cancel works while CPE is future.
+    if (
+      cancelAtPeriodEnd === false &&
+      isCanceledSubscriptionStatus(subscription.status as string)
+    ) {
+      const cpeMs = toEpochMs(subscription.current_period_end as string | null);
+      if (cpeMs != null && cpeMs > Date.now()) {
+        updates.status = 'active';
+        updates.canceled_at = null;
+        updates.canceled_reason = null;
+      }
+    }
     // Update the current_period_end with the value from Stripe
     if (result && result.currentPeriodEnd) updates.current_period_end = result.currentPeriodEnd.toISOString();
 
@@ -808,9 +837,13 @@ export class BillingService {
     };
 
     if (!atPeriodEnd) {
+      // Immediate revoke: CAPE=false denies paid-through. Also clamp CPE so the
+      // UI/SQL never show a misleading future end date after instant cancel.
+      const nowIso = new Date().toISOString();
       updates.status = 'canceled';
-      updates.canceled_at = new Date().toISOString();
+      updates.canceled_at = nowIso;
       updates.canceled_reason = 'user';
+      updates.current_period_end = nowIso;
     } else if (!subscription.current_period_end) {
       // If current_period_end is not set (e.g. PayU subscriptions), compute it
       // based on the plan's billing interval from the most recent invoice paid_at or creation date
@@ -1042,14 +1075,46 @@ export class BillingService {
   }
 
   /**
-   * Handle subscription canceled event
+   * Handle subscription canceled event (e.g. Stripe customer.subscription.deleted).
+   * Period-end completion (CAPE + CPE already reached) keeps CAPE for audit;
+   * mid-period revoke clears CAPE and clamps CPE → Free immediately.
    */
   private async handleSubscriptionCanceled(data: SubscriptionEventData): Promise<void> {
+    const nowIso = data.canceledAt || new Date().toISOString();
+    const nowMs = new Date(nowIso).getTime();
+
+    const { data: existing } = await this.supabase
+      .from('billing_subscriptions')
+      .select('id, cancel_at_period_end, current_period_end')
+      .eq('provider_subscription_id', data.subscriptionId)
+      .maybeSingle();
+
+    const cape = existing?.cancel_at_period_end === true;
+    const cpeMs = toEpochMs(existing?.current_period_end as string | null);
+    const periodAlreadyEnded = cpeMs != null && cpeMs <= nowMs;
+
+    // Period-end delete after scheduled cancel: keep CAPE; entitlement ends at CPE.
+    if (cape && periodAlreadyEnded) {
+      await this.supabase
+        .from('billing_subscriptions')
+        .update({
+          status: 'canceled',
+          canceled_at: nowIso,
+          updated_at: nowIso,
+        })
+        .eq('provider_subscription_id', data.subscriptionId);
+      return;
+    }
+
+    // Mid-period / immediate revoke (no safe CAPE signal): fail closed.
     await this.supabase
       .from('billing_subscriptions')
       .update({
         status: 'canceled',
-        canceled_at: data.canceledAt || new Date().toISOString(),
+        cancel_at_period_end: false,
+        canceled_at: nowIso,
+        current_period_end: nowIso,
+        updated_at: nowIso,
       })
       .eq('provider_subscription_id', data.subscriptionId);
   }
@@ -1417,6 +1482,7 @@ export class BillingService {
       currentPeriodEnd: data.current_period_end ? new Date(data.current_period_end as string) : undefined,
       cancelAtPeriodEnd: data.cancel_at_period_end as boolean,
       canceledAt: data.canceled_at ? new Date(data.canceled_at as string) : undefined,
+      canceledReason: (data.canceled_reason as string | null | undefined) ?? null,
       createdAt: new Date(data.created_at as string),
       updatedAt: new Date(data.updated_at as string),
     };

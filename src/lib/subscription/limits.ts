@@ -3,7 +3,10 @@
  */
 
 import { SupabaseClient } from '@supabase/supabase-js';
-import { subscriptionGrantsPaidEntitlement } from '@/lib/billing/dunning';
+import {
+  selectBestEntitledSubscription,
+  subscriptionGrantsPaidEntitlement,
+} from '@/lib/billing/dunning';
 
 export { PREMIUM_TOTAL_STORAGE_MB, PREMIUM_TOTAL_STORAGE_BYTES } from '@/lib/subscription/storage-limits';
 
@@ -30,6 +33,7 @@ interface PlanRecord {
   id: string;
   name: string;
   features: Record<string, unknown>;
+  amount_cents?: number | null;
 }
 
 interface SubscriptionRecord {
@@ -37,6 +41,7 @@ interface SubscriptionRecord {
   provider?: string | null;
   current_period_end?: string | null;
   cancel_at_period_end?: boolean | null;
+  canceled_reason?: string | null;
   plan: PlanRecord | PlanRecord[] | null;
 }
 
@@ -58,8 +63,8 @@ function setCache(userId: string, subscription: SubscriptionRecord | null, limit
 
 /**
  * Fetch the subscription that currently grants paid entitlements.
- * Includes canceled / cancel_at_period_end while current_period_end is still
- * in the future (KAN-168 paid-through). See subscriptionGrantsPaidEntitlement.
+ * CAPE paid-through until current_period_end (KAN-168). Prefers highest-value
+ * non-free plan among entitled rows. See subscriptionGrantsPaidEntitlement.
  */
 async function fetchActiveSubscription(
   supabase: SupabaseClient,
@@ -68,32 +73,34 @@ async function fetchActiveSubscription(
   const { data: subscriptions } = await supabase
     .from('billing_subscriptions')
     .select(
-      `status, provider, current_period_end, cancel_at_period_end, plan:billing_plans(id, name, features)`
+      `status, provider, current_period_end, cancel_at_period_end, canceled_reason, plan:billing_plans(id, name, features, amount_cents)`
     )
     .eq('user_id', userId)
     .in('status', ['active', 'past_due', 'trialing', 'canceled', 'cancelled'])
     .order('updated_at', { ascending: false })
-    .limit(5);
+    .limit(10);
 
   if (!subscriptions?.length) {
     return null;
   }
 
-  for (const row of subscriptions) {
-    const sub = row as SubscriptionRecord;
-    if (
+  const resolvePlan = (sub: SubscriptionRecord): PlanRecord | null => {
+    if (!sub.plan) return null;
+    return Array.isArray(sub.plan) ? sub.plan[0] ?? null : sub.plan;
+  };
+
+  return selectBestEntitledSubscription(subscriptions as SubscriptionRecord[], {
+    isEntitled: (sub) =>
       subscriptionGrantsPaidEntitlement({
         status: sub.status,
         provider: sub.provider,
         currentPeriodEnd: sub.current_period_end,
         cancelAtPeriodEnd: sub.cancel_at_period_end,
-      })
-    ) {
-      return sub;
-    }
-  }
-
-  return null;
+        canceledReason: sub.canceled_reason,
+      }),
+    getPlanId: (sub) => resolvePlan(sub)?.id,
+    getAmountCents: (sub) => resolvePlan(sub)?.amount_cents ?? null,
+  });
 }
 
 function limitsFromPlan(plan: PlanRecord | null): SubscriptionLimits {

@@ -285,7 +285,7 @@ describe('getSubscriptionStatus query groups', () => {
     expect(result.limits.maxAssets).toBe(3);
   });
 
-  it('canceled with future current_period_end keeps Premium (KAN-168)', async () => {
+  it('CAPE canceled with future current_period_end keeps Premium (KAN-168)', async () => {
     clearSubscriptionCache();
     const future = new Date(Date.now() + 7 * 86400000).toISOString();
     const supabase = {
@@ -304,9 +304,11 @@ describe('getSubscriptionStatus query groups', () => {
                             provider: 'stripe',
                             current_period_end: future,
                             cancel_at_period_end: true,
+                            canceled_reason: 'user',
                             plan: {
                               id: 'plan_premium_month',
                               name: 'Premium',
+                              amount_cents: 999,
                               features: { max_assets: 50, max_beneficiaries: 10 },
                             },
                           },
@@ -330,6 +332,137 @@ describe('getSubscriptionStatus query groups', () => {
     const result = await getSubscriptionStatus(supabase as never, 'canceled-future');
     expect(result.hasSubscription).toBe(true);
     expect(result.status).toBe('canceled');
+    expect(result.limits.maxAssets).toBe(50);
+  });
+
+  it('canceled without CAPE + future CPE → Free (immediate revoke)', async () => {
+    clearSubscriptionCache();
+    const future = new Date(Date.now() + 7 * 86400000).toISOString();
+    const supabase = {
+      from: jest.fn((table: string) => {
+        if (table === 'billing_subscriptions') {
+          return {
+            select: () => ({
+              eq: () => ({
+                in: () => ({
+                  order: () => ({
+                    limit: () =>
+                      Promise.resolve({
+                        data: [
+                          {
+                            status: 'canceled',
+                            provider: 'stripe',
+                            current_period_end: future,
+                            cancel_at_period_end: false,
+                            canceled_reason: 'user',
+                            plan: {
+                              id: 'plan_premium_month',
+                              name: 'Premium',
+                              amount_cents: 999,
+                              features: { max_assets: 50 },
+                            },
+                          },
+                        ],
+                        error: null,
+                      }),
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === 'billing_plans') {
+          return {
+            select: () => ({
+              eq: () => ({
+                single: () =>
+                  Promise.resolve({
+                    data: {
+                      id: 'plan_free',
+                      features: {
+                        max_assets: 3,
+                        max_beneficiaries: 1,
+                        max_storage_mb: 50,
+                        max_file_size_mb: 10,
+                      },
+                    },
+                    error: null,
+                  }),
+              }),
+            }),
+          };
+        }
+        return {
+          select: () => ({
+            eq: () => Promise.resolve({ count: 0, data: [], error: null }),
+          }),
+        };
+      }),
+    };
+
+    const result = await getSubscriptionStatus(supabase as never, 'immediate-cancel');
+    expect(result.hasSubscription).toBe(false);
+    expect(result.limits.maxAssets).toBe(3);
+  });
+
+  it('prefers entitled premium over newer entitled plan_free', async () => {
+    clearSubscriptionCache();
+    const future = new Date(Date.now() + 7 * 86400000).toISOString();
+    const supabase = {
+      from: jest.fn((table: string) => {
+        if (table === 'billing_subscriptions') {
+          return {
+            select: () => ({
+              eq: () => ({
+                in: () => ({
+                  order: () => ({
+                    limit: () =>
+                      Promise.resolve({
+                        data: [
+                          {
+                            status: 'active',
+                            provider: 'stripe',
+                            current_period_end: future,
+                            cancel_at_period_end: false,
+                            plan: {
+                              id: 'plan_free',
+                              name: 'Free',
+                              amount_cents: 0,
+                              features: { max_assets: 3 },
+                            },
+                          },
+                          {
+                            status: 'canceled',
+                            provider: 'stripe',
+                            current_period_end: future,
+                            cancel_at_period_end: true,
+                            canceled_reason: 'user',
+                            plan: {
+                              id: 'plan_premium_month',
+                              name: 'Premium',
+                              amount_cents: 999,
+                              features: { max_assets: 50 },
+                            },
+                          },
+                        ],
+                        error: null,
+                      }),
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        return {
+          select: () => ({
+            eq: () => Promise.resolve({ count: 0, data: [], error: null }),
+          }),
+        };
+      }),
+    };
+
+    const result = await getSubscriptionStatus(supabase as never, 'rank-premium');
+    expect(result.hasSubscription).toBe(true);
     expect(result.limits.maxAssets).toBe(50);
   });
 

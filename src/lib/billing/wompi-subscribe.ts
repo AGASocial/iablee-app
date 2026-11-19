@@ -21,7 +21,11 @@ import {
   CLAIM_STALE_MS,
   extendPeriodEnd,
   hasPaidEntitlement,
+  isCanceledSubscriptionStatus,
+  normalizeSubscriptionStatus,
+  selectBestEntitledSubscription,
   subscriptionGrantsPaidEntitlement,
+  toEpochMs,
 } from './dunning';
 import {
   getBillingEmailSender,
@@ -162,31 +166,60 @@ export async function findBlockingSubscription(
   const { data } = await supabase
     .from('billing_subscriptions')
     .select(
-      'id, status, current_period_end, plan_id, billing_anchor_day, canceled_reason, cancel_at_period_end'
+      'id, status, current_period_end, plan_id, billing_anchor_day, canceled_reason, cancel_at_period_end, plan:billing_plans(amount_cents)'
     )
     .eq('user_id', userId)
     .eq('provider', 'wompi')
     .in('status', ['active', 'past_due', 'canceled', 'cancelled'])
-    .order('created_at', { ascending: false })
-    .limit(5);
+    // Align with entitlements (updated_at); rank paid plans below.
+    .order('updated_at', { ascending: false })
+    .limit(10);
+
+  // past_due always blocks (dunning in progress), regardless of plan rank.
+  for (const row of data || []) {
+    if (normalizeSubscriptionStatus(row.status as string) === 'past_due') {
+      return row as SubSnapshot;
+    }
+  }
+
+  const blockingEntitled = selectBestEntitledSubscription(data || [], {
+    isEntitled: (row) => {
+      if (
+        !subscriptionGrantsPaidEntitlement({
+          status: row.status as string,
+          provider: 'wompi',
+          currentPeriodEnd: row.current_period_end as string | null,
+          cancelAtPeriodEnd: row.cancel_at_period_end as boolean | null,
+          canceledReason: row.canceled_reason as string | null,
+        })
+      ) {
+        return false;
+      }
+      // Canceled paid-through: block only until CPE (not Wompi +1d grace) so
+      // Upgrade works during grace after period end (no resume dead-end).
+      if (isCanceledSubscriptionStatus(row.status as string)) {
+        const endMs = toEpochMs(row.current_period_end as string | null);
+        if (endMs != null && Date.now() > endMs) {
+          return false;
+        }
+      }
+      return true;
+    },
+    getPlanId: (row) => row.plan_id as string,
+    getAmountCents: (row) => {
+      const plan = row.plan as
+        | { amount_cents?: number }
+        | { amount_cents?: number }[]
+        | null;
+      if (Array.isArray(plan)) return plan[0]?.amount_cents ?? null;
+      return plan?.amount_cents ?? null;
+    },
+  });
+  if (blockingEntitled) {
+    return blockingEntitled as SubSnapshot;
+  }
 
   for (const row of data || []) {
-    if (row.status === 'past_due') {
-      return row as SubSnapshot;
-    }
-
-    // Canceled / CAPE still paid-through — block new subscribe until period ends.
-    if (
-      subscriptionGrantsPaidEntitlement({
-        status: row.status as string,
-        provider: 'wompi',
-        currentPeriodEnd: row.current_period_end as string | null,
-        cancelAtPeriodEnd: row.cancel_at_period_end as boolean | null,
-      })
-    ) {
-      return row as SubSnapshot;
-    }
-
     // Only tombstone expired active rows (not canceled / CAPE — cron handles CAPE).
     if (row.status !== 'active' || row.cancel_at_period_end === true) {
       continue;

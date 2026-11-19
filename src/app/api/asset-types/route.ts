@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { createAuthenticatedRouteClient } from '@/lib/supabase-server';
 import { getCachedAssetTypesForPlan, getCachedAssetTypeByKey } from '@/lib/server/asset-types-cache';
-import { subscriptionGrantsPaidEntitlement } from '@/lib/billing/dunning';
+import {
+    selectBestEntitledSubscription,
+    subscriptionGrantsPaidEntitlement,
+} from '@/lib/billing/dunning';
 
 export async function GET(request: Request) {
     const { supabase, user } = await createAuthenticatedRouteClient();
@@ -28,26 +31,38 @@ export async function GET(request: Request) {
     try {
         const { data: subscriptions } = await supabase
             .from('billing_subscriptions')
-            .select('plan_id, status, provider, current_period_end, cancel_at_period_end')
+            .select(
+                'plan_id, status, provider, current_period_end, cancel_at_period_end, canceled_reason, plan:billing_plans(id, amount_cents)'
+            )
             .eq('user_id', user.id)
             .in('status', ['active', 'past_due', 'trialing', 'canceled', 'cancelled'])
             .order('updated_at', { ascending: false })
-            .limit(5);
+            .limit(10);
 
-        let resolvedPlanId = 'plan_free';
-        for (const sub of subscriptions || []) {
-            if (
+        const best = selectBestEntitledSubscription(subscriptions || [], {
+            isEntitled: (sub) =>
                 subscriptionGrantsPaidEntitlement({
                     status: sub.status as string,
                     provider: sub.provider as string | null,
                     currentPeriodEnd: sub.current_period_end as string | null,
                     cancelAtPeriodEnd: sub.cancel_at_period_end as boolean | null,
-                })
-            ) {
-                resolvedPlanId = (sub.plan_id as string) || 'plan_free';
-                break;
-            }
-        }
+                    canceledReason: sub.canceled_reason as string | null,
+                }),
+            getPlanId: (sub) => {
+                const plan = sub.plan as { id?: string } | { id?: string }[] | null;
+                if (Array.isArray(plan)) return plan[0]?.id ?? (sub.plan_id as string);
+                return plan?.id ?? (sub.plan_id as string);
+            },
+            getAmountCents: (sub) => {
+                const plan = sub.plan as
+                    | { amount_cents?: number }
+                    | { amount_cents?: number }[]
+                    | null;
+                if (Array.isArray(plan)) return plan[0]?.amount_cents ?? null;
+                return plan?.amount_cents ?? null;
+            },
+        });
+        const resolvedPlanId = (best?.plan_id as string) || 'plan_free';
 
         const data = await getCachedAssetTypesForPlan(resolvedPlanId);
 

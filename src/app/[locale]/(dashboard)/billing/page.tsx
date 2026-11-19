@@ -10,6 +10,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import PaymentMethodsList from '@/components/billing/PaymentMethodsList';
+import {
+  ENTITLEMENT_GRACE_MS,
+  isCanceledSubscriptionStatus,
+  paidThroughEntitlementEndMs,
+  subscriptionGrantsPaidEntitlement,
+  toEpochMs,
+} from '@/lib/billing/dunning';
 
 interface PlanFeatures {
   max_assets: number;
@@ -26,8 +33,10 @@ interface Subscription {
   id: string;
   planId: string;
   status: string;
-  currentPeriodEnd?: Date;
+  provider?: string;
+  currentPeriodEnd?: Date | string;
   cancelAtPeriodEnd: boolean;
+  canceledReason?: string | null;
   plan: {
     name: string;
     amountCents: number;
@@ -57,6 +66,7 @@ export default function BillingPage() {
   const [loading, setLoading] = useState(true);
   const [canceling, setCanceling] = useState(false);
   const [provider, setProvider] = useState<string | null>(null);
+  const [nowMs] = useState(() => Date.now());
   const isMountedRef = useRef(true);
 
   const fetchBillingData = async () => {
@@ -244,17 +254,48 @@ export default function BillingPage() {
   }
 
   const isFreePlan = !subscription || subscription.planId === 'plan_free';
-  const statusLower = (subscription?.status || '').toLowerCase();
-  const isCanceledStatus =
-    statusLower === 'canceled' || statusLower === 'cancelled';
+  const isCanceledStatus = subscription
+    ? isCanceledSubscriptionStatus(subscription.status)
+    : false;
+  const entitlementProvider =
+    subscription?.provider || provider || PAYMENT_GATEWAY;
+  const stillEntitled =
+    !!subscription &&
+    !isFreePlan &&
+    subscriptionGrantsPaidEntitlement({
+      status: subscription.status,
+      provider: entitlementProvider,
+      currentPeriodEnd: subscription.currentPeriodEnd,
+      cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+      canceledReason: subscription.canceledReason,
+    });
+  // "Premium hasta" only while CAPE paid-through still entitles.
   const isPaidThroughCancel =
     !!subscription &&
     !isFreePlan &&
-    (subscription.cancelAtPeriodEnd || isCanceledStatus) &&
+    subscription.cancelAtPeriodEnd === true &&
+    stillEntitled &&
     !!subscription.currentPeriodEnd;
-  const premiumUntilDate = subscription?.currentPeriodEnd
-    ? format(new Date(subscription.currentPeriodEnd), 'PPP')
-    : null;
+  const entitlementEndMs =
+    subscription?.currentPeriodEnd != null
+      ? paidThroughEntitlementEndMs({
+          provider: entitlementProvider,
+          currentPeriodEnd: subscription.currentPeriodEnd,
+          graceMs: ENTITLEMENT_GRACE_MS,
+        })
+      : null;
+  const premiumUntilDate =
+    entitlementEndMs != null ? format(new Date(entitlementEndMs), 'PPP') : null;
+  const cpeStillFuture = (() => {
+    const ms = toEpochMs(subscription?.currentPeriodEnd ?? null);
+    return ms != null && ms > nowMs;
+  })();
+  // Resume while scheduled cancel is still before CPE (active or edge canceled).
+  const canResumeCancel =
+    !!subscription &&
+    subscription.cancelAtPeriodEnd === true &&
+    cpeStillFuture &&
+    (!isCanceledStatus || stillEntitled);
 
   return (
     <div className="container mx-auto py-10 space-y-8 px-2">
@@ -324,6 +365,10 @@ export default function BillingPage() {
               <Button onClick={() => router.push('/billing/plans')}>
                 {t('upgradeToPremium')}
               </Button>
+            ) : canResumeCancel ? (
+              <Button onClick={handleResumeSubscription}>
+                {t('resumeSubscription')}
+              </Button>
             ) : !subscription?.cancelAtPeriodEnd && !isCanceledStatus ? (
               <>
                 {provider !== 'payu' && (
@@ -342,10 +387,6 @@ export default function BillingPage() {
                   {canceling ? t('loading') : t('cancelSubscription')}
                 </Button>
               </>
-            ) : subscription?.cancelAtPeriodEnd && !isCanceledStatus ? (
-              <Button onClick={handleResumeSubscription}>
-                {t('resumeSubscription')}
-              </Button>
             ) : (
               <Button onClick={() => router.push('/billing/plans')}>
                 {t('upgradeToPremium')}
