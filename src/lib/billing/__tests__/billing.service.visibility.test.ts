@@ -83,6 +83,23 @@ function createSupabaseMock(opts: {
         api.single = jest.fn(async () => ({ data: planRow, error: null }));
       }
       if (table === 'billing_subscriptions') {
+        // getUserSubscription awaits .limit(5); other paths use .limit().maybeSingle().
+        api.limit = jest.fn(() => {
+          const listResult = {
+            data: opts.existingSubscription ? [opts.existingSubscription] : [],
+            error: null,
+          };
+          return {
+            maybeSingle: jest.fn(async () => ({
+              data: opts.existingSubscription,
+              error: null,
+            })),
+            then: (
+              resolve: (v: unknown) => unknown,
+              reject?: (e: unknown) => unknown
+            ) => Promise.resolve(listResult).then(resolve, reject),
+          };
+        });
         api.maybeSingle = jest.fn(async () => ({
           data: opts.existingSubscription,
           error: null,

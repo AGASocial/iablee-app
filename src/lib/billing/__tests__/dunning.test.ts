@@ -7,6 +7,8 @@ import {
   extendPeriodEnd,
   hasPaidEntitlement,
   hasStatusBasedEntitlement,
+  subscriptionGrantsPaidEntitlement,
+  ENTITLEMENT_GRACE_MS,
   MAX_DUNNING_ATTEMPTS,
   DUNNING_ATTEMPT_OFFSET_DAYS,
   daysInUtcMonth,
@@ -143,7 +145,7 @@ describe('hasPaidEntitlement (Wompi)', () => {
     ).toBe(true);
   });
 
-  it('canceled never entitles', () => {
+  it('canceled alone (legacy helper) does not entitle — use subscriptionGrantsPaidEntitlement', () => {
     expect(
       hasPaidEntitlement({
         status: 'canceled',
@@ -163,6 +165,124 @@ describe('hasStatusBasedEntitlement (Stripe/PayU)', () => {
   it('past_due and canceled do not (status-only path)', () => {
     expect(hasStatusBasedEntitlement('past_due')).toBe(false);
     expect(hasStatusBasedEntitlement('canceled')).toBe(false);
+  });
+});
+
+describe('subscriptionGrantsPaidEntitlement (KAN-168 paid-through)', () => {
+  const periodEnd = new Date('2026-11-10T00:00:00.000Z');
+
+  it('canceled with future period end → Premium (all providers)', () => {
+    expect(
+      subscriptionGrantsPaidEntitlement({
+        status: 'canceled',
+        provider: 'stripe',
+        currentPeriodEnd: periodEnd,
+        now: new Date('2026-11-09T12:00:00.000Z'),
+      })
+    ).toBe(true);
+    expect(
+      subscriptionGrantsPaidEntitlement({
+        status: 'cancelled',
+        provider: 'payu',
+        currentPeriodEnd: periodEnd,
+        now: new Date('2026-11-09T12:00:00.000Z'),
+      })
+    ).toBe(true);
+    expect(
+      subscriptionGrantsPaidEntitlement({
+        status: 'canceled',
+        provider: 'wompi',
+        currentPeriodEnd: periodEnd,
+        now: new Date('2026-11-09T12:00:00.000Z'),
+      })
+    ).toBe(true);
+  });
+
+  it('canceled with past period end → Free', () => {
+    expect(
+      subscriptionGrantsPaidEntitlement({
+        status: 'canceled',
+        provider: 'stripe',
+        currentPeriodEnd: periodEnd,
+        now: new Date('2026-11-11T00:00:01.000Z'),
+      })
+    ).toBe(false);
+  });
+
+  it('canceled with NULL current_period_end → Free (fail closed)', () => {
+    expect(
+      subscriptionGrantsPaidEntitlement({
+        status: 'canceled',
+        provider: 'stripe',
+        currentPeriodEnd: null,
+        now: new Date('2026-11-09T00:00:00.000Z'),
+      })
+    ).toBe(false);
+    expect(
+      subscriptionGrantsPaidEntitlement({
+        status: 'canceled',
+        provider: 'wompi',
+        currentPeriodEnd: null,
+        cancelAtPeriodEnd: true,
+        now: new Date('2026-11-09T00:00:00.000Z'),
+      })
+    ).toBe(false);
+  });
+
+  it('cancel_at_period_end active with future period → Premium', () => {
+    expect(
+      subscriptionGrantsPaidEntitlement({
+        status: 'active',
+        provider: 'stripe',
+        currentPeriodEnd: periodEnd,
+        cancelAtPeriodEnd: true,
+        now: new Date('2026-11-09T00:00:00.000Z'),
+      })
+    ).toBe(true);
+  });
+
+  it('cancel_at_period_end past period → Free (Stripe exact end)', () => {
+    expect(
+      subscriptionGrantsPaidEntitlement({
+        status: 'active',
+        provider: 'stripe',
+        currentPeriodEnd: periodEnd,
+        cancelAtPeriodEnd: true,
+        now: new Date('2026-11-10T00:00:01.000Z'),
+      })
+    ).toBe(false);
+  });
+
+  it('Wompi canceled keeps +1 day grace after period end', () => {
+    const withinGrace = new Date(periodEnd.getTime() + ENTITLEMENT_GRACE_MS - 1000);
+    const afterGrace = new Date(periodEnd.getTime() + ENTITLEMENT_GRACE_MS + 1000);
+    expect(
+      subscriptionGrantsPaidEntitlement({
+        status: 'canceled',
+        provider: 'wompi',
+        currentPeriodEnd: periodEnd,
+        now: withinGrace,
+      })
+    ).toBe(true);
+    expect(
+      subscriptionGrantsPaidEntitlement({
+        status: 'canceled',
+        provider: 'wompi',
+        currentPeriodEnd: periodEnd,
+        now: afterGrace,
+      })
+    ).toBe(false);
+  });
+
+  it('Wompi grace boundary: exactly period_end + grace still entitles', () => {
+    expect(
+      subscriptionGrantsPaidEntitlement({
+        status: 'canceled',
+        provider: 'wompi',
+        currentPeriodEnd: periodEnd,
+        now: new Date(periodEnd.getTime() + ENTITLEMENT_GRACE_MS),
+      })
+    ).toBe(true);
   });
 });
 

@@ -476,6 +476,8 @@
   "renewalDate": "Fecha de Renovación",
   "canceledOn": "Cancelada el",
   "willCancelOn": "Se cancelará el",
+  "premiumUntil": "Premium hasta {date}",
+  "premiumUntilDescription": "Conservas Premium hasta el {date}. Después tu cuenta pasa a Free.",
   "invoiceDate": "Fecha de Factura",
   "invoiceAmount": "Monto",
   "invoiceStatus": "Estado",

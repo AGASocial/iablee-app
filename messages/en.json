@@ -477,6 +477,8 @@
   "renewalDate": "Renewal Date",
   "canceledOn": "Canceled on",
   "willCancelOn": "Will cancel on",
+  "premiumUntil": "Premium until {date}",
+  "premiumUntilDescription": "You keep Premium access until {date}. After that your account moves to Free.",
   "invoiceDate": "Invoice Date",
   "invoiceAmount": "Amount",
   "invoiceStatus": "Status",

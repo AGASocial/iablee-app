@@ -160,10 +160,16 @@ export function extendPeriodEnd(
   return clampUtcMonthDay(year, month, anchor, prev);
 }
 
+/** True for canceled / cancelled spelling variants. */
+export function isCanceledSubscriptionStatus(status: string): boolean {
+  return status === 'canceled' || status === 'cancelled';
+}
+
 /**
  * Whether a Wompi subscription still grants paid entitlements
  * (period end + grace / past_due dunning window).
- * Stripe/PayU must NOT use this — they stay status-based.
+ * Does not handle canceled/CAPE — use {@link subscriptionGrantsPaidEntitlement}.
+ * Stripe/PayU must NOT use this for active paths — they stay status-based.
  */
 export function hasPaidEntitlement(params: {
   status: string;
@@ -203,8 +209,58 @@ export function hasPaidEntitlement(params: {
 
 /**
  * Status-only entitlement for Stripe/PayU (pre-KAN-166 behavior).
- * Ignores current_period_end entirely.
+ * Ignores current_period_end entirely. Does not grant canceled/CAPE.
  */
 export function hasStatusBasedEntitlement(status: string): boolean {
   return status === 'active' || status === 'trialing';
+}
+
+/**
+ * Unified paid entitlement (KAN-168). Mirrors SQL
+ * `subscription_grants_paid_entitlement`.
+ *
+ * Canceled / cancel_at_period_end: Premium until current_period_end when known;
+ * NULL period end → Free (fail closed). Wompi keeps +1 day grace on that path.
+ * Otherwise: Wompi period/dunning rules; Stripe/PayU status-based (active|trialing).
+ */
+export function subscriptionGrantsPaidEntitlement(params: {
+  status: string;
+  provider?: string | null;
+  currentPeriodEnd?: Date | string | null;
+  cancelAtPeriodEnd?: boolean | null;
+  now?: Date;
+  graceMs?: number;
+}): boolean {
+  const now = params.now ?? new Date();
+  const graceMs = params.graceMs ?? ENTITLEMENT_GRACE_MS;
+  const isEnding =
+    isCanceledSubscriptionStatus(params.status) ||
+    params.cancelAtPeriodEnd === true;
+
+  if (isEnding) {
+    if (params.currentPeriodEnd == null) {
+      return false;
+    }
+    const end =
+      typeof params.currentPeriodEnd === 'string'
+        ? new Date(params.currentPeriodEnd)
+        : params.currentPeriodEnd;
+    if (!Number.isFinite(end.getTime())) {
+      return false;
+    }
+    // Same Wompi cron-delay grace as active renewals; Stripe/PayU: exact end.
+    const grace = params.provider === 'wompi' ? graceMs : 0;
+    return now.getTime() <= end.getTime() + grace;
+  }
+
+  if (params.provider === 'wompi') {
+    return hasPaidEntitlement({
+      status: params.status,
+      currentPeriodEnd: params.currentPeriodEnd,
+      now,
+      graceMs,
+    });
+  }
+
+  return hasStatusBasedEntitlement(params.status);
 }

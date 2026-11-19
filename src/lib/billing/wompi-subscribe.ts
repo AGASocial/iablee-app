@@ -21,6 +21,7 @@ import {
   CLAIM_STALE_MS,
   extendPeriodEnd,
   hasPaidEntitlement,
+  subscriptionGrantsPaidEntitlement,
 } from './dunning';
 import {
   getBillingEmailSender,
@@ -161,11 +162,11 @@ export async function findBlockingSubscription(
   const { data } = await supabase
     .from('billing_subscriptions')
     .select(
-      'id, status, current_period_end, plan_id, billing_anchor_day, canceled_reason'
+      'id, status, current_period_end, plan_id, billing_anchor_day, canceled_reason, cancel_at_period_end'
     )
     .eq('user_id', userId)
     .eq('provider', 'wompi')
-    .in('status', ['active', 'past_due'])
+    .in('status', ['active', 'past_due', 'canceled', 'cancelled'])
     .order('created_at', { ascending: false })
     .limit(5);
 
@@ -174,13 +175,21 @@ export async function findBlockingSubscription(
       return row as SubSnapshot;
     }
 
+    // Canceled / CAPE still paid-through — block new subscribe until period ends.
     if (
-      hasPaidEntitlement({
-        status: 'active',
+      subscriptionGrantsPaidEntitlement({
+        status: row.status as string,
+        provider: 'wompi',
         currentPeriodEnd: row.current_period_end as string | null,
+        cancelAtPeriodEnd: row.cancel_at_period_end as boolean | null,
       })
     ) {
       return row as SubSnapshot;
+    }
+
+    // Only tombstone expired active rows (not canceled / CAPE — cron handles CAPE).
+    if (row.status !== 'active' || row.cancel_at_period_end === true) {
+      continue;
     }
 
     // Expired active past grace — never tombstone while open charge or

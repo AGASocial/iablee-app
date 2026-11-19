@@ -244,6 +244,17 @@ export default function BillingPage() {
   }
 
   const isFreePlan = !subscription || subscription.planId === 'plan_free';
+  const statusLower = (subscription?.status || '').toLowerCase();
+  const isCanceledStatus =
+    statusLower === 'canceled' || statusLower === 'cancelled';
+  const isPaidThroughCancel =
+    !!subscription &&
+    !isFreePlan &&
+    (subscription.cancelAtPeriodEnd || isCanceledStatus) &&
+    !!subscription.currentPeriodEnd;
+  const premiumUntilDate = subscription?.currentPeriodEnd
+    ? format(new Date(subscription.currentPeriodEnd), 'PPP')
+    : null;
 
   return (
     <div className="container mx-auto py-10 space-y-8 px-2">
@@ -284,7 +295,9 @@ export default function BillingPage() {
                 <Calendar className="h-4 w-4" />
                 {isFreePlan
                   ? t('status')
-                  : subscription?.cancelAtPeriodEnd ? t('willCancelOn') : t('renewalDate')
+                  : isPaidThroughCancel
+                    ? t('premiumUntil', { date: premiumUntilDate || '' })
+                    : t('renewalDate')
                 }
               </h3>
               <p className="text-lg">
@@ -297,10 +310,12 @@ export default function BillingPage() {
             </div>
           </div>
 
-          {subscription?.cancelAtPeriodEnd && (
+          {isPaidThroughCancel && premiumUntilDate && (
             <div className="flex items-center gap-2 p-4 bg-warning rounded-lg">
               <AlertCircle className="h-5 w-5 text-warning-foreground" />
-              <p className="text-sm text-warning-foreground">{t('cancelSubscriptionDescription')}</p>
+              <p className="text-sm text-warning-foreground">
+                {t('premiumUntilDescription', { date: premiumUntilDate })}
+              </p>
             </div>
           )}
 
@@ -309,7 +324,7 @@ export default function BillingPage() {
               <Button onClick={() => router.push('/billing/plans')}>
                 {t('upgradeToPremium')}
               </Button>
-            ) : !subscription?.cancelAtPeriodEnd ? (
+            ) : !subscription?.cancelAtPeriodEnd && !isCanceledStatus ? (
               <>
                 {provider !== 'payu' && (
                   <Button
@@ -327,9 +342,13 @@ export default function BillingPage() {
                   {canceling ? t('loading') : t('cancelSubscription')}
                 </Button>
               </>
-            ) : (
+            ) : subscription?.cancelAtPeriodEnd && !isCanceledStatus ? (
               <Button onClick={handleResumeSubscription}>
                 {t('resumeSubscription')}
+              </Button>
+            ) : (
+              <Button onClick={() => router.push('/billing/plans')}>
+                {t('upgradeToPremium')}
               </Button>
             )}
           </div>

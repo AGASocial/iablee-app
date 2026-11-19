@@ -3,10 +3,7 @@
  */
 
 import { SupabaseClient } from '@supabase/supabase-js';
-import {
-  hasPaidEntitlement,
-  hasStatusBasedEntitlement,
-} from '@/lib/billing/dunning';
+import { subscriptionGrantsPaidEntitlement } from '@/lib/billing/dunning';
 
 export { PREMIUM_TOTAL_STORAGE_MB, PREMIUM_TOTAL_STORAGE_BYTES } from '@/lib/subscription/storage-limits';
 
@@ -39,6 +36,7 @@ interface SubscriptionRecord {
   status: string;
   provider?: string | null;
   current_period_end?: string | null;
+  cancel_at_period_end?: boolean | null;
   plan: PlanRecord | PlanRecord[] | null;
 }
 
@@ -60,8 +58,8 @@ function setCache(userId: string, subscription: SubscriptionRecord | null, limit
 
 /**
  * Fetch the subscription that currently grants paid entitlements.
- * Wompi: period end + grace / past_due dunning window.
- * Stripe/PayU: status-based only (ignore current_period_end) — pre-KAN-166.
+ * Includes canceled / cancel_at_period_end while current_period_end is still
+ * in the future (KAN-168 paid-through). See subscriptionGrantsPaidEntitlement.
  */
 async function fetchActiveSubscription(
   supabase: SupabaseClient,
@@ -70,10 +68,10 @@ async function fetchActiveSubscription(
   const { data: subscriptions } = await supabase
     .from('billing_subscriptions')
     .select(
-      `status, provider, current_period_end, plan:billing_plans(id, name, features)`
+      `status, provider, current_period_end, cancel_at_period_end, plan:billing_plans(id, name, features)`
     )
     .eq('user_id', userId)
-    .in('status', ['active', 'past_due', 'trialing'])
+    .in('status', ['active', 'past_due', 'trialing', 'canceled', 'cancelled'])
     .order('updated_at', { ascending: false })
     .limit(5);
 
@@ -83,20 +81,14 @@ async function fetchActiveSubscription(
 
   for (const row of subscriptions) {
     const sub = row as SubscriptionRecord;
-    if (sub.provider === 'wompi') {
-      if (
-        hasPaidEntitlement({
-          status: sub.status,
-          currentPeriodEnd: sub.current_period_end,
-        })
-      ) {
-        return sub;
-      }
-      continue;
-    }
-
-    // Stripe / PayU / others: status-based only (do not apply period-end lockout)
-    if (hasStatusBasedEntitlement(sub.status)) {
+    if (
+      subscriptionGrantsPaidEntitlement({
+        status: sub.status,
+        provider: sub.provider,
+        currentPeriodEnd: sub.current_period_end,
+        cancelAtPeriodEnd: sub.cancel_at_period_end,
+      })
+    ) {
       return sub;
     }
   }

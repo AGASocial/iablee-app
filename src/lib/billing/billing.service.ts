@@ -34,6 +34,7 @@ import {
 import { resolveWompiAmountInCents } from './wompi-pricing';
 import { persistByProviderId } from './persistence';
 import { parseWompiReference as parseWompiRefDetailed } from './wompi-references';
+import { subscriptionGrantsPaidEntitlement } from './dunning';
 import {
   applyWompiRenewalApproval,
   applyWompiRenewalFailure,
@@ -93,23 +94,35 @@ export class BillingService {
   }
 
   /**
-   * Get user's active subscription
+   * Get user's paid-entitled subscription (incl. canceled / CAPE paid-through).
    */
   async getUserSubscription(userId: string): Promise<Subscription | null> {
     const { data, error } = await this.supabase
       .from('billing_subscriptions')
       .select('*')
       .eq('user_id', userId)
-      .in('status', ['active', 'trialing', 'past_due'])
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .in('status', ['active', 'trialing', 'past_due', 'canceled', 'cancelled'])
+      .order('updated_at', { ascending: false })
+      .limit(5);
 
     if (error) {
       throw new BillingError('Failed to fetch subscription', 'FETCH_SUBSCRIPTION_FAILED');
     }
 
-    return data ? this.mapSubscriptionFromDb(data) : null;
+    for (const row of data || []) {
+      if (
+        subscriptionGrantsPaidEntitlement({
+          status: row.status as string,
+          provider: row.provider as string | null,
+          currentPeriodEnd: row.current_period_end as string | null,
+          cancelAtPeriodEnd: row.cancel_at_period_end as boolean | null,
+        })
+      ) {
+        return this.mapSubscriptionFromDb(row);
+      }
+    }
+
+    return null;
   }
 
   /**
