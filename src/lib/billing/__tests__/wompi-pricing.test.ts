@@ -30,8 +30,8 @@ describe('resolveWompiAmountInCents', () => {
     expect(WOMPI_PLAN_AMOUNT_COP_CENTS).toEqual({
       plan_necessary_month: 4_000_000,
       plan_necessary_year: 40_000_000,
-      plan_premium_month: 990_000,
-      plan_premium_year: 9_900_000,
+      plan_premium_month: 490_000,
+      plan_premium_year: 4_900_000,
     });
     for (const [planId, amount] of Object.entries(WOMPI_PLAN_AMOUNT_COP_CENTS)) {
       expect(amount).toBeGreaterThan(0);

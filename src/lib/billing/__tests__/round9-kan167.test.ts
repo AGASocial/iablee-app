@@ -248,14 +248,14 @@ describe('round-9: CAPE CAS miss → fall through charge', () => {
       createSourceTransaction: jest.fn(async () => ({
         id: 'tx-new',
         status: 'APPROVED',
-        amountInCents: 990000,
+        amountInCents: 490000,
       })),
       getTransaction: jest.fn(),
       findTransactionByReference: jest.fn(),
       waitForTransactionStatus: jest.fn(async () => ({
         id: 'tx-new',
         status: 'APPROVED',
-        amountInCents: 990000,
+        amountInCents: 490000,
       })),
     };
 
@@ -689,7 +689,7 @@ describe('round-9: non-promotable first-charge → requires_refund + not retryab
       plan: premiumPlan,
       reference: firstRef,
       transactionId: 'tx-first',
-      amountInCents: 990000,
+      amountInCents: 490000,
       email: 'u@example.com',
     });
 
@@ -706,7 +706,7 @@ describe('round-9: non-promotable first-charge → requires_refund + not retryab
         plan: premiumPlan,
         reference: firstRef,
         transactionId: 'tx-first',
-        amountInCents: 990000,
+        amountInCents: 490000,
         email: 'u@example.com',
       })
     ).resolves.toEqual({ activated: false });
@@ -785,7 +785,7 @@ describe('round-9: non-promotable first-charge → requires_refund + not retryab
         plan: premiumPlan,
         reference: firstRef,
         transactionId: 'tx-first',
-        amountInCents: 990000,
+        amountInCents: 490000,
         email: 'u@example.com',
       })
     ).rejects.toMatchObject({
@@ -1003,14 +1003,14 @@ describe('round-9: lease lost before/after Wompi call', () => {
       createSourceTransaction: jest.fn(async () => ({
         id: 'tx-reuse',
         status: 'APPROVED',
-        amountInCents: 990000,
+        amountInCents: 490000,
       })),
       getTransaction: jest.fn(),
       findTransactionByReference: jest.fn(),
       waitForTransactionStatus: jest.fn(async () => ({
         id: 'tx-reuse',
         status: 'APPROVED',
-        amountInCents: 990000,
+        amountInCents: 490000,
       })),
     };
 
@@ -1206,7 +1206,7 @@ describe('round-9: lease lost before/after Wompi call', () => {
         return {
           id: 'tx-kept',
           status: 'PENDING',
-          amountInCents: 990000,
+          amountInCents: 490000,
         };
       }),
       getTransaction: jest.fn(),
@@ -1280,7 +1280,7 @@ describe('round-9: requires_refund alerting', () => {
       subscription_id: subId,
       wompi_reference: reference,
       wompi_transaction_id: 'tx-1',
-      amount_cents: 990000,
+      amount_cents: 490000,
       currency: 'COP',
       refund_reason: 'Period already extended',
       requires_refund: true as const,
@@ -1357,7 +1357,7 @@ describe('round-9: requires_refund alerting', () => {
       subscription_id: subId,
       wompi_reference: reference,
       wompi_transaction_id: 'tx-1',
-      amount_cents: 990000,
+      amount_cents: 490000,
       currency: 'COP',
       refund_reason: 'test',
       requires_refund: true,
@@ -1411,7 +1411,7 @@ describe('round-9: requires_refund alerting', () => {
         subscription_id: subId,
         wompi_reference: reference,
         wompi_transaction_id: 'tx-1',
-        amount_cents: 990000,
+        amount_cents: 490000,
         currency: 'COP',
         refund_reason: 'stale claim',
         requires_refund: true,
@@ -1446,7 +1446,7 @@ describe('round-9: requires_refund alerting', () => {
       subscription_id: subId,
       wompi_reference: reference,
       wompi_transaction_id: 'tx-1',
-      amount_cents: 990000,
+      amount_cents: 490000,
       currency: 'COP',
       refund_reason: 'test',
       requires_refund: true,

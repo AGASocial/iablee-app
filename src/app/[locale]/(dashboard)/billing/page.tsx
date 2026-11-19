@@ -212,6 +212,7 @@ export default function BillingPage() {
     }).format(amountCents / 100);
   };
 
+  // Label only: 5000 → "5 GB". Enforcement is 5000 × 1024² bytes (see storage-limits.ts).
   const formatStorage = (mb?: number) => {
     if (mb == null) return '—';
     if (mb >= 1000 && mb % 1000 === 0) return `${mb / 1000} GB`;
@@ -355,7 +356,9 @@ export default function BillingPage() {
                 <div className="flex justify-between p-2 bg-muted rounded">
                   <span>{t('maxStorage')}</span>
                   <span className="font-semibold">
-                    {subscriptionStatus.usage.storageUsedMb} / {subscriptionStatus.limits.maxStorageMb} MB
+                    {formatStorage(subscriptionStatus.usage.storageUsedMb)}
+                    {' / '}
+                    {formatStorage(subscriptionStatus.limits.maxStorageMb)}
                   </span>
                 </div>
               </div>

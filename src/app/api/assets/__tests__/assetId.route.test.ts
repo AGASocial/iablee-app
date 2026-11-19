@@ -14,7 +14,27 @@ jest.mock('@/lib/supabase-admin', () => ({
 }));
 jest.mock('@/lib/subscription/limits', () => ({
   canCreateVideoAsset: jest.fn(),
+  canUploadFile: jest.fn(async () => ({ allowed: true })),
   isVideoAssetType: jest.fn(),
+}));
+jest.mock('@/lib/storage/verify-attachment-size', () => ({
+  buildVerifiedAttachmentRows: jest.fn(),
+}));
+jest.mock('@/lib/subscription/storage-quota-response', () => ({
+  isStorageQuotaDbError: (msg: string) =>
+    typeof msg === 'string' && msg.includes('STORAGE_QUOTA'),
+  storageLimitReachedResponse: jest.fn(async (_s, _u, opts) => {
+    const { NextResponse } = await import('next/server');
+    return NextResponse.json(
+      {
+        error: 'storageLimitReached',
+        code: 'storageLimitReached',
+        limit: opts?.limit,
+        current: opts?.current,
+      },
+      { status: 413 }
+    );
+  }),
 }));
 
 describe('PUT /api/assets/[assetId] video cap', () => {

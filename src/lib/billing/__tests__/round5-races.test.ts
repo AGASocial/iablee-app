@@ -41,7 +41,7 @@ const plan = {
     priority_support: true,
     advanced_security: true,
   },
-  providerPriceMap: { wompi: '990000' },
+  providerPriceMap: { wompi: '490000' },
 };
 
 function makeLiveSubSelect(liveSub: Record<string, unknown> | null) {
@@ -191,7 +191,7 @@ describe('round-5: path-2 vs incomplete', () => {
                     attempt_number: 1,
                     status: 'pending',
                     wompi_reference: reference,
-                    amount_cents: 990000,
+                    amount_cents: 490000,
                     requires_refund: null,
                   },
                   error: null,
@@ -240,7 +240,7 @@ describe('round-5: path-2 vs incomplete', () => {
                 data: {
                   name: 'Premium',
                   interval: 'month',
-                  provider_price_map: { wompi: '990000' },
+                  provider_price_map: { wompi: '490000' },
                 },
                 error: null,
               }),
@@ -273,7 +273,7 @@ describe('round-5: path-2 vs incomplete', () => {
                   attempt_number: 1,
                   status: 'pending',
                   wompi_reference: reference,
-                  amount_cents: 990000,
+                  amount_cents: 490000,
                 },
                 error: null,
               });
@@ -332,7 +332,7 @@ describe('round-5: path-2 vs incomplete', () => {
               data: {
                 name: 'Premium',
                 interval: 'month',
-                provider_price_map: { wompi: '990000' },
+                provider_price_map: { wompi: '490000' },
               },
               error: null,
             }),
@@ -352,7 +352,7 @@ describe('round-5: path-2 vs incomplete', () => {
     const ok = await applyWompiRenewalApproval(supabase as never, {
       reference,
       transactionId: 'tx-late',
-      amountCents: 990000,
+      amountCents: 490000,
     });
 
     expect(ok).toBe(true);
@@ -634,7 +634,7 @@ describe('round-5: approved never reverted', () => {
                     attempt_number: 2,
                     status: 'pending',
                     wompi_reference: reference,
-                    amount_cents: 990000,
+                    amount_cents: 490000,
                   },
                   error: null,
                 });
@@ -691,7 +691,7 @@ describe('round-5: approved never reverted', () => {
                 data: {
                   name: 'Premium',
                   interval: 'month',
-                  provider_price_map: { wompi: '990000' },
+                  provider_price_map: { wompi: '490000' },
                 },
                 error: null,
               }),
@@ -712,7 +712,7 @@ describe('round-5: approved never reverted', () => {
     const ok = await applyWompiRenewalApproval(supabase as never, {
       reference,
       transactionId: 'tx-ok',
-      amountCents: 990000,
+      amountCents: 490000,
     });
 
     expect(ok).toBe(true);

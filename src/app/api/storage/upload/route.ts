@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedContext } from '@/lib/auth-context';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { getStorageBucket } from '@/lib/supabase-schema';
-import { getSubscriptionLimits } from '@/lib/subscription/limits';
+import {
+    canUploadFile,
+    getSubscriptionLimits,
+} from '@/lib/subscription/limits';
 import { checkRateLimit, getClientIp, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 import {
     encryptUserKey,
@@ -94,6 +97,19 @@ export async function POST(request: NextRequest) {
         if (file.size > maxBytes) {
             return NextResponse.json(
                 { error: `File exceeds maximum size of ${limits.maxFileSizeMb}MB` },
+                { status: 413 }
+            );
+        }
+
+        const storageCheck = await canUploadFile(supabase, user.id, file.size);
+        if (!storageCheck.allowed) {
+            return NextResponse.json(
+                {
+                    error: storageCheck.reason || 'storageLimitReached',
+                    code: 'storageLimitReached',
+                    limit: storageCheck.limit,
+                    current: storageCheck.current,
+                },
                 { status: 413 }
             );
         }

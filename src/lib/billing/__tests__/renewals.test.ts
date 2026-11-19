@@ -288,7 +288,7 @@ describe('processWompiRenewals selection', () => {
             attempt_number: 1,
             wompi_reference: reference,
             wompi_transaction_id: null,
-            amount_cents: 990000,
+            amount_cents: 490000,
             status: 'claimed',
             claimed_at: staleClaimedAt,
           };
@@ -321,7 +321,7 @@ describe('processWompiRenewals selection', () => {
                   data: {
                     name: 'Premium',
                     interval: 'month',
-                    provider_price_map: { wompi: '990000' },
+                    provider_price_map: { wompi: '490000' },
                   },
                   error: null,
                 }),
@@ -382,7 +382,7 @@ describe('processWompiRenewals selection', () => {
           id: 'tx-recovered',
           status: 'APPROVED',
           reference,
-          amountInCents: 990000,
+          amountInCents: 490000,
           currency: 'COP',
         },
       })),
@@ -435,7 +435,7 @@ describe('processWompiRenewals selection', () => {
                   attempt_number: 1,
                   wompi_reference: reference,
                   wompi_transaction_id: null,
-                  amount_cents: 990000,
+                  amount_cents: 490000,
                   status: 'claimed',
                   claimed_at: now.toISOString(),
                 },
@@ -471,7 +471,7 @@ describe('processWompiRenewals selection', () => {
                   data: {
                     name: 'Premium',
                     interval: 'month',
-                    provider_price_map: { wompi: '990000' },
+                    provider_price_map: { wompi: '490000' },
                   },
                   error: null,
                 }),
@@ -541,7 +541,7 @@ describe('applyWompiRenewalApproval idempotency', () => {
     const ok = await applyWompiRenewalApproval(supabase as never, {
       reference: 'wompi_renew_sub_20261110_1',
       transactionId: 'tx',
-      amountCents: 990000,
+      amountCents: 490000,
     });
     expect(ok).toBe(true);
   });
@@ -582,7 +582,7 @@ describe('applyWompiRenewalApproval idempotency', () => {
                   subscription_id: subId,
                   user_id: 'u1',
                   period_end: periodEnd,
-                  amount_cents: 990000,
+                  amount_cents: 490000,
                   attempt_number: 1,
                 },
                 error: null,
@@ -638,7 +638,7 @@ describe('applyWompiRenewalApproval idempotency', () => {
                 data: {
                   name: 'Premium',
                   interval: 'month',
-                  provider_price_map: { wompi: '990000' },
+                  provider_price_map: { wompi: '490000' },
                 },
                 error: null,
               }),
@@ -668,7 +668,7 @@ describe('applyWompiRenewalApproval idempotency', () => {
 
     const ok = await applyWompiRenewalApproval(
       supabase as never,
-      { reference, transactionId: 'tx-late', amountCents: 990000 },
+      { reference, transactionId: 'tx-late', amountCents: 490000 },
       { send: async () => ({ sent: true }) }
     );
 
@@ -761,7 +761,7 @@ describe('day-5 final dunning attempt before downgrade', () => {
                   data: {
                     name: 'Premium',
                     interval: 'month',
-                    provider_price_map: { wompi: '990000' },
+                    provider_price_map: { wompi: '490000' },
                   },
                   error: null,
                 }),
@@ -840,7 +840,7 @@ describe('day-5 final dunning attempt before downgrade', () => {
         id: 'tx-final',
         status: 'PENDING',
         reference: buildWompiRenewalReference(subId, periodEnd, 4),
-        amountInCents: 990000,
+        amountInCents: 490000,
         currency: 'COP',
       })),
       getTransaction: jest.fn(),
@@ -849,7 +849,7 @@ describe('day-5 final dunning attempt before downgrade', () => {
         id: 'tx-final',
         status: 'PENDING',
         reference: buildWompiRenewalReference(subId, periodEnd, 4),
-        amountInCents: 990000,
+        amountInCents: 490000,
         currency: 'COP',
       })),
     };
@@ -927,7 +927,7 @@ describe('day-5 final dunning attempt before downgrade', () => {
             select: () => ({
               eq: () => ({
                 maybeSingle: async () => ({
-                  data: { name: 'Premium', interval: 'month', provider_price_map: { wompi: '990000' } },
+                  data: { name: 'Premium', interval: 'month', provider_price_map: { wompi: '490000' } },
                   error: null,
                 }),
               }),
@@ -1027,7 +1027,7 @@ describe('stale-claim reference lookup contract', () => {
             attempt_number: 1,
             wompi_reference: reference,
             wompi_transaction_id: null,
-            amount_cents: 990000,
+            amount_cents: 490000,
             status: 'claimed',
             claimed_at: staleClaimedAt,
           };
@@ -1060,7 +1060,7 @@ describe('stale-claim reference lookup contract', () => {
                   data: {
                     name: 'Premium',
                     interval: 'month',
-                    provider_price_map: { wompi: '990000' },
+                    provider_price_map: { wompi: '490000' },
                   },
                   error: null,
                 }),
@@ -1164,7 +1164,7 @@ describe('applyApprovedRenewal preserves cancel_at_period_end', () => {
                   subscription_id: subId,
                   user_id: 'u1',
                   period_end: periodEnd,
-                  amount_cents: 990000,
+                  amount_cents: 490000,
                   attempt_number: 1,
                 },
                 error: null,
@@ -1206,7 +1206,7 @@ describe('applyApprovedRenewal preserves cancel_at_period_end', () => {
                 data: {
                   name: 'Premium',
                   interval: 'month',
-                  provider_price_map: { wompi: '990000' },
+                  provider_price_map: { wompi: '490000' },
                 },
                 error: null,
               }),
@@ -1236,7 +1236,7 @@ describe('applyApprovedRenewal preserves cancel_at_period_end', () => {
 
     await applyWompiRenewalApproval(
       supabase as never,
-      { reference, transactionId: 'tx-1', amountCents: 990000 },
+      { reference, transactionId: 'tx-1', amountCents: 490000 },
       { send: async () => ({ sent: true }) }
     );
 
@@ -1280,7 +1280,7 @@ describe('round-3: period CAS, failure no-op, charge timeout', () => {
                   status: 'pending',
                   subscription_id: subId,
                   period_end: periodEnd,
-                  amount_cents: 990000,
+                  amount_cents: 490000,
                   attempt_number: 1,
                 },
                 error: null,
@@ -1342,7 +1342,7 @@ describe('round-3: period CAS, failure no-op, charge timeout', () => {
                 data: {
                   name: 'Premium',
                   interval: 'month',
-                  provider_price_map: { wompi: '990000' },
+                  provider_price_map: { wompi: '490000' },
                 },
                 error: null,
               }),
@@ -1370,7 +1370,7 @@ describe('round-3: period CAS, failure no-op, charge timeout', () => {
 
     const ok = await applyWompiRenewalApproval(
       supabase as never,
-      { reference, transactionId: 'tx-late', amountCents: 990000 },
+      { reference, transactionId: 'tx-late', amountCents: 490000 },
       { send: async () => ({ sent: true }) }
     );
     expect(ok).toBe(true);
@@ -1403,7 +1403,7 @@ describe('round-3: period CAS, failure no-op, charge timeout', () => {
                   status: 'error',
                   subscription_id: subId,
                   period_end: periodEnd,
-                  amount_cents: 990000,
+                  amount_cents: 490000,
                   attempt_number: 1,
                 },
                 error: null,
@@ -1449,7 +1449,7 @@ describe('round-3: period CAS, failure no-op, charge timeout', () => {
                 data: {
                   name: 'Premium',
                   interval: 'month',
-                  provider_price_map: { wompi: '990000' },
+                  provider_price_map: { wompi: '490000' },
                 },
                 error: null,
               }),
@@ -1468,7 +1468,7 @@ describe('round-3: period CAS, failure no-op, charge timeout', () => {
 
     const ok = await applyWompiRenewalApproval(
       supabase as never,
-      { reference, transactionId: 'tx-dup', amountCents: 990000 },
+      { reference, transactionId: 'tx-dup', amountCents: 490000 },
       { send: async () => ({ sent: true }) }
     );
     expect(ok).toBe(true);
@@ -1488,7 +1488,7 @@ describe('round-3: period CAS, failure no-op, charge timeout', () => {
                   subscription_id: subId,
                   period_end: periodEnd,
                   attempt_number: 1,
-                  amount_cents: 990000,
+                  amount_cents: 490000,
                 },
                 error: null,
               }),
@@ -1563,7 +1563,7 @@ describe('round-4: dunning reactivation, durable refund, approved exists', () =>
                   status: 'pending',
                   subscription_id: subId,
                   period_end: periodEnd,
-                  amount_cents: 990000,
+                  amount_cents: 490000,
                   attempt_number: 1,
                 },
                 error: null,
@@ -1643,7 +1643,7 @@ describe('round-4: dunning reactivation, durable refund, approved exists', () =>
                 data: {
                   name: 'Premium',
                   interval: 'month',
-                  provider_price_map: { wompi: '990000' },
+                  provider_price_map: { wompi: '490000' },
                 },
                 error: null,
               }),
@@ -1671,7 +1671,7 @@ describe('round-4: dunning reactivation, durable refund, approved exists', () =>
 
     const ok = await applyWompiRenewalApproval(
       supabase as never,
-      { reference, transactionId: 'tx-late', amountCents: 990000 },
+      { reference, transactionId: 'tx-late', amountCents: 490000 },
       { send: async () => ({ sent: true }) }
     );
     expect(ok).toBe(true);
@@ -1697,7 +1697,7 @@ describe('round-4: dunning reactivation, durable refund, approved exists', () =>
                   subscription_id: subId,
                   user_id: userId,
                   period_end: periodEnd,
-                  amount_cents: 990000,
+                  amount_cents: 490000,
                   attempt_number: 1,
                 },
                 error: null,
@@ -1760,7 +1760,7 @@ describe('round-4: dunning reactivation, durable refund, approved exists', () =>
                 data: {
                   name: 'Premium',
                   interval: 'month',
-                  provider_price_map: { wompi: '990000' },
+                  provider_price_map: { wompi: '490000' },
                 },
                 error: null,
               }),
@@ -1780,7 +1780,7 @@ describe('round-4: dunning reactivation, durable refund, approved exists', () =>
     await expect(
       applyWompiRenewalApproval(
         supabase as never,
-        { reference, transactionId: 'tx-race', amountCents: 990000 },
+        { reference, transactionId: 'tx-race', amountCents: 490000 },
         { send: async () => ({ sent: true }) }
       )
     ).rejects.toMatchObject({ code: 'WOMPI_APPROVAL_RETRY' });
@@ -1848,7 +1848,7 @@ describe('round-4: dunning reactivation, durable refund, approved exists', () =>
                   data: {
                     name: 'Premium',
                     interval: 'month',
-                    provider_price_map: { wompi: '990000' },
+                    provider_price_map: { wompi: '490000' },
                   },
                   error: null,
                 }),
@@ -1875,5 +1875,188 @@ describe('round-4: dunning reactivation, durable refund, approved exists', () =>
 
     expect(charged).toBe(false);
     expect(summary.skipped).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('KAN-168: renewal claim amount from plan row', () => {
+  const emailSender = { send: jest.fn(async () => ({ sent: true })) };
+  const periodEnd = '2026-11-10T07:00:00.000Z';
+  const now = new Date('2026-11-10T08:00:00.000Z');
+  const subId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+  const userId = '11111111-2222-3333-4444-555555555555';
+
+  it('charges amount_cents resolved from billing_plans.provider_price_map.wompi', async () => {
+    // Distinctive from WOMPI_PLAN_AMOUNT_COP_CENTS.plan_premium_month (490000)
+    // so a fallback-to-constant path cannot pass this test.
+    const planWompiCents = '491001';
+    const expectedAmount = 491001;
+    let claimedAmount: number | null = null;
+    const liveSub = {
+      id: subId,
+      user_id: userId,
+      plan_id: 'plan_premium_month',
+      status: 'active',
+      cancel_at_period_end: false,
+      current_period_end: periodEnd,
+      current_period_start: '2026-10-10T07:00:00.000Z',
+      billing_anchor_day: 10,
+      provider: 'wompi',
+    };
+
+    const supabase = {
+      from: jest.fn((table: string) => {
+        if (table === 'billing_subscriptions') {
+          return {
+            select: makeLiveSubSelect(liveSub),
+            update: () => ({
+              eq: () => ({
+                in: async () => ({ error: null }),
+                neq: async () => ({ error: null }),
+                maybeSingle: async () => ({ data: { id: subId }, error: null }),
+              }),
+            }),
+          };
+        }
+        if (table === 'billing_renewal_attempts') {
+          const attemptSelect = () => {
+            const node: Record<string, unknown> = {};
+            const self = () => node;
+            node.eq = jest.fn(self);
+            node.in = jest.fn(async () => ({ data: [], error: null }));
+            node.order = jest.fn(async () => ({ data: [], error: null }));
+            node.limit = jest.fn(async () => ({ data: [], error: null }));
+            node.maybeSingle = jest.fn(async () => ({ data: null, error: null }));
+            return node;
+          };
+          return {
+            select: () => attemptSelect(),
+            insert: async (row: Record<string, unknown>) => {
+              claimedAmount = row.amount_cents as number;
+              return { error: null };
+            },
+            update: () => ({
+              eq: () => ({
+                in: () => ({
+                  select: () => ({
+                    maybeSingle: async () => ({ data: { id: 'a1' }, error: null }),
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === 'billing_plans') {
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({
+                  data: {
+                    name: 'Premium',
+                    interval: 'month',
+                    // Distinctive map value — claim must use resolveWompiAmountInCents(plan map)
+                    provider_price_map: { wompi: planWompiCents },
+                  },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === 'billing_payment_methods') {
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  eq: () => ({
+                    is: () => ({
+                      maybeSingle: async () => ({
+                        data: {
+                          id: 'pm-1',
+                          provider_payment_source_id: '55',
+                          method_type: 'CARD',
+                        },
+                        error: null,
+                      }),
+                    }),
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === 'users') {
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({
+                  data: { email: 'user@example.com' },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === 'billing_invoices') {
+          return {
+            insert: async () => ({ error: null }),
+            upsert: async () => ({ error: null }),
+            update: () => ({ eq: async () => ({ error: null }) }),
+            select: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({ data: null, error: null }),
+              }),
+            }),
+          };
+        }
+        if (table === 'billing_email_events') {
+          return {
+            insert: () => ({
+              select: () => ({
+                maybeSingle: async () => ({ data: { id: 'e' }, error: null }),
+              }),
+            }),
+            delete: () => ({ eq: async () => ({ error: null }) }),
+          };
+        }
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({ data: null, error: null }),
+            }),
+          }),
+        };
+      }),
+    };
+
+    const reference = buildWompiRenewalReference(subId, periodEnd, 1);
+    const wompi = {
+      createSourceTransaction: jest.fn(async () => ({
+        id: 'tx-plan-amount',
+        status: 'PENDING',
+        reference,
+        amountInCents: expectedAmount,
+        currency: 'COP',
+      })),
+      getTransaction: jest.fn(),
+      findTransactionByReference: jest.fn(),
+      waitForTransactionStatus: jest.fn(async () => ({
+        id: 'tx-plan-amount',
+        status: 'APPROVED',
+        reference,
+        amountInCents: expectedAmount,
+        currency: 'COP',
+      })),
+    };
+
+    await processWompiRenewals(supabase as never, wompi as never, {
+      now,
+      emailSender,
+      timeBudgetMs: 60_000,
+    });
+
+    expect(claimedAmount).toBe(expectedAmount);
+    expect(wompi.createSourceTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({ amountInCents: expectedAmount })
+    );
   });
 });

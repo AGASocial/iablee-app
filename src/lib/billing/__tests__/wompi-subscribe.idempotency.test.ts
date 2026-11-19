@@ -28,7 +28,7 @@ const plan = {
     priority_support: true,
     advanced_security: true,
   },
-  providerPriceMap: { wompi: '990000' },
+  providerPriceMap: { wompi: '490000' },
 };
 
 const incompleteRow = {
@@ -184,7 +184,7 @@ describe('createWompiSourceAndSubscribe first-charge idempotency', () => {
         id: 'tx-inflight',
         status: 'PENDING',
         reference,
-        amountInCents: 990000,
+        amountInCents: 490000,
         currency: 'COP',
       })),
       findTransactionByReference: jest.fn(),
@@ -300,7 +300,7 @@ describe('createWompiSourceAndSubscribe first-charge idempotency', () => {
         id: 'tx-retry',
         status: 'APPROVED',
         reference: retryRef,
-        amountInCents: 990000,
+        amountInCents: 490000,
         currency: 'COP',
       })),
       getTransaction: jest.fn(),
@@ -309,7 +309,7 @@ describe('createWompiSourceAndSubscribe first-charge idempotency', () => {
         id: 'tx-retry',
         status: 'APPROVED',
         reference: retryRef,
-        amountInCents: 990000,
+        amountInCents: 490000,
         currency: 'COP',
       })),
     };
@@ -589,7 +589,7 @@ describe('activateFirstCharge idempotency', () => {
       plan,
       reference: `wompi_first_${userId}_${planId}_${subId}`,
       transactionId: 'tx-real',
-      amountInCents: 990000,
+      amountInCents: 490000,
       email: 'a@b.com',
     });
 
@@ -680,7 +680,7 @@ describe('activateFirstCharge idempotency', () => {
       plan,
       reference: `wompi_first_${userId}_${planId}_${subId}_1`,
       transactionId: 'tx',
-      amountInCents: 990000,
+      amountInCents: 490000,
       email: 'a@b.com',
     });
 

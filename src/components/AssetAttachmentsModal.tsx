@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { Download, Trash2, Upload, Eye, File, Image, Video, Music, FileText, X } from "lucide-react";
 import type { Asset, AssetAttachment } from "@/models/asset";
+import { apiErrorToMessage } from "@/lib/api-error-message";
 import { toast } from "sonner"; // Assuming sonner is used for toasts based on package.json
 
 interface AssetAttachmentsModalProps {
@@ -201,7 +202,7 @@ export default function AssetAttachmentsModal({
 
         if (!uploadRes.ok) {
           const err = await uploadRes.json();
-          throw new Error(err.error || 'Upload failed');
+          throw new Error(apiErrorToMessage(err, 'errorUploadingFiles'));
         }
 
         const uploadData = await uploadRes.json();
@@ -222,7 +223,8 @@ export default function AssetAttachmentsModal({
         });
 
         if (!res.ok) {
-          throw new Error('Failed to save attachment record');
+          const err = await res.json().catch(() => null);
+          throw new Error(apiErrorToMessage(err, 'Failed to save attachment record'));
         }
       }
 
@@ -231,7 +233,15 @@ export default function AssetAttachmentsModal({
       toast.success(t('filesUploaded') || 'Files uploaded successfully');
     } catch (error) {
       console.error('Error uploading files:', error);
-      toast.error(t('errorUploadingFiles') || 'Error uploading files');
+      const msg = error instanceof Error ? error.message : 'errorUploadingFiles';
+      let localized: string;
+      try {
+        const translated = t(msg as never);
+        localized = translated !== msg ? translated : t('errorUploadingFiles');
+      } catch {
+        localized = t('errorUploadingFiles');
+      }
+      toast.error(localized || 'Error uploading files');
     } finally {
       setUploading(false);
       // Reset input

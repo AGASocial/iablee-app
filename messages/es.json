@@ -466,6 +466,8 @@
   "unlimited": "Ilimitado",
   "videoLimitReached": "Límite de videos alcanzado. Por favor, mejora tu plan.",
   "videoLimitReachedDescription": "Has alcanzado el límite de {limit} videos de tu plan. Mejora tu plan para agregar más.",
+  "storageLimitReached": "Límite de almacenamiento alcanzado. Elimina archivos o mejora tu plan.",
+  "storageLimitReachedDescription": "Has alcanzado el límite de almacenamiento de {limit} de tu plan. Libera espacio o mejora tu plan para seguir subiendo.",
   "subscriptionStatus": "Estado de Suscripción",
   "subscriptionActive": "Activa",
   "subscriptionPastDue": "Pago Vencido",

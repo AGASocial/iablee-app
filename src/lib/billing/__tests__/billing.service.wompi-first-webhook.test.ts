@@ -95,7 +95,7 @@ describe('BillingService first-charge webhook targets subscriptionId from refere
                       priority_support: true,
                       advanced_security: true,
                     },
-                    provider_price_map: { wompi: '990000' },
+                    provider_price_map: { wompi: '490000' },
                     is_active: true,
                     is_visible: true,
                   },
@@ -139,7 +139,7 @@ describe('BillingService first-charge webhook targets subscriptionId from refere
         provider: 'wompi',
         data: {
           invoiceId: reference,
-          amountCents: 990000,
+          amountCents: 490000,
           currency: 'COP',
           userId,
           planId,

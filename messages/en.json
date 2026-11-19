@@ -467,6 +467,8 @@
   "unlimited": "Unlimited",
   "videoLimitReached": "Video limit reached. Please upgrade your plan.",
   "videoLimitReachedDescription": "You've reached your plan's limit of {limit} videos. Upgrade your plan to add more.",
+  "storageLimitReached": "Storage limit reached. Delete files or upgrade your plan.",
+  "storageLimitReachedDescription": "You've reached your plan's storage limit of {limit}. Free up space or upgrade to continue uploading.",
   "subscriptionStatus": "Subscription Status",
   "subscriptionActive": "Active",
   "subscriptionPastDue": "Past Due",

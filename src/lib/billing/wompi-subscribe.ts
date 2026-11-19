@@ -11,6 +11,7 @@ import type { WompiAdapter } from './adapters/wompi.adapter';
 import type { PlanDefinition, CreateSubscriptionResponse, SubscriptionStatus } from './types';
 import { BillingError } from './types';
 import { resolveWompiAmountInCents } from './wompi-pricing';
+import { PREMIUM_TOTAL_STORAGE_MB } from '@/lib/subscription/storage-limits';
 import {
   buildWompiFirstReference,
   FIRST_CHARGE_PERIOD_SENTINEL,
@@ -1286,7 +1287,7 @@ export async function reconcileApprovedFirstCharges(
         max_assets: -1,
         max_beneficiaries: 10,
         max_file_size_mb: 100,
-        max_storage_mb: 5000,
+        max_storage_mb: PREMIUM_TOTAL_STORAGE_MB,
         priority_support: true,
         advanced_security: true,
       },

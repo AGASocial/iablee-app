@@ -86,7 +86,7 @@ describe('/api/billing/plans', () => {
         amount_cents: 1999,
         interval: 'month',
         features: {},
-        provider_price_map: { wompi: '990000' },
+        provider_price_map: { wompi: '490000' },
         is_visible: true,
       },
     ]);

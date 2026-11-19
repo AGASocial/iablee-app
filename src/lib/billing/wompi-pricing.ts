@@ -4,10 +4,10 @@
  * Plans are stored in USD in billing_plans.amount_cents. Wompi only charges COP.
  * Do NOT treat USD cents as COP cents.
  *
- * Official Premium prices confirmed 2026-11-17 (KAN-164):
- *   plan_premium_month  9.900 COP  = 990_000 cents
- *   plan_premium_year  99.000 COP  = 9_900_000 cents
- * Keep in sync with migration 20261118000000_kan164_free_premium_visibility.sql.
+ * Official Premium prices (KAN-168, supersedes KAN-164):
+ *   plan_premium_month  4.900 COP  = 490_000 cents
+ *   plan_premium_year  49.000 COP  = 4_900_000 cents
+ * Keep in sync with migration 20261118200000_kan168_premium_prices_storage.sql.
  *
  * Necessary entries are legacy hidden-plan fallbacks only (not official confirmed
  * product prices). Necessary stays in the DB for existing subscribers but is not
@@ -19,15 +19,15 @@ export const WOMPI_PLAN_AMOUNT_COP_CENTS: Readonly<Record<string, number>> = {
   // Legacy Necessary fallbacks (hidden plans; renewals only)
   plan_necessary_month: 4_000_000, // 40,000.00 COP — legacy
   plan_necessary_year: 40_000_000, // 400,000.00 COP — legacy
-  // Official Premium (KAN-164)
-  plan_premium_month: 990_000, // 9,900.00 COP
-  plan_premium_year: 9_900_000, // 99,000.00 COP
+  // Official Premium (KAN-168)
+  plan_premium_month: 490_000, // 4,900.00 COP
+  plan_premium_year: 4_900_000, // 49,000.00 COP
 };
 
 /**
  * Resolve COP amount-in-cents for a plan.
  * Priority:
- * 1) Numeric string in plan.providerPriceMap.wompi (e.g. "990000")
+ * 1) Numeric string in plan.providerPriceMap.wompi (e.g. "490000")
  * 2) WOMPI_PLAN_AMOUNT_COP_CENTS[planId]
  */
 export function resolveWompiAmountInCents(
