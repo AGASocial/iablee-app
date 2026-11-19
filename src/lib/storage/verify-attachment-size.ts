@@ -45,15 +45,25 @@ export async function resolveVerifiedAttachmentSize(
     return { ok: false, status: 400, error: 'Invalid file path' };
   }
 
-  const { data, error } = await admin.storage.from(getStorageBucket()).info(filePath);
+  let data: {
+    size?: number | string;
+    metadata?: Record<string, unknown> | null;
+  } | null;
+  let error: { message?: string; status?: number } | null;
+
+  try {
+    // info() returns StorageApiError with numeric .status for HTTP failures;
+    // non-storage errors are rethrown — catch those and fail closed as 500.
+    const result = await admin.storage.from(getStorageBucket()).info(filePath);
+    data = result.data;
+    error = result.error;
+  } catch {
+    return { ok: false, status: 500, error: 'Failed to verify storage object' };
+  }
 
   if (error) {
-    const msg = (error.message || '').toLowerCase();
-    const notFound =
-      msg.includes('not found') ||
-      msg.includes('404') ||
-      msg.includes('does not exist') ||
-      msg.includes('object not found');
+    // Prefer StorageApiError.status (404 vs 5xx); do not sniff message text.
+    const notFound = error.status === 404;
     return {
       ok: false,
       status: notFound ? 400 : 500,
