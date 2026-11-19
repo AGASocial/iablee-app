@@ -99,7 +99,6 @@ async function fetchActiveSubscription(
         canceledReason: sub.canceled_reason,
       }),
     getPlanId: (sub) => resolvePlan(sub)?.id,
-    getAmountCents: (sub) => resolvePlan(sub)?.amount_cents ?? null,
   });
 }
 

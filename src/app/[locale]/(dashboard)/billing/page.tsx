@@ -344,9 +344,11 @@ export default function BillingPage() {
               <p className="text-lg">
                 {isFreePlan
                   ? t('noExpiration')
-                  : subscription?.currentPeriodEnd
-                    ? format(new Date(subscription?.currentPeriodEnd || ''), 'PPP')
-                    : '-'}
+                  : isPaidThroughCancel && premiumUntilDate
+                    ? premiumUntilDate
+                    : subscription?.currentPeriodEnd
+                      ? format(new Date(subscription?.currentPeriodEnd || ''), 'PPP')
+                      : '-'}
               </p>
             </div>
           </div>

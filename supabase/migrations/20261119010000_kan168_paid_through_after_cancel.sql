@@ -89,7 +89,9 @@ AS $$
 DECLARE
   v_max_mb numeric;
 BEGIN
-  -- Prefer highest-value entitled paid plan; ignore plan_free rows.
+  -- Prefer highest product tier among entitled paid plans; ignore plan_free.
+  -- Tier rule mirrors dunning.ts entitledPlanRank (plan id prefix, NOT amount_cents):
+  -- plan_premium_* (300) > plan_necessary_* (200) > other paid (100); tie → newest updated_at.
   SELECT (bp.features->>'max_storage_mb')::numeric
   INTO v_max_mb
   FROM public.billing_subscriptions bs
@@ -105,7 +107,13 @@ BEGIN
       bs.cancel_at_period_end,
       bs.canceled_reason
     )
-  ORDER BY COALESCE(bp.amount_cents, 0) DESC, bs.updated_at DESC NULLS LAST
+  ORDER BY
+    CASE
+      WHEN bp.id LIKE 'plan_premium_%' THEN 300
+      WHEN bp.id LIKE 'plan_necessary_%' THEN 200
+      ELSE 100
+    END DESC,
+    bs.updated_at DESC NULLS LAST
   LIMIT 1;
 
   IF v_max_mb IS NOT NULL AND v_max_mb > 0 THEN
@@ -127,7 +135,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.resolve_user_max_storage_mb(uuid) IS
-  'KAN-168: plan max_storage_mb via entitlement mirroring getSubscriptionLimits (CAPE paid-through; highest paid plan).';
+  'KAN-168: plan max_storage_mb via entitlement mirroring getSubscriptionLimits (CAPE paid-through; tier rank plan_premium_ > plan_necessary_ > other).';
 
 -- Privilege hygiene (idempotent). Helpers: no client EXECUTE.
 REVOKE ALL ON FUNCTION public.subscription_grants_paid_entitlement(text, text, timestamptz, timestamptz, boolean, text) FROM PUBLIC;

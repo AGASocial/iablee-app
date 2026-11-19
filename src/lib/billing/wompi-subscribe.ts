@@ -206,14 +206,6 @@ export async function findBlockingSubscription(
       return true;
     },
     getPlanId: (row) => row.plan_id as string,
-    getAmountCents: (row) => {
-      const plan = row.plan as
-        | { amount_cents?: number }
-        | { amount_cents?: number }[]
-        | null;
-      if (Array.isArray(plan)) return plan[0]?.amount_cents ?? null;
-      return plan?.amount_cents ?? null;
-    },
   });
   if (blockingEntitled) {
     return blockingEntitled as SubSnapshot;

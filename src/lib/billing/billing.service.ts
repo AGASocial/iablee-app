@@ -100,7 +100,7 @@ export class BillingService {
 
   /**
    * Get user's paid-entitled subscription (incl. CAPE paid-through).
-   * Prefers highest-value non-free plan among entitled rows.
+   * Prefers highest product tier among entitled rows (premium > necessary).
    */
   async getUserSubscription(userId: string): Promise<Subscription | null> {
     const { data, error } = await this.supabase
@@ -128,14 +128,6 @@ export class BillingService {
         const plan = row.plan as { id?: string } | { id?: string }[] | null;
         if (Array.isArray(plan)) return plan[0]?.id ?? (row.plan_id as string);
         return plan?.id ?? (row.plan_id as string);
-      },
-      getAmountCents: (row) => {
-        const plan = row.plan as
-          | { amount_cents?: number }
-          | { amount_cents?: number }[]
-          | null;
-        if (Array.isArray(plan)) return plan[0]?.amount_cents ?? null;
-        return plan?.amount_cents ?? null;
       },
     });
 
@@ -992,6 +984,21 @@ export class BillingService {
   }
 
   /**
+   * Resolve CAPE for subscription.updated webhooks.
+   * When DB already has CAPE and Stripe status is canceled, preserve CAPE even
+   * if the canceled object omits/falsifies cancel_at_period_end (period-end race).
+   */
+  private resolveWebhookCancelAtPeriodEnd(
+    data: SubscriptionEventData,
+    existingCape: boolean | null | undefined
+  ): boolean {
+    if (existingCape === true && isCanceledSubscriptionStatus(data.status)) {
+      return true;
+    }
+    return data.cancelAtPeriodEnd === true;
+  }
+
+  /**
    * Handle subscription created/updated events
    */
   private async handleSubscriptionEvent(data: SubscriptionEventData): Promise<void> {
@@ -1014,31 +1021,39 @@ export class BillingService {
     }
 
     const provider = this.gateway.getName();
-    const payload: Record<string, unknown> = {
+
+    // Prefer match on provider_subscription_id (Stripe / first checkout).
+    const { data: byProviderId } = await this.supabase
+      .from('billing_subscriptions')
+      .select('id, cancel_at_period_end')
+      .eq('provider_subscription_id', data.subscriptionId)
+      .maybeSingle();
+
+    const payloadBase: Record<string, unknown> = {
       user_id: userId,
       status: data.status,
       current_period_start: data.currentPeriodStart,
       current_period_end: data.currentPeriodEnd,
-      cancel_at_period_end: data.cancelAtPeriodEnd || false,
       provider,
       provider_customer_id: data.customerId,
     };
 
     if (data.planId) {
-      payload.plan_id = data.planId;
+      payloadBase.plan_id = data.planId;
     }
 
-    // Prefer match on provider_subscription_id (Stripe / first checkout).
-    const { data: byProviderId } = await this.supabase
-      .from('billing_subscriptions')
-      .select('id')
-      .eq('provider_subscription_id', data.subscriptionId)
-      .maybeSingle();
-
     if (byProviderId?.id) {
+      const payload = {
+        ...payloadBase,
+        cancel_at_period_end: this.resolveWebhookCancelAtPeriodEnd(
+          data,
+          byProviderId.cancel_at_period_end as boolean | null
+        ),
+        updated_at: new Date().toISOString(),
+      };
       const { error } = await this.supabase
         .from('billing_subscriptions')
-        .update({ ...payload, updated_at: new Date().toISOString() })
+        .update(payload)
         .eq('id', byProviderId.id);
       if (error) throw error;
       return;
@@ -1048,7 +1063,7 @@ export class BillingService {
     // user's current row and do NOT overwrite provider_subscription_id yet.
     const { data: byUserProvider } = await this.supabase
       .from('billing_subscriptions')
-      .select('id')
+      .select('id, cancel_at_period_end')
       .eq('user_id', userId)
       .eq('provider', provider)
       .in('status', ['active', 'past_due', 'incomplete', 'trialing', 'unpaid'])
@@ -1057,9 +1072,17 @@ export class BillingService {
       .maybeSingle();
 
     if (byUserProvider?.id) {
+      const payload = {
+        ...payloadBase,
+        cancel_at_period_end: this.resolveWebhookCancelAtPeriodEnd(
+          data,
+          byUserProvider.cancel_at_period_end as boolean | null
+        ),
+        updated_at: new Date().toISOString(),
+      };
       const { error } = await this.supabase
         .from('billing_subscriptions')
-        .update({ ...payload, updated_at: new Date().toISOString() })
+        .update(payload)
         .eq('id', byUserProvider.id);
       if (error) throw error;
       return;
@@ -1070,18 +1093,21 @@ export class BillingService {
       'billing_subscriptions',
       'provider_subscription_id',
       data.subscriptionId,
-      payload
+      {
+        ...payloadBase,
+        cancel_at_period_end: data.cancelAtPeriodEnd === true,
+      }
     );
   }
 
   /**
    * Handle subscription canceled event (e.g. Stripe customer.subscription.deleted).
-   * Period-end completion (CAPE + CPE already reached) keeps CAPE for audit;
-   * mid-period revoke clears CAPE and clamps CPE → Free immediately.
+   * DB CAPE true → status canceled only (keep CAPE/CPE; entitlement ends at CPE),
+   * even if CPE is still slightly in the future (clock skew / early delete).
+   * DB CAPE false → mid-period force-cancel: clear CAPE and clamp CPE.
    */
   private async handleSubscriptionCanceled(data: SubscriptionEventData): Promise<void> {
     const nowIso = data.canceledAt || new Date().toISOString();
-    const nowMs = new Date(nowIso).getTime();
 
     const { data: existing } = await this.supabase
       .from('billing_subscriptions')
@@ -1090,11 +1116,9 @@ export class BillingService {
       .maybeSingle();
 
     const cape = existing?.cancel_at_period_end === true;
-    const cpeMs = toEpochMs(existing?.current_period_end as string | null);
-    const periodAlreadyEnded = cpeMs != null && cpeMs <= nowMs;
 
-    // Period-end delete after scheduled cancel: keep CAPE; entitlement ends at CPE.
-    if (cape && periodAlreadyEnded) {
+    // Scheduled period-end cancel: never clear CAPE or clamp CPE on delete.
+    if (cape) {
       await this.supabase
         .from('billing_subscriptions')
         .update({
@@ -1106,7 +1130,7 @@ export class BillingService {
       return;
     }
 
-    // Mid-period / immediate revoke (no safe CAPE signal): fail closed.
+    // Mid-period / immediate revoke (DB CAPE false): fail closed.
     await this.supabase
       .from('billing_subscriptions')
       .update({

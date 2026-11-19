@@ -440,8 +440,8 @@ describe('getSubscriptionStatus query groups', () => {
                             plan: {
                               id: 'plan_premium_month',
                               name: 'Premium',
-                              amount_cents: 999,
-                              features: { max_assets: 50 },
+                              amount_cents: 148,
+                              features: { max_assets: -1 },
                             },
                           },
                         ],
@@ -463,7 +463,68 @@ describe('getSubscriptionStatus query groups', () => {
 
     const result = await getSubscriptionStatus(supabase as never, 'rank-premium');
     expect(result.hasSubscription).toBe(true);
-    expect(result.limits.maxAssets).toBe(50);
+    expect(result.limits.maxAssets).toBe(-1);
+  });
+
+  it('Premium 148 wins over Necessary 999 by tier (KAN-168)', async () => {
+    clearSubscriptionCache();
+    const future = new Date(Date.now() + 7 * 86400000).toISOString();
+    const supabase = {
+      from: jest.fn((table: string) => {
+        if (table === 'billing_subscriptions') {
+          return {
+            select: () => ({
+              eq: () => ({
+                in: () => ({
+                  order: () => ({
+                    limit: () =>
+                      Promise.resolve({
+                        data: [
+                          {
+                            status: 'active',
+                            provider: 'stripe',
+                            current_period_end: future,
+                            cancel_at_period_end: false,
+                            plan: {
+                              id: 'plan_necessary_month',
+                              name: 'Necessary',
+                              amount_cents: 999,
+                              features: { max_assets: 50, max_storage_mb: 500 },
+                            },
+                          },
+                          {
+                            status: 'active',
+                            provider: 'stripe',
+                            current_period_end: future,
+                            cancel_at_period_end: false,
+                            plan: {
+                              id: 'plan_premium_month',
+                              name: 'Premium',
+                              amount_cents: 148,
+                              features: { max_assets: -1, max_storage_mb: 5120 },
+                            },
+                          },
+                        ],
+                        error: null,
+                      }),
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        return {
+          select: () => ({
+            eq: () => Promise.resolve({ count: 0, data: [], error: null }),
+          }),
+        };
+      }),
+    };
+
+    const result = await getSubscriptionStatus(supabase as never, 'rank-premium-vs-necessary');
+    expect(result.hasSubscription).toBe(true);
+    expect(result.limits.maxAssets).toBe(-1);
+    expect(result.limits.maxStorageMb).toBe(5120);
   });
 
   it('canceled with past current_period_end → Free (KAN-168)', async () => {

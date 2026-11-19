@@ -127,4 +127,20 @@ describe('/api/billing/subscriptions DELETE cancel defaults (KAN-168)', () => {
       atPeriodEnd: false,
     });
   });
+
+  it('treats non-false atPeriodEnd values as period-end (strict parse)', async () => {
+    for (const raw of ['0', 'no', 'False', 'TRUE', 'true', '']) {
+      mockCancelSubscription.mockClear();
+      const request = new NextRequest(
+        `http://localhost/api/billing/subscriptions?subscriptionId=sub-1&atPeriodEnd=${encodeURIComponent(raw)}`,
+        { method: 'DELETE' }
+      );
+      const response = await DELETE(request);
+      expect(response.status).toBe(200);
+      expect(mockCancelSubscription).toHaveBeenCalledWith({
+        subscriptionId: 'sub-1',
+        atPeriodEnd: true,
+      });
+    }
+  });
 });

@@ -377,18 +377,54 @@ describe('subscriptionGrantsPaidEntitlement (KAN-168 CAPE paid-through)', () => 
 });
 
 describe('selectBestEntitledSubscription ranking', () => {
-  it('ignores plan_free and prefers higher amount_cents', () => {
+  it('ignores plan_free and ranks by plan id tier (premium > necessary)', () => {
     const rows = [
-      { id: 'free', planId: 'plan_free', amount: 0, entitled: true },
-      { id: 'month', planId: 'plan_premium_month', amount: 999, entitled: true },
-      { id: 'year', planId: 'plan_premium_year', amount: 9990, entitled: true },
+      { id: 'free', planId: 'plan_free', entitled: true },
+      { id: 'necessary', planId: 'plan_necessary_month', entitled: true },
+      { id: 'premium', planId: 'plan_premium_month', entitled: true },
     ];
     const best = selectBestEntitledSubscription(rows, {
       isEntitled: (r) => r.entitled,
       getPlanId: (r) => r.planId,
-      getAmountCents: (r) => r.amount,
     });
-    expect(best?.id).toBe('year');
+    expect(best?.id).toBe('premium');
+  });
+
+  it('Premium 148 beats Necessary 999 (tier, not amount_cents)', () => {
+    // After KAN-168 price cut Premium is cheaper in USD cents than Necessary.
+    const rows = [
+      {
+        id: 'necessary',
+        planId: 'plan_necessary_month',
+        amount: 999,
+        entitled: true,
+        updated_at: '2026-11-19T12:00:00.000Z',
+      },
+      {
+        id: 'premium',
+        planId: 'plan_premium_month',
+        amount: 148,
+        entitled: true,
+        updated_at: '2026-11-18T12:00:00.000Z',
+      },
+    ];
+    const best = selectBestEntitledSubscription(rows, {
+      isEntitled: (r) => r.entitled,
+      getPlanId: (r) => r.planId,
+    });
+    expect(best?.id).toBe('premium');
+  });
+
+  it('tie-breaks to newest updated_at when same tier (caller order)', () => {
+    const rows = [
+      { id: 'newer', planId: 'plan_premium_year', entitled: true },
+      { id: 'older', planId: 'plan_premium_month', entitled: true },
+    ];
+    const best = selectBestEntitledSubscription(rows, {
+      isEntitled: (r) => r.entitled,
+      getPlanId: (r) => r.planId,
+    });
+    expect(best?.id).toBe('newer');
   });
 });
 
@@ -430,9 +466,11 @@ describe('SQL ↔ TS paid-through parity (KAN-168 migration)', () => {
     expect(sql).toContain('p_canceled_reason');
   });
 
-  it('SQL resolve_user_max_storage_mb ignores plan_free and ranks by amount_cents', () => {
+  it('SQL resolve_user_max_storage_mb ignores plan_free and ranks by plan tier', () => {
     expect(sql).toContain("bp.id IS DISTINCT FROM 'plan_free'");
-    expect(sql).toContain('ORDER BY COALESCE(bp.amount_cents, 0) DESC');
+    expect(sql).toContain("WHEN bp.id LIKE 'plan_premium_%' THEN 300");
+    expect(sql).toContain("WHEN bp.id LIKE 'plan_necessary_%' THEN 200");
+    expect(sql).not.toContain('ORDER BY COALESCE(bp.amount_cents, 0) DESC');
     expect(sql).toContain('bs.canceled_reason');
   });
 });

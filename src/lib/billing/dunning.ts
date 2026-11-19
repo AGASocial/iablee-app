@@ -195,17 +195,29 @@ export function isFreePlanId(planId: string | null | undefined): boolean {
 }
 
 /**
- * Rank among entitled paid rows: free plans are ignored (rank -1);
- * higher amount_cents wins. Ties preserve caller order.
+ * Product-tier ranks for entitled paid rows.
+ * Mirrored in SQL `resolve_user_max_storage_mb` (KAN-168 migration).
+ *
+ * Rule: plan id prefix — `plan_premium_*` > `plan_necessary_*` > other paid.
+ * Do NOT use `amount_cents` (Premium display USD can be lower than Necessary).
  */
-export function entitledPlanRank(
-  planId: string | null | undefined,
-  amountCents?: number | null
-): number {
-  if (isFreePlanId(planId)) return -1;
-  return typeof amountCents === 'number' && Number.isFinite(amountCents)
-    ? amountCents
-    : 0;
+export const PLAN_TIER_RANK = {
+  premium: 300,
+  necessary: 200,
+  otherPaid: 100,
+  free: -1,
+} as const;
+
+/**
+ * Rank among entitled paid rows by product tier (plan id prefix).
+ * Free plans return -1. Ties preserve caller order (updated_at DESC).
+ */
+export function entitledPlanRank(planId: string | null | undefined): number {
+  if (isFreePlanId(planId)) return PLAN_TIER_RANK.free;
+  const id = planId as string;
+  if (id.startsWith('plan_premium_')) return PLAN_TIER_RANK.premium;
+  if (id.startsWith('plan_necessary_')) return PLAN_TIER_RANK.necessary;
+  return PLAN_TIER_RANK.otherPaid;
 }
 
 /**
@@ -230,7 +242,7 @@ export function paidThroughEntitlementEndMs(params: {
 }
 
 /**
- * Pick the highest-value entitled non-free row. Caller should pass rows
+ * Pick the highest-tier entitled non-free row. Caller should pass rows
  * ordered by updated_at DESC so equal ranks keep the newest.
  */
 export function selectBestEntitledSubscription<T>(
@@ -238,7 +250,6 @@ export function selectBestEntitledSubscription<T>(
   opts: {
     isEntitled: (row: T) => boolean;
     getPlanId: (row: T) => string | null | undefined;
-    getAmountCents?: (row: T) => number | null | undefined;
   }
 ): T | null {
   let best: T | null = null;
@@ -247,7 +258,7 @@ export function selectBestEntitledSubscription<T>(
     if (!opts.isEntitled(row)) continue;
     const planId = opts.getPlanId(row);
     if (isFreePlanId(planId)) continue;
-    const rank = entitledPlanRank(planId, opts.getAmountCents?.(row));
+    const rank = entitledPlanRank(planId);
     if (rank > bestRank) {
       bestRank = rank;
       best = row;

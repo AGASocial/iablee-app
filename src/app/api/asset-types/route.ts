@@ -53,14 +53,6 @@ export async function GET(request: Request) {
                 if (Array.isArray(plan)) return plan[0]?.id ?? (sub.plan_id as string);
                 return plan?.id ?? (sub.plan_id as string);
             },
-            getAmountCents: (sub) => {
-                const plan = sub.plan as
-                    | { amount_cents?: number }
-                    | { amount_cents?: number }[]
-                    | null;
-                if (Array.isArray(plan)) return plan[0]?.amount_cents ?? null;
-                return plan?.amount_cents ?? null;
-            },
         });
         const resolvedPlanId = (best?.plan_id as string) || 'plan_free';
 
