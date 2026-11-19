@@ -1886,8 +1886,10 @@ describe('KAN-168: renewal claim amount from plan row', () => {
   const userId = '11111111-2222-3333-4444-555555555555';
 
   it('charges amount_cents resolved from billing_plans.provider_price_map.wompi', async () => {
-    const planWompiCents = '490000';
-    const expectedAmount = 490000;
+    // Distinctive from WOMPI_PLAN_AMOUNT_COP_CENTS.plan_premium_month (490000)
+    // so a fallback-to-constant path cannot pass this test.
+    const planWompiCents = '491001';
+    const expectedAmount = 491001;
     let claimedAmount: number | null = null;
     const liveSub = {
       id: subId,

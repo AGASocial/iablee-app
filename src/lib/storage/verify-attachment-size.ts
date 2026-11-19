@@ -4,6 +4,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { getStorageBucket } from '@/lib/supabase-schema';
 
 /** AES-GCM stream overhead from createEncryptionStream: version(1) + IV(12) + tag(16). */
 export const ENCRYPTION_STREAM_OVERHEAD_BYTES = 1 + 12 + 16;
@@ -12,8 +13,15 @@ export type VerifiedAttachmentSize =
   | { ok: true; size: number }
   | { ok: false; status: number; error: string };
 
+function parseObjectSize(raw: unknown): number | null {
+  if (raw == null) return null;
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return n;
+}
+
 /**
- * Resolve authoritative file size from the `assets` bucket object for `filePath`.
+ * Resolve authoritative file size from the configured storage bucket object for `filePath`.
  * Path must be owned by `userId` (`${userId}/...`). Rejects missing objects and
  * client under-reports (mismatch vs metadata, allowing known encryption overhead).
  */
@@ -37,21 +45,34 @@ export async function resolveVerifiedAttachmentSize(
     return { ok: false, status: 400, error: 'Invalid file path' };
   }
 
-  const folder = filePath.slice(0, slash);
-  const objectName = filePath.slice(slash + 1);
-
-  const { data, error } = await admin.storage.from('assets').list(folder, {
-    limit: 100,
-    search: objectName,
-  });
+  const { data, error } = await admin.storage.from(getStorageBucket()).info(filePath);
 
   if (error) {
-    return { ok: false, status: 500, error: 'Failed to verify storage object' };
+    const msg = (error.message || '').toLowerCase();
+    const notFound =
+      msg.includes('not found') ||
+      msg.includes('404') ||
+      msg.includes('does not exist') ||
+      msg.includes('object not found');
+    return {
+      ok: false,
+      status: notFound ? 400 : 500,
+      error: notFound
+        ? 'Storage object not found or size unavailable'
+        : 'Failed to verify storage object',
+    };
   }
 
-  const obj = (data ?? []).find((entry) => entry.name === objectName);
-  const metaSize = Number(obj?.metadata?.size);
-  if (!obj || !Number.isFinite(metaSize) || metaSize < 0) {
+  if (!data) {
+    return { ok: false, status: 400, error: 'Storage object not found or size unavailable' };
+  }
+
+  const metaSize =
+    parseObjectSize(data.size) ??
+    parseObjectSize(data.metadata?.size) ??
+    parseObjectSize(data.metadata?.['Content-Length']);
+
+  if (metaSize == null) {
     return { ok: false, status: 400, error: 'Storage object not found or size unavailable' };
   }
 

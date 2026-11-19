@@ -67,9 +67,9 @@ AS $$
 DECLARE
   v_grace interval := interval '1 day';
   v_dunning interval := interval '5 days';
-  v_provider text := lower(coalesce(p_provider, ''));
 BEGIN
-  IF v_provider = 'wompi' THEN
+  -- Strict provider match mirrors limits.ts (`sub.provider === 'wompi'`).
+  IF p_provider = 'wompi' THEN
     -- hasPaidEntitlement (dunning.ts)
     IF p_status = 'past_due' THEN
       IF p_current_period_end IS NULL THEN
@@ -144,7 +144,11 @@ $$;
 COMMENT ON FUNCTION public.resolve_user_max_storage_mb(uuid) IS
   'KAN-168: plan max_storage_mb via entitlement mirroring getSubscriptionLimits (limits.ts).';
 
--- d) DB-side storage quota enforcement on attachment insert/update of file_size
+-- d) DB-side storage quota enforcement on attachment insert/update of file_size.
+-- Authoritative size comes from storage.objects (not client NEW.file_size).
+-- Bucket id matches production RLS (`assets`); test envs that use SUPABASE_STORAGE_BUCKET
+-- must keep object `name` = asset_attachments.file_path in that bucket and mirror
+-- this lookup if the bucket id differs.
 CREATE OR REPLACE FUNCTION public.enforce_user_storage_quota()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -159,6 +163,8 @@ DECLARE
   v_projected bigint;
   v_old_size bigint;
   v_new_size bigint;
+  v_storage_size bigint;
+  v_prefix text;
 BEGIN
   SELECT da.user_id INTO v_user_id
   FROM public.digital_assets da
@@ -169,10 +175,34 @@ BEGIN
       USING ERRCODE = 'P0001';
   END IF;
 
-  -- Serialize concurrent inserts/updates for the same user (MUST-FIX 2)
+  -- Serialize concurrent inserts/updates for the same user
   PERFORM pg_advisory_xact_lock(hashtextextended(v_user_id::text, 0));
 
-  v_new_size := COALESCE(NEW.file_size, 0);
+  v_prefix := v_user_id::text || '/';
+  IF NEW.file_path IS NULL
+     OR position('/' in NEW.file_path) = 0
+     OR left(NEW.file_path, length(v_prefix)) <> v_prefix
+     OR NEW.file_path ~ '\.\.|//' THEN
+    RAISE EXCEPTION 'STORAGE_QUOTA: invalid or unowned file_path'
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  -- Fail closed: object must exist; overwrite client-controlled file_size
+  SELECT (o.metadata->>'size')::bigint
+  INTO v_storage_size
+  FROM storage.objects o
+  WHERE o.bucket_id = 'assets'
+    AND o.name = NEW.file_path
+  LIMIT 1;
+
+  IF v_storage_size IS NULL OR v_storage_size < 0 THEN
+    RAISE EXCEPTION 'STORAGE_QUOTA: storage object missing or size unavailable for %',
+      NEW.file_path
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  NEW.file_size := v_storage_size;
+  v_new_size := v_storage_size;
   v_old_size := 0;
   IF TG_OP = 'UPDATE' THEN
     v_old_size := COALESCE(OLD.file_size, 0);
@@ -210,4 +240,12 @@ CREATE TRIGGER trg_enforce_user_storage_quota
   EXECUTE FUNCTION public.enforce_user_storage_quota();
 
 COMMENT ON FUNCTION public.enforce_user_storage_quota() IS
-  'KAN-168: reject asset_attachments INSERT/UPDATE(file_size) that would exceed plan max_storage_mb (Premium = 5000 MB / 5 GB). Uses advisory lock + entitlement-aware plan resolution.';
+  'KAN-168: reject asset_attachments INSERT/UPDATE(file_size) that would exceed plan max_storage_mb (Premium = 5000 MB / 5 GB). Derives file_size from storage.objects; advisory lock + entitlement-aware plan resolution.';
+
+-- Privilege hygiene (idempotent; mirrors kan166 / pin trigger helpers)
+REVOKE ALL ON FUNCTION public.subscription_grants_paid_entitlement(text, text, timestamptz, timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.subscription_grants_paid_entitlement(text, text, timestamptz, timestamptz) FROM anon, authenticated;
+REVOKE ALL ON FUNCTION public.resolve_user_max_storage_mb(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.resolve_user_max_storage_mb(uuid) FROM anon, authenticated;
+REVOKE ALL ON FUNCTION public.enforce_user_storage_quota() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.enforce_user_storage_quota() TO authenticated, service_role;
