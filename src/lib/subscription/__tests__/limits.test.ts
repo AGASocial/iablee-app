@@ -6,7 +6,9 @@ import {
   getFreeTrialLimits,
   canCreateVideoAsset,
   canCreateBeneficiary,
+  canUploadFile,
   clearSubscriptionCache,
+  PREMIUM_TOTAL_STORAGE_MB,
 } from '@/lib/subscription/limits';
 
 describe('getSubscriptionStatus query groups', () => {
@@ -488,5 +490,97 @@ describe('KAN-164 Free and Premium limits', () => {
     expect(result.allowed).toBe(false);
     expect(result.reason).toBe('videoLimitReached');
     expect(result.current).toBe(5);
+  });
+
+  function premiumStorageSupabase(usedBytes: number) {
+    return {
+      from: jest.fn((table: string) => {
+        if (table === 'billing_subscriptions') {
+          return {
+            select: () => ({
+              eq: () => ({
+                in: () => ({
+                  order: () => ({
+                    limit: () =>
+                      Promise.resolve({
+                        data: [
+                          {
+                            status: 'active',
+                            provider: 'wompi',
+                            current_period_end: new Date(Date.now() + 86400000).toISOString(),
+                            plan: {
+                              id: 'plan_premium_month',
+                              name: 'Premium',
+                              features: {
+                                max_assets: -1,
+                                max_beneficiaries: 10,
+                                max_storage_mb: PREMIUM_TOTAL_STORAGE_MB,
+                                max_file_size_mb: 100,
+                                max_video_assets: 5,
+                              },
+                            },
+                          },
+                        ],
+                        error: null,
+                      }),
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === 'asset_attachments') {
+          return {
+            select: () => ({
+              eq: () =>
+                Promise.resolve({
+                  data: [{ file_size: usedBytes }],
+                  error: null,
+                }),
+            }),
+          };
+        }
+        if (table === 'digital_assets' || table === 'beneficiaries') {
+          return {
+            select: () => ({
+              eq: () => Promise.resolve({ count: 0, data: null, error: null }),
+            }),
+          };
+        }
+        return {
+          select: () => ({
+            eq: () => Promise.resolve({ count: 0, data: [], error: null }),
+          }),
+        };
+      }),
+    };
+  }
+
+  it('canUploadFile allows under Premium 5 GB total', async () => {
+    clearSubscriptionCache();
+    const used = (PREMIUM_TOTAL_STORAGE_MB - 100) * 1024 * 1024;
+    const result = await canUploadFile(
+      premiumStorageSupabase(used) as never,
+      'premium-storage',
+      50 * 1024 * 1024
+    );
+    expect(result.allowed).toBe(true);
+  });
+
+  it('canUploadFile blocks when Premium 5 GB total would be exceeded', async () => {
+    clearSubscriptionCache();
+    const used = (PREMIUM_TOTAL_STORAGE_MB - 10) * 1024 * 1024;
+    const result = await canUploadFile(
+      premiumStorageSupabase(used) as never,
+      'premium-storage-full',
+      50 * 1024 * 1024
+    );
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe('storageLimitReached');
+    expect(result.limit).toBe(PREMIUM_TOTAL_STORAGE_MB);
+  });
+
+  it('exports PREMIUM_TOTAL_STORAGE_MB as 5000 (5 GB)', () => {
+    expect(PREMIUM_TOTAL_STORAGE_MB).toBe(5000);
   });
 });

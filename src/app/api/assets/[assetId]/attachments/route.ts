@@ -1,6 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { createAuthenticatedRouteClient } from '@/lib/supabase-server';
+import { canUploadFile } from '@/lib/subscription/limits';
 
 export async function GET(
     request: Request,
@@ -44,6 +45,20 @@ export async function POST(
         return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
+    const incomingBytes = typeof file_size === 'number' ? file_size : Number(file_size) || 0;
+    const storageCheck = await canUploadFile(supabase, user.id, incomingBytes);
+    if (!storageCheck.allowed) {
+        return NextResponse.json(
+            {
+                error: storageCheck.reason || 'storageLimitReached',
+                code: 'storageLimitReached',
+                limit: storageCheck.limit,
+                current: storageCheck.current,
+            },
+            { status: 413 }
+        );
+    }
+
     const { data, error } = await supabase
         .from('asset_attachments')
         .insert({
@@ -57,6 +72,13 @@ export async function POST(
         .single();
 
     if (error) {
+        const message = error.message || '';
+        if (message.includes('STORAGE_QUOTA')) {
+            return NextResponse.json(
+                { error: 'storageLimitReached', code: 'storageLimitReached' },
+                { status: 413 }
+            );
+        }
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 

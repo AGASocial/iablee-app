@@ -198,7 +198,7 @@ For OAuth (Google/Apple) and email links to work:
 - **Plans:** Seeded by `20251029000001_seed_billing_plans.sql`. Update `billing_plans.provider_price_map` with real Stripe (or other) price IDs.
 - **Webhooks:** Configure in Stripe / PayU / Wompi to point to `https://your-domain.com/api/webhooks/{stripe|payu|wompi}`. See **docs/BILLING-SETUP.md**.
 - **Wompi events URLs (KAN-139):** Production: `https://app.iablee.com/api/webhooks/wompi`. Sandbox: use the current Vercel develop/preview host (`https://<vercel-develop-or-preview-host>/api/webhooks/wompi`). Never cross-wire sandbox ↔ production events URLs; Wompi requires a separate URL per environment.
-- **Wompi / plans (KAN-164):** Optional gateway; default `PAYMENT_GATEWAY` remains `payu`. Visible plans are **Free + Premium** only. Official Premium COP amounts (confirmed 2026-11-17): **9.900 / 99.000** in `src/lib/billing/wompi-pricing.ts` and migration `20261118000000_kan164_free_premium_visibility.sql` (also adds `is_visible`, hides Necessary without deleting, Free beneficiaries=1, Premium limits including 5 videos). Earlier 40k/80k placeholders in `20261113140000_wompi_cop_placeholder_prices.sql` are superseded for Premium. Env templates: `.env.example`. Unique-index migration `20261113150000_billing_provider_id_unique.sql` is **not** applied until reviewed.
+- **Wompi / plans (KAN-168):** Optional gateway; default `PAYMENT_GATEWAY` remains `payu`. Visible plans are **Free + Premium** only. Official Premium COP amounts: **4.900 / 49.000** in `src/lib/billing/wompi-pricing.ts` and migration `20261118200000_kan168_premium_prices_storage.sql` (also enforces 5 GB total storage via trigger; USD `amount_cents` 148 / 1480 at 3,320 COP/USD). KAN-164 set visibility/limits and previous 9.900/99.000 prices. Earlier 40k/80k placeholders in `20261113140000_wompi_cop_placeholder_prices.sql` are superseded for Premium. Env templates: `.env.example`. Unique-index migration `20261113150000_billing_provider_id_unique.sql` is **not** applied until reviewed.
 
 ---
 
@@ -226,7 +226,7 @@ For OAuth (Google/Apple) and email links to work:
 - [ ] Set redirect URLs in Auth.
 - [ ] Set env vars (Supabase + optional billing + optional encryption).
 - [ ] Optional: add `handle_new_user` trigger for `public.users` sync.
-- [ ] Optional: configure Stripe/PayU/Wompi and webhooks; update `provider_price_map` (Wompi official COP amounts **9.900 / 99.000**, confirmed 2026-11-17 KAN-164, in `20261118000000_kan164_free_premium_visibility.sql`; earlier `20261113140000_wompi_cop_placeholder_prices.sql` is historical placeholders only).
+- [ ] Optional: configure Stripe/PayU/Wompi and webhooks; update `provider_price_map` (Wompi official COP amounts **4.900 / 49.000**, KAN-168, in `20261118200000_kan168_premium_prices_storage.sql`; earlier `20261113140000_wompi_cop_placeholder_prices.sql` is historical placeholders only).
 - [ ] Deploy Next.js app and test login, wizard, assets, and storage.
 
 <!-- vercel-autodeploy-verify: 2026-11-05T13:00 America/Chicago -->

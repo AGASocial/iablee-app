@@ -355,7 +355,9 @@ export default function BillingPage() {
                 <div className="flex justify-between p-2 bg-muted rounded">
                   <span>{t('maxStorage')}</span>
                   <span className="font-semibold">
-                    {subscriptionStatus.usage.storageUsedMb} / {subscriptionStatus.limits.maxStorageMb} MB
+                    {formatStorage(subscriptionStatus.usage.storageUsedMb)}
+                    {' / '}
+                    {formatStorage(subscriptionStatus.limits.maxStorageMb)}
                   </span>
                 </div>
               </div>

@@ -8,6 +8,8 @@ import {
   hasStatusBasedEntitlement,
 } from '@/lib/billing/dunning';
 
+export { PREMIUM_TOTAL_STORAGE_MB, PREMIUM_TOTAL_STORAGE_BYTES } from '@/lib/subscription/storage-limits';
+
 export interface SubscriptionLimits {
   maxAssets: number;
   maxBeneficiaries: number;
@@ -335,6 +337,35 @@ export async function canCreateBeneficiary(
       reason: 'beneficiaryLimitReached',
       limit: limits.maxBeneficiaries,
       current: usage.beneficiariesCount,
+    };
+  }
+
+  return { allowed: true };
+}
+
+/**
+ * Enforce total storage quota (Premium = {@link PREMIUM_TOTAL_STORAGE_MB} MB / 5 GB).
+ * Compares existing attachment bytes + incoming file against plan maxStorageMb.
+ */
+export async function canUploadFile(
+  supabase: SupabaseClient,
+  userId: string,
+  additionalBytes: number
+): Promise<{ allowed: boolean; reason?: string; limit?: number; current?: number }> {
+  const [limits, usage] = await Promise.all([
+    getSubscriptionLimits(supabase, userId),
+    getUsageStats(supabase, userId),
+  ]);
+
+  const additionalMb = Math.max(0, additionalBytes) / (1024 * 1024);
+  const projectedMb = usage.storageUsedMb + additionalMb;
+
+  if (projectedMb > limits.maxStorageMb) {
+    return {
+      allowed: false,
+      reason: 'storageLimitReached',
+      limit: limits.maxStorageMb,
+      current: usage.storageUsedMb,
     };
   }
 

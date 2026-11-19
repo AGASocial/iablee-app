@@ -201,7 +201,11 @@ export default function AssetAttachmentsModal({
 
         if (!uploadRes.ok) {
           const err = await uploadRes.json();
-          throw new Error(err.error || 'Upload failed');
+          const code =
+            err && typeof err === 'object' && typeof err.error === 'string'
+              ? err.error
+              : 'errorUploadingFiles';
+          throw new Error(code);
         }
 
         const uploadData = await uploadRes.json();
@@ -231,7 +235,15 @@ export default function AssetAttachmentsModal({
       toast.success(t('filesUploaded') || 'Files uploaded successfully');
     } catch (error) {
       console.error('Error uploading files:', error);
-      toast.error(t('errorUploadingFiles') || 'Error uploading files');
+      const msg = error instanceof Error ? error.message : 'errorUploadingFiles';
+      let localized: string;
+      try {
+        const translated = t(msg as never);
+        localized = translated !== msg ? translated : t('errorUploadingFiles');
+      } catch {
+        localized = t('errorUploadingFiles');
+      }
+      toast.error(localized || 'Error uploading files');
     } finally {
       setUploading(false);
       // Reset input

@@ -288,7 +288,7 @@ describe('round-8: heal timestamptz +00:00 vs .000Z', () => {
                   period_end: periodEnd,
                   subscription_id: subId,
                   user_id: userId,
-                  amount_cents: 990000,
+                  amount_cents: 490000,
                   wompi_transaction_id: 'tx-1',
                   wompi_reference: reference,
                 },
@@ -334,7 +334,7 @@ describe('round-8: heal timestamptz +00:00 vs .000Z', () => {
                 data: {
                   name: 'Premium',
                   interval: 'month',
-                  provider_price_map: { wompi: '990000' },
+                  provider_price_map: { wompi: '490000' },
                 },
                 error: null,
               }),
@@ -355,7 +355,7 @@ describe('round-8: heal timestamptz +00:00 vs .000Z', () => {
     const heal = await healApprovedRenewalAttempt(supabase as never, {
       reference,
       transactionId: 'tx-1',
-      amountCents: 990000,
+      amountCents: 490000,
     });
 
     expect(heal.healed).toBe(true);
@@ -381,7 +381,7 @@ describe('round-8: heal timestamptz +00:00 vs .000Z', () => {
                   period_end: periodEnd,
                   subscription_id: subId,
                   user_id: userId,
-                  amount_cents: 990000,
+                  amount_cents: 490000,
                   wompi_transaction_id: 'tx-1',
                   wompi_reference: reference,
                 },
@@ -441,7 +441,7 @@ describe('round-8: heal timestamptz +00:00 vs .000Z', () => {
                 data: {
                   name: 'Premium',
                   interval: 'month',
-                  provider_price_map: { wompi: '990000' },
+                  provider_price_map: { wompi: '490000' },
                 },
                 error: null,
               }),
@@ -474,7 +474,7 @@ describe('round-8: heal timestamptz +00:00 vs .000Z', () => {
     const heal = await healApprovedRenewalAttempt(supabase as never, {
       reference,
       transactionId: 'tx-1',
-      amountCents: 990000,
+      amountCents: 490000,
     });
 
     expect(heal.healed).toBe(true);
@@ -588,7 +588,7 @@ describe('round-8: hard-stop any APPROVED for period', () => {
                       applied_at: null,
                       wompi_reference: reference,
                       wompi_transaction_id: 'tx-refund',
-                      amount_cents: 990000,
+                      amount_cents: 490000,
                     },
                   ],
                   error: null,
@@ -616,7 +616,7 @@ describe('round-8: hard-stop any APPROVED for period', () => {
                 data: {
                   name: 'Premium',
                   interval: 'month',
-                  provider_price_map: { wompi: '990000' },
+                  provider_price_map: { wompi: '490000' },
                 },
                 error: null,
               }),

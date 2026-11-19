@@ -72,7 +72,7 @@ describe('round-7: renewal applied_at heal', () => {
                   period_end: periodEnd,
                   subscription_id: subId,
                   user_id: userId,
-                  amount_cents: 990000,
+                  amount_cents: 490000,
                   wompi_transaction_id: 'tx-1',
                   wompi_reference: reference,
                 },
@@ -123,7 +123,7 @@ describe('round-7: renewal applied_at heal', () => {
                 data: {
                   name: 'Premium',
                   interval: 'month',
-                  provider_price_map: { wompi: '990000' },
+                  provider_price_map: { wompi: '490000' },
                 },
                 error: null,
               }),
@@ -156,7 +156,7 @@ describe('round-7: renewal applied_at heal', () => {
     const heal = await healApprovedRenewalAttempt(supabase as never, {
       reference,
       transactionId: 'tx-1',
-      amountCents: 990000,
+      amountCents: 490000,
     });
 
     expect(heal.healed).toBe(true);
@@ -182,7 +182,7 @@ describe('round-7: renewal applied_at heal', () => {
                   period_end: periodEnd,
                   subscription_id: subId,
                   user_id: userId,
-                  amount_cents: 990000,
+                  amount_cents: 490000,
                   wompi_transaction_id: 'tx-1',
                 },
                 error: null,
@@ -226,7 +226,7 @@ describe('round-7: renewal applied_at heal', () => {
                 data: {
                   name: 'Premium',
                   interval: 'month',
-                  provider_price_map: { wompi: '990000' },
+                  provider_price_map: { wompi: '490000' },
                 },
                 error: null,
               }),
@@ -259,7 +259,7 @@ describe('round-7: renewal applied_at heal', () => {
     const ok = await applyWompiRenewalApproval(supabase as never, {
       reference,
       transactionId: 'tx-1',
-      amountCents: 990000,
+      amountCents: 490000,
     });
 
     expect(ok).toBe(true);
@@ -283,7 +283,7 @@ describe('round-7: renewal applied_at heal', () => {
                   period_end: periodEnd,
                   subscription_id: subId,
                   user_id: userId,
-                  amount_cents: 990000,
+                  amount_cents: 490000,
                 },
                 error: null,
               }),
@@ -475,7 +475,7 @@ describe('round-7: path-2 blocks approved first-charge', () => {
                     subscription_id: subId,
                     user_id: userId,
                     period_end: periodEnd,
-                    amount_cents: 990000,
+                    amount_cents: 490000,
                     wompi_reference: reference,
                   },
                   error: null,
@@ -534,7 +534,7 @@ describe('round-7: path-2 blocks approved first-charge', () => {
                 data: {
                   name: 'Premium',
                   interval: 'month',
-                  provider_price_map: { wompi: '990000' },
+                  provider_price_map: { wompi: '490000' },
                 },
                 error: null,
               }),
@@ -567,7 +567,7 @@ describe('round-7: path-2 blocks approved first-charge', () => {
                   subscription_id: subId,
                   user_id: userId,
                   period_end: periodEnd,
-                  amount_cents: 990000,
+                  amount_cents: 490000,
                   wompi_reference: reference,
                 },
                 error: null,
@@ -634,7 +634,7 @@ describe('round-7: path-2 blocks approved first-charge', () => {
               data: {
                 name: 'Premium',
                 interval: 'month',
-                provider_price_map: { wompi: '990000' },
+                provider_price_map: { wompi: '490000' },
               },
               error: null,
             }),
@@ -654,7 +654,7 @@ describe('round-7: path-2 blocks approved first-charge', () => {
     const ok = await applyWompiRenewalApproval(supabase as never, {
       reference,
       transactionId: 'tx-late',
-      amountCents: 990000,
+      amountCents: 490000,
     });
 
     expect(ok).toBe(true);

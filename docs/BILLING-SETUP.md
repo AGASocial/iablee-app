@@ -199,7 +199,7 @@ Wompi has **no native subscriptions**. iablee uses the same renew-by-checkout mo
    - Commerce may be awaiting approval while production is already enabled; still keep sandbox and production isolated.
 3. Fill `WOMPI_*` vars from `.env.example`. Keep `PAYMENT_GATEWAY=payu` in production until go-live.
 4. **COP pricing**: plans are USD in `billing_plans.amount_cents`. Wompi charges COP only. Do not treat USD cents as COP cents.
-   - **Official Premium** (confirmed 2026-11-17, KAN-164): month **9.900 COP** (`990000` cents), year **99.000 COP** (`9900000` cents) — in `src/lib/billing/wompi-pricing.ts` and migration `supabase/migrations/20261118000000_kan164_free_premium_visibility.sql`.
+   - **Official Premium** (KAN-168): month **4.900 COP** (`490000` cents), year **49.000 COP** (`4900000` cents); USD display ≈ **$1.48/mo** at 3,320 COP/USD (`amount_cents` 148 / 1480) — in `src/lib/billing/wompi-pricing.ts` and migration `supabase/migrations/20261118200000_kan168_premium_prices_storage.sql`. Supersedes KAN-164 (9.900 / 99.000).
    - The earlier 40k/80k figures in `20261113140000_wompi_cop_placeholder_prices.sql` were **unconfirmed placeholders** (incorrectly labeled confirmed 2026-11-13 / KAN-139). Necessary amounts there remain **legacy hidden-plan fallbacks** only.
    - Migrations are **not** auto-applied — run when deploying.
 5. **Provider ID uniqueness (do not apply until reviewed):** migration `supabase/migrations/20261113150000_billing_provider_id_unique.sql` adds UNIQUE indexes on `billing_invoices.provider_invoice_id` and `billing_subscriptions.provider_subscription_id`. Application code uses select-then-update/insert so paid webhooks work before this lands. Next `supabase db push` would apply it.
@@ -373,7 +373,8 @@ supabase/
     ├── 20251029000000_create_billing_tables.sql
     ├── 20251029000001_seed_billing_plans.sql
     ├── 20261113140000_wompi_cop_placeholder_prices.sql  # Historical placeholders only (not official)
-    └── 20261118000000_kan164_free_premium_visibility.sql  # Official COP 9.900 / 99.000 (KAN-164, 2026-11-17)
+    ├── 20261118000000_kan164_free_premium_visibility.sql  # Free+Premium visibility; COP 9.900/99.000 (superseded)
+    └── 20261118200000_kan168_premium_prices_storage.sql  # Official COP 4.900 / 49.000 + 5 GB quota trigger (KAN-168)
 ```
 
 ## Security Considerations

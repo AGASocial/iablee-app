@@ -173,7 +173,7 @@ describe('WompiAdapter.findTransactionByReference contract', () => {
             id: 'tx-1',
             status: 'APPROVED',
             reference: 'ref-1',
-            amount_in_cents: 990000,
+            amount_in_cents: 490000,
             currency: 'COP',
           },
         ],

@@ -38,7 +38,7 @@ const plan = {
     priority_support: true,
     advanced_security: true,
   },
-  providerPriceMap: { wompi: '990000' },
+  providerPriceMap: { wompi: '490000' },
 };
 
 function chain(terminal: { data?: unknown; error?: unknown }) {
@@ -158,7 +158,7 @@ describe('round-6: heal approved first-charge while sub incomplete', () => {
       plan,
       reference,
       transactionId: 'tx-1',
-      amountInCents: 990000,
+      amountInCents: 490000,
       email: 'a@b.com',
     });
 
@@ -289,7 +289,7 @@ describe('round-6: heal approved first-charge while sub incomplete', () => {
                     wompi_transaction_id: 'tx-1',
                     subscription_id: subId,
                     user_id: userId,
-                    amount_cents: 990000,
+                    amount_cents: 490000,
                     requires_refund: null,
                   },
                 ],
@@ -330,7 +330,7 @@ describe('round-6: heal approved first-charge while sub incomplete', () => {
                   amount_cents: 999,
                   interval: 'month',
                   features: plan.features,
-                  provider_price_map: { wompi: '990000' },
+                  provider_price_map: { wompi: '490000' },
                 },
                 error: null,
               }),
@@ -461,7 +461,7 @@ describe('round-6: lease fail-closed + webhook soft-fail', () => {
         plan,
         reference,
         transactionId: 'tx-1',
-        amountInCents: 990000,
+        amountInCents: 490000,
         email: 'a@b.com',
       })
     ).rejects.toMatchObject({ code: 'WOMPI_LEASE_CONTENTION' });
@@ -481,7 +481,7 @@ describe('round-6: lease fail-closed + webhook soft-fail', () => {
                   user_id: userId,
                   subscription_id: subId,
                   period_end: '2026-11-10T07:00:00.000Z',
-                  amount_cents: 990000,
+                  amount_cents: 490000,
                   wompi_reference: 'wompi_renew_x_20261110_1',
                 },
                 error: null,
@@ -496,7 +496,7 @@ describe('round-6: lease fail-closed + webhook soft-fail', () => {
       applyWompiRenewalApproval(supabase as never, {
         reference: 'wompi_renew_x_20261110_1',
         transactionId: 'tx',
-        amountCents: 990000,
+        amountCents: 490000,
       })
     ).rejects.toMatchObject({ code: 'WOMPI_LEASE_CONTENTION' });
   });
@@ -574,7 +574,7 @@ describe('round-6: lease fail-closed + webhook soft-fail', () => {
                     amount_cents: 999,
                     interval: 'month',
                     features: plan.features,
-                    provider_price_map: { wompi: '990000' },
+                    provider_price_map: { wompi: '490000' },
                     is_active: true,
                     is_visible: true,
                   },
@@ -617,7 +617,7 @@ describe('round-6: lease fail-closed + webhook soft-fail', () => {
         type: 'invoice.paid',
         data: {
           invoiceId: reference,
-          amountCents: 990000,
+          amountCents: 490000,
           currency: 'COP',
           userId,
           planId,
