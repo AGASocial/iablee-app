@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { getAuthRedirectOrigin, resolveAuthLocale } from '@/lib/app-url';
 import { createRouteClient } from '@/lib/supabase-server';
 import { checkRateLimit, getClientIp, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 import { getPasswordPolicyError } from '@/lib/password-policy';
+import {
+  ensureUserProfileIfNeeded,
+  PROFILE_OK_COOKIE_NAME,
+  profileOkCookieOptions,
+} from '@/lib/ensure-user-profile';
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,7 +37,7 @@ export async function POST(request: NextRequest) {
     const emailRedirectTo = `${origin}/api/auth/callback?next=${encodeURIComponent(`/${safeLocale}`)}`;
 
     const supabase = await createRouteClient();
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -44,6 +50,20 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    // Only when a session is returned (e.g. email confirm disabled).
+    const sessionUserId = data?.session?.user?.id;
+    if (sessionUserId) {
+      const ensured = await ensureUserProfileIfNeeded(supabase);
+      if (ensured) {
+        const cookieStore = await cookies();
+        cookieStore.set(
+          PROFILE_OK_COOKIE_NAME,
+          sessionUserId,
+          profileOkCookieOptions()
+        );
+      }
     }
 
     return NextResponse.json({ success: true });

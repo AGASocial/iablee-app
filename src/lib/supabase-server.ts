@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import type { Database } from '@/lib/supabase';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { getSupabaseClientDbOption } from '@/lib/supabase-schema';
 import {
   readSecuritySession,
   type SecuritySessionPurpose,
@@ -19,6 +20,7 @@ export async function createRouteClient() {
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
         {
+            db: getSupabaseClientDbOption(),
             cookies: {
                 getAll() {
                     return cookieStore.getAll();

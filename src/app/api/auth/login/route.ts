@@ -5,6 +5,11 @@ import { clearSecuritySession } from '@/lib/security-cookie';
 import { consumeOpenPinResetGrants } from '@/lib/pin-reset-grants';
 import { abandonAuthenticatedSession } from '@/lib/revoke-auth-session';
 import { checkRateLimit, getClientIp, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
+import {
+  ensureUserProfileIfNeeded,
+  PROFILE_OK_COOKIE_NAME,
+  profileOkCookieOptions,
+} from '@/lib/ensure-user-profile';
 
 export async function POST(request: NextRequest) {
   try {
@@ -42,6 +47,15 @@ export async function POST(request: NextRequest) {
 
     const cookieStore = await cookies();
     clearSecuritySession(cookieStore);
+
+    const ensured = await ensureUserProfileIfNeeded(supabase);
+    if (ensured) {
+      cookieStore.set(
+        PROFILE_OK_COOKIE_NAME,
+        data.user.id,
+        profileOkCookieOptions()
+      );
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

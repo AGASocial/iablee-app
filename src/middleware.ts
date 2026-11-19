@@ -3,6 +3,12 @@ import { routing } from './i18n/routing';
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { getSupabaseClientDbOption, isNonPublicSchema } from '@/lib/supabase-schema'
+import {
+  ensureUserProfileIfNeeded,
+  PROFILE_OK_COOKIE_NAME,
+  profileOkCookieOptions,
+} from '@/lib/ensure-user-profile'
 
 const intlMiddleware = createMiddleware(routing);
 
@@ -19,6 +25,7 @@ export async function middleware(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      db: getSupabaseClientDbOption(),
       cookies: {
         getAll() {
           return request.cookies.getAll();
@@ -43,6 +50,30 @@ export async function middleware(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  // Test-schema only: ensure profile row once per user/session via cookie guard.
+  // Production (`public`) must never call ensure_user_profile or set this cookie.
+  let profileCookieUserId: string | null = null;
+  if (user && isNonPublicSchema()) {
+    const profileOk = request.cookies.get(PROFILE_OK_COOKIE_NAME)?.value;
+    if (profileOk !== user.id) {
+      const ensured = await ensureUserProfileIfNeeded(supabase);
+      if (ensured) {
+        profileCookieUserId = user.id;
+      }
+    }
+  }
+
+  const applyProfileCookie = (response: NextResponse) => {
+    if (profileCookieUserId) {
+      response.cookies.set(
+        PROFILE_OK_COOKIE_NAME,
+        profileCookieUserId,
+        profileOkCookieOptions()
+      );
+    }
+    return response;
+  };
 
   // If user is not signed in and the current path is not /auth/*,
   // redirect the user to /{locale}/auth/login
@@ -85,7 +116,7 @@ export async function middleware(request: NextRequest) {
       }
     }
 
-    return NextResponse.redirect(callbackUrl);
+    return applyProfileCookie(NextResponse.redirect(callbackUrl));
   }
 
   // Redirect authenticated users on locale home to wizard or dashboard
@@ -99,7 +130,7 @@ export async function middleware(request: NextRequest) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = target;
     redirectUrl.search = '';
-    return NextResponse.redirect(redirectUrl);
+    return applyProfileCookie(NextResponse.redirect(redirectUrl));
   }
 
   // Locale home (and bare `/`) are public marketing — LandingPage for signed-out users.
@@ -128,7 +159,7 @@ export async function middleware(request: NextRequest) {
       const loginUrl = request.nextUrl.clone();
       loginUrl.pathname = `/${locale}/auth/login`;
       loginUrl.searchParams.set(`redirectedFrom`, pathname);
-      return NextResponse.redirect(loginUrl);
+      return applyProfileCookie(NextResponse.redirect(loginUrl));
     }
   }
 
@@ -139,10 +170,10 @@ export async function middleware(request: NextRequest) {
     supabaseResponse.cookies.getAll().forEach((cookie) => {
       intlResponse.cookies.set(cookie.name, cookie.value, cookie);
     });
-    return intlResponse;
+    return applyProfileCookie(intlResponse);
   }
 
-  return supabaseResponse;
+  return applyProfileCookie(supabaseResponse);
 }
 
 export const config = {

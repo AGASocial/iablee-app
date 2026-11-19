@@ -10,6 +10,7 @@ import { createClient } from '@supabase/supabase-js';
 import { getPaymentGateway, errorResponse, successResponse } from '@/lib/billing/server';
 import { processWompiRenewals } from '@/lib/billing/renewals';
 import type { WompiAdapter } from '@/lib/billing/adapters/wompi.adapter';
+import { getSupabaseClientDbOption } from '@/lib/supabase-schema';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -61,7 +62,9 @@ export async function GET(request: Request) {
       return errorResponse('Supabase not configured', 500);
     }
 
-    const supabase = createClient(supabaseUrl, serviceKey);
+    const supabase = createClient(supabaseUrl, serviceKey, {
+      db: getSupabaseClientDbOption(),
+    });
     const summary = await processWompiRenewals(
       supabase,
       gateway as WompiAdapter,
