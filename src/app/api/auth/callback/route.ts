@@ -5,6 +5,11 @@ import { consumeOpenPinResetGrants } from '@/lib/pin-reset-grants';
 import { abandonAuthenticatedSession } from '@/lib/revoke-auth-session';
 import { createRouteClient } from '@/lib/supabase-server';
 import {
+  ensureUserProfileIfNeeded,
+  PROFILE_OK_COOKIE_NAME,
+  profileOkCookieOptions,
+} from '@/lib/ensure-user-profile';
+import {
   SECURITY_SESSION_COOKIE_NAME,
   securitySessionCookieOptions,
 } from '@/lib/security-cookie';
@@ -118,6 +123,7 @@ export async function GET(request: NextRequest) {
     return errorResponse;
   }
 
+  const ensured = await ensureUserProfileIfNeeded(supabase);
   const successResponse = NextResponse.redirect(new URL(nextPath, origin));
   successResponse.cookies.delete('auth_callback_next');
   successResponse.cookies.set(
@@ -125,5 +131,12 @@ export async function GET(request: NextRequest) {
     '',
     securitySessionCookieOptions(0)
   );
+  if (ensured) {
+    successResponse.cookies.set(
+      PROFILE_OK_COOKIE_NAME,
+      sessionUserId,
+      profileOkCookieOptions()
+    );
+  }
   return successResponse;
 }

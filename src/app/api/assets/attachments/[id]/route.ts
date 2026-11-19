@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { createAuthenticatedRouteClient } from '@/lib/supabase-server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { getStorageBucket } from '@/lib/supabase-schema';
 import { decryptUserKey, createDecryptionStream } from '@/lib/encryption';
 import { Readable } from 'stream';
 
@@ -61,7 +62,7 @@ export async function GET(
 
     // 3. Fetch file from storage using Admin client
     const { data: fileData, error: storageError } = await supabaseAdmin.storage
-        .from('assets')
+        .from(getStorageBucket())
         .download(attachment.file_path);
 
     if (storageError || !fileData) {
@@ -135,7 +136,7 @@ export async function DELETE(
 
     // 3. Delete from Storage using Admin to ensure cleanup
     const { error: storageError } = await supabaseAdmin.storage
-        .from('assets')
+        .from(getStorageBucket())
         .remove([attachment.file_path]);
 
     if (storageError) {

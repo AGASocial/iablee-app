@@ -26,6 +26,8 @@ jest.mock('next/headers', () => ({
   cookies: jest.fn(),
 }));
 
+const ORIGINAL_DB_SCHEMA = process.env.NEXT_PUBLIC_SUPABASE_DB_SCHEMA;
+
 describe('POST /api/auth/login', () => {
   const mockCreateRouteClient = createRouteClient as jest.Mock;
   const mockCookies = cookies as jest.Mock;
@@ -40,6 +42,13 @@ describe('POST /api/auth/login', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    delete process.env.NEXT_PUBLIC_SUPABASE_DB_SCHEMA;
+    (consumeOpenPinResetGrants as jest.Mock).mockResolvedValue(true);
+  });
+
+  afterAll(() => {
+    if (ORIGINAL_DB_SCHEMA === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_DB_SCHEMA;
+    else process.env.NEXT_PUBLIC_SUPABASE_DB_SCHEMA = ORIGINAL_DB_SCHEMA;
   });
 
   it('clears security_session after a successful login', async () => {
@@ -118,5 +127,56 @@ describe('POST /api/auth/login', () => {
     expect(setCookieHeader).toContain('sb-ref-auth-token=');
     expect(setCookieHeader.toLowerCase()).toContain('max-age=0');
     expect(setCookieHeader).not.toContain('live-session');
+  });
+
+  it('does not call ensure_user_profile in public schema mode', async () => {
+    const rpc = jest.fn();
+    const setCookie = jest.fn();
+    mockCookies.mockResolvedValue({ set: setCookie });
+    mockCreateRouteClient.mockResolvedValue({
+      auth: {
+        signInWithPassword: jest.fn().mockResolvedValue({
+          data: { user: { id: 'user-1' } },
+          error: null,
+        }),
+      },
+      rpc,
+    });
+
+    const response = await POST(loginRequest());
+
+    expect(response.status).toBe(200);
+    expect(rpc).not.toHaveBeenCalled();
+    expect(setCookie).not.toHaveBeenCalledWith(
+      'iablee_profile_ok',
+      expect.anything(),
+      expect.anything()
+    );
+  });
+
+  it('calls ensure_user_profile in non-public schema mode', async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_DB_SCHEMA = 'test_iablee';
+    const rpc = jest.fn().mockResolvedValue({ error: null });
+    const setCookie = jest.fn();
+    mockCookies.mockResolvedValue({ set: setCookie });
+    mockCreateRouteClient.mockResolvedValue({
+      auth: {
+        signInWithPassword: jest.fn().mockResolvedValue({
+          data: { user: { id: 'user-1' } },
+          error: null,
+        }),
+      },
+      rpc,
+    });
+
+    const response = await POST(loginRequest());
+
+    expect(response.status).toBe(200);
+    expect(rpc).toHaveBeenCalledWith('ensure_user_profile');
+    expect(setCookie).toHaveBeenCalledWith(
+      'iablee_profile_ok',
+      'user-1',
+      expect.objectContaining({ httpOnly: true, sameSite: 'lax', path: '/' })
+    );
   });
 });

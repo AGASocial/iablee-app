@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedContext } from '@/lib/auth-context';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { getStorageBucket } from '@/lib/supabase-schema';
 import { getSubscriptionLimits } from '@/lib/subscription/limits';
 import { checkRateLimit, getClientIp, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 import {
@@ -116,7 +117,7 @@ export async function POST(request: NextRequest) {
         const filePath = `${user.id}/${Date.now()}-${safeFileName}`;
 
         const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
-            .from('assets')
+            .from(getStorageBucket())
             .upload(filePath, encryptedStream as unknown as BodyInit, {
                 duplex: 'half',
                 contentType: file.type,

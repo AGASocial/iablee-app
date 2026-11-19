@@ -20,6 +20,7 @@ jest.mock('@/lib/pin-reset-grants', () => ({
 }));
 
 const ORIGINAL_SITE_URL = process.env.NEXT_PUBLIC_SITE_URL;
+const ORIGINAL_DB_SCHEMA = process.env.NEXT_PUBLIC_SUPABASE_DB_SCHEMA;
 
 describe('GET /api/auth/callback', () => {
   const mockCreateRouteClient = createRouteClient as jest.Mock;
@@ -27,21 +28,26 @@ describe('GET /api/auth/callback', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     process.env.NEXT_PUBLIC_SITE_URL = 'http://localhost:3000';
+    delete process.env.NEXT_PUBLIC_SUPABASE_DB_SCHEMA;
     (consumeOpenPinResetGrants as jest.Mock).mockResolvedValue(true);
   });
 
   afterAll(() => {
     if (ORIGINAL_SITE_URL === undefined) delete process.env.NEXT_PUBLIC_SITE_URL;
     else process.env.NEXT_PUBLIC_SITE_URL = ORIGINAL_SITE_URL;
+    if (ORIGINAL_DB_SCHEMA === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_DB_SCHEMA;
+    else process.env.NEXT_PUBLIC_SUPABASE_DB_SCHEMA = ORIGINAL_DB_SCHEMA;
   });
 
-  function clientWithExchange(result: { data?: unknown; error: unknown }) {
+  function clientWithExchange(result: { data?: unknown; error: unknown }, rpc = jest.fn()) {
     mockCreateRouteClient.mockResolvedValue({
       auth: {
         exchangeCodeForSession: jest.fn().mockResolvedValue(result),
         verifyOtp: jest.fn().mockResolvedValue(result),
       },
+      rpc,
     });
+    return rpc;
   }
 
   it('clears security_session after a successful code exchange', async () => {
@@ -160,6 +166,52 @@ describe('GET /api/auth/callback', () => {
     expect(response.headers.get('location')).toBe(
       'http://localhost:3000/en/auth/forgot-password?error=auth_callback_failed'
     );
+    consoleError.mockRestore();
+  });
+
+  it('does not call ensure_user_profile in public schema mode', async () => {
+    const rpc = clientWithExchange({ data: { user: { id: 'user-1' } }, error: null });
+
+    await GET(new NextRequest('http://localhost/api/auth/callback?code=abc&next=/en/dashboard'));
+
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('calls ensure_user_profile in non-public schema mode and sets profile cookie', async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_DB_SCHEMA = 'test_iablee';
+    const rpc = clientWithExchange(
+      { data: { user: { id: 'user-1' } }, error: null },
+      jest.fn().mockResolvedValue({ error: null })
+    );
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/auth/callback?code=abc&next=/en/dashboard')
+    );
+
+    expect(rpc).toHaveBeenCalledWith('ensure_user_profile');
+    const setCookie = response.headers.get('set-cookie') ?? '';
+    expect(setCookie).toContain('iablee_profile_ok=user-1');
+    expect(setCookie.toLowerCase()).toContain('httponly');
+    expect(setCookie.toLowerCase()).toContain('samesite=lax');
+  });
+
+  it('still succeeds when ensure_user_profile fails in non-public mode', async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_DB_SCHEMA = 'test_iablee';
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const rpc = clientWithExchange(
+      { data: { user: { id: 'user-1' } }, error: null },
+      jest.fn().mockResolvedValue({ error: { message: 'rpc failed' } })
+    );
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/auth/callback?code=abc&next=/en/dashboard')
+    );
+
+    expect(rpc).toHaveBeenCalledWith('ensure_user_profile');
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('http://localhost:3000/en/dashboard');
+    const setCookie = response.headers.get('set-cookie') ?? '';
+    expect(setCookie).not.toContain('iablee_profile_ok=');
     consoleError.mockRestore();
   });
 });

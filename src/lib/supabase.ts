@@ -1,4 +1,5 @@
 import { createBrowserClient } from '@supabase/ssr'
+import { getSupabaseClientDbOption } from '@/lib/supabase-schema'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -28,7 +29,10 @@ if (!isValidSupabaseUrl(supabaseUrl)) {
 
 export const supabase = createBrowserClient(
   supabaseUrl,
-  supabaseAnonKey
+  supabaseAnonKey,
+  {
+    db: getSupabaseClientDbOption(),
+  }
 )
 
 export type Database = {

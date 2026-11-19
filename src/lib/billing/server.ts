@@ -8,6 +8,7 @@ import { BillingService } from './billing.service';
 import { StripeAdapter, PayUAdapter, WompiAdapter } from './adapters';
 import type { PaymentGateway } from './gateway.interface';
 import { createAuthenticatedRouteClient } from '@/lib/supabase-server';
+import { getSupabaseClientDbOption } from '@/lib/supabase-schema';
 
 /**
  * Get the configured payment gateway based on environment.
@@ -94,7 +95,9 @@ async function createBillingService(): Promise<BillingService> {
     throw new Error('Supabase configuration is missing');
   }
 
-  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+  const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+    db: getSupabaseClientDbOption(),
+  });
   const gateway = getPaymentGateway();
   return new BillingService(supabase, gateway);
 }
