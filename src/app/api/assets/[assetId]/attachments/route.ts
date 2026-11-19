@@ -1,7 +1,13 @@
 
 import { NextResponse } from 'next/server';
 import { createAuthenticatedRouteClient } from '@/lib/supabase-server';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { canUploadFile } from '@/lib/subscription/limits';
+import { resolveVerifiedAttachmentSize } from '@/lib/storage/verify-attachment-size';
+import {
+    isStorageQuotaDbError,
+    storageLimitReachedResponse,
+} from '@/lib/subscription/storage-quota-response';
 
 export async function GET(
     request: Request,
@@ -45,18 +51,25 @@ export async function POST(
         return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    const incomingBytes = typeof file_size === 'number' ? file_size : Number(file_size) || 0;
-    const storageCheck = await canUploadFile(supabase, user.id, incomingBytes);
+    const clientSize =
+        typeof file_size === 'number' ? file_size : file_size != null ? Number(file_size) : null;
+
+    const verified = await resolveVerifiedAttachmentSize(
+        supabaseAdmin,
+        user.id,
+        file_path,
+        clientSize
+    );
+    if (!verified.ok) {
+        return NextResponse.json({ error: verified.error }, { status: verified.status });
+    }
+
+    const storageCheck = await canUploadFile(supabase, user.id, verified.size);
     if (!storageCheck.allowed) {
-        return NextResponse.json(
-            {
-                error: storageCheck.reason || 'storageLimitReached',
-                code: 'storageLimitReached',
-                limit: storageCheck.limit,
-                current: storageCheck.current,
-            },
-            { status: 413 }
-        );
+        return storageLimitReachedResponse(supabase, user.id, {
+            limit: storageCheck.limit,
+            current: storageCheck.current,
+        });
     }
 
     const { data, error } = await supabase
@@ -66,18 +79,17 @@ export async function POST(
             file_path,
             file_name,
             file_type,
-            file_size
+            file_size: verified.size,
         })
         .select()
         .single();
 
     if (error) {
-        const message = error.message || '';
-        if (message.includes('STORAGE_QUOTA')) {
-            return NextResponse.json(
-                { error: 'storageLimitReached', code: 'storageLimitReached' },
-                { status: 413 }
-            );
+        if (isStorageQuotaDbError(error.message)) {
+            return storageLimitReachedResponse(supabase, user.id, {
+                limit: storageCheck.limit,
+                current: storageCheck.current,
+            });
         }
         return NextResponse.json({ error: error.message }, { status: 500 });
     }

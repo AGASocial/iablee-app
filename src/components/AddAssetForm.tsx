@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 import type { Asset } from "@/models/asset";
 import { useAssetType } from "@/lib/assetTypes";
+import { apiErrorToMessage } from "@/lib/api-error-message";
 import { Loader2 } from "lucide-react";
 
 export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: { assetType: string, onSuccess: () => void, onCancel: () => void, asset?: Asset }) {
@@ -90,7 +91,7 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
           });
           if (!uploadRes.ok) {
             const err = await uploadRes.json();
-            throw new Error(err.error || 'Upload failed');
+            throw new Error(apiErrorToMessage(err, 'Upload failed'));
           }
           const uploadData = await uploadRes.json();
           fileUrls.push(uploadData.path);
@@ -127,7 +128,7 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
         });
         if (!res.ok) {
           const err = await res.json();
-          throw new Error(err.error || 'Failed to update asset');
+          throw new Error(apiErrorToMessage(err, 'Failed to update asset'));
         }
       } else {
         // Insert new asset
@@ -150,7 +151,7 @@ export default function AddAssetForm({ assetType, onSuccess, onCancel, asset }: 
         });
         if (!res.ok) {
           const err = await res.json();
-          throw new Error(err.message || err.error || 'Failed to create asset');
+          throw new Error(apiErrorToMessage(err, 'Failed to create asset'));
         }
       }
       onSuccess();

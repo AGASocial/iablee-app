@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { Download, Trash2, Upload, Eye, File, Image, Video, Music, FileText, X } from "lucide-react";
 import type { Asset, AssetAttachment } from "@/models/asset";
+import { apiErrorToMessage } from "@/lib/api-error-message";
 import { toast } from "sonner"; // Assuming sonner is used for toasts based on package.json
 
 interface AssetAttachmentsModalProps {
@@ -201,11 +202,7 @@ export default function AssetAttachmentsModal({
 
         if (!uploadRes.ok) {
           const err = await uploadRes.json();
-          const code =
-            err && typeof err === 'object' && typeof err.error === 'string'
-              ? err.error
-              : 'errorUploadingFiles';
-          throw new Error(code);
+          throw new Error(apiErrorToMessage(err, 'errorUploadingFiles'));
         }
 
         const uploadData = await uploadRes.json();
@@ -226,7 +223,8 @@ export default function AssetAttachmentsModal({
         });
 
         if (!res.ok) {
-          throw new Error('Failed to save attachment record');
+          const err = await res.json().catch(() => null);
+          throw new Error(apiErrorToMessage(err, 'Failed to save attachment record'));
         }
       }
 

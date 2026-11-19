@@ -4,8 +4,14 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 import {
   canCreateAsset,
   canCreateVideoAsset,
+  canUploadFile,
   isVideoAssetType,
 } from '@/lib/subscription/limits';
+import { buildVerifiedAttachmentRows } from '@/lib/storage/verify-attachment-size';
+import {
+  isStorageQuotaDbError,
+  storageLimitReachedResponse,
+} from '@/lib/subscription/storage-quota-response';
 import { parsePaginationParams, buildPaginatedResponse } from '@/lib/pagination';
 import { withTiming } from '@/lib/observability';
 
@@ -116,20 +122,47 @@ export const POST = withTiming('POST /api/assets', async (request: Request) => {
         }
 
         if (fileMetadata && Array.isArray(fileMetadata) && fileMetadata.length > 0) {
-            const attachmentRows = fileMetadata.map((fm: { path: string; fileName: string; fileType: string; fileSize: number }) => ({
-                asset_id: data.id,
-                file_path: fm.path,
-                file_name: fm.fileName,
-                file_type: fm.fileType,
-                file_size: fm.fileSize,
-            }));
+            const verified = await buildVerifiedAttachmentRows(
+                supabaseAdmin,
+                user.id,
+                data.id,
+                fileMetadata
+            );
+            if (!verified.ok) {
+                return NextResponse.json(
+                    { error: verified.error },
+                    { status: verified.status }
+                );
+            }
+
+            const storageCheck = await canUploadFile(
+                supabase,
+                user.id,
+                verified.totalBytes
+            );
+            if (!storageCheck.allowed) {
+                return storageLimitReachedResponse(supabase, user.id, {
+                    limit: storageCheck.limit,
+                    current: storageCheck.current,
+                });
+            }
 
             const { error: attachError } = await supabaseAdmin
                 .from('asset_attachments')
-                .insert(attachmentRows);
+                .insert(verified.rows);
 
             if (attachError) {
+                if (isStorageQuotaDbError(attachError.message)) {
+                    return storageLimitReachedResponse(supabase, user.id, {
+                        limit: storageCheck.limit,
+                        current: storageCheck.current,
+                    });
+                }
                 console.error('Error creating asset attachments:', attachError);
+                return NextResponse.json(
+                    { error: attachError.message || 'Failed to create attachments' },
+                    { status: 500 }
+                );
             }
         }
 

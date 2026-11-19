@@ -10,8 +10,9 @@
 --   year:  ≈ 10 × $1.48 = $14.80 → 1480 cents
 --
 -- Storage: Premium max_storage_mb remains 5000 (5 GB total per user). Adds a
--- BEFORE INSERT trigger on asset_attachments so quota cannot be bypassed via
--- direct inserts. Do not apply this migration from the agent; run after review.
+-- BEFORE INSERT OR UPDATE OF file_size trigger on asset_attachments so quota
+-- cannot be bypassed via direct inserts/updates. Do not apply this migration
+-- from the agent; run after review.
 -- Does not create or modify any one-time ("pago único") plan.
 
 -- a) Official Premium Wompi COP amount-in-cents (KAN-168)
@@ -46,7 +47,104 @@ SET features = COALESCE(features, '{}'::jsonb)
 updated_at = now()
 WHERE id IN ('plan_premium_month', 'plan_premium_year');
 
--- c) DB-side storage quota enforcement on attachment insert
+-- c) Entitlement helper — MUST stay in sync with TypeScript:
+--    src/lib/subscription/limits.ts → fetchActiveSubscription
+--    src/lib/billing/dunning.ts → hasPaidEntitlement / hasStatusBasedEntitlement
+--      ENTITLEMENT_GRACE_MS = 1 day, DUNNING_WINDOW_DAYS = 5
+-- Wompi: period end + grace / past_due dunning window.
+-- Stripe/PayU/others: status-based only (active|trialing); past_due is NOT entitled.
+CREATE OR REPLACE FUNCTION public.subscription_grants_paid_entitlement(
+  p_status text,
+  p_provider text,
+  p_current_period_end timestamptz,
+  p_now timestamptz DEFAULT now()
+)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SET search_path = public
+AS $$
+DECLARE
+  v_grace interval := interval '1 day';
+  v_dunning interval := interval '5 days';
+  v_provider text := lower(coalesce(p_provider, ''));
+BEGIN
+  IF v_provider = 'wompi' THEN
+    -- hasPaidEntitlement (dunning.ts)
+    IF p_status = 'past_due' THEN
+      IF p_current_period_end IS NULL THEN
+        RETURN true;
+      END IF;
+      RETURN p_now <= (p_current_period_end + v_dunning + v_grace);
+    END IF;
+
+    IF p_status NOT IN ('active', 'trialing') THEN
+      RETURN false;
+    END IF;
+
+    IF p_current_period_end IS NULL THEN
+      RETURN true;
+    END IF;
+
+    RETURN p_now <= (p_current_period_end + v_grace);
+  END IF;
+
+  -- hasStatusBasedEntitlement (dunning.ts) — Stripe / PayU / others
+  RETURN p_status IN ('active', 'trialing');
+END;
+$$;
+
+COMMENT ON FUNCTION public.subscription_grants_paid_entitlement(text, text, timestamptz, timestamptz) IS
+  'KAN-168: mirrors fetchActiveSubscription entitlement (limits.ts + dunning.ts). Keep in sync.';
+
+-- Resolve max_storage_mb the same way getSubscriptionLimits does:
+-- first entitled subscription (updated_at desc), else Free plan, else 50.
+CREATE OR REPLACE FUNCTION public.resolve_user_max_storage_mb(p_user_id uuid)
+RETURNS numeric
+LANGUAGE plpgsql
+STABLE
+SET search_path = public
+AS $$
+DECLARE
+  v_max_mb numeric;
+BEGIN
+  SELECT (bp.features->>'max_storage_mb')::numeric
+  INTO v_max_mb
+  FROM public.billing_subscriptions bs
+  INNER JOIN public.billing_plans bp ON bp.id = bs.plan_id
+  WHERE bs.user_id = p_user_id
+    AND bs.status IN ('active', 'past_due', 'trialing')
+    AND public.subscription_grants_paid_entitlement(
+      bs.status,
+      bs.provider,
+      bs.current_period_end,
+      now()
+    )
+  ORDER BY bs.updated_at DESC NULLS LAST
+  LIMIT 1;
+
+  IF v_max_mb IS NOT NULL AND v_max_mb > 0 THEN
+    RETURN v_max_mb;
+  END IF;
+
+  SELECT (features->>'max_storage_mb')::numeric
+  INTO v_max_mb
+  FROM public.billing_plans
+  WHERE id = 'plan_free'
+  LIMIT 1;
+
+  IF v_max_mb IS NULL OR v_max_mb <= 0 THEN
+    RETURN 50;
+  END IF;
+
+  RETURN v_max_mb;
+END;
+$$;
+
+COMMENT ON FUNCTION public.resolve_user_max_storage_mb(uuid) IS
+  'KAN-168: plan max_storage_mb via entitlement mirroring getSubscriptionLimits (limits.ts).';
+
+-- d) DB-side storage quota enforcement on attachment insert/update of file_size
 CREATE OR REPLACE FUNCTION public.enforce_user_storage_quota()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -58,6 +156,8 @@ DECLARE
   v_used_bytes bigint;
   v_max_mb numeric;
   v_max_bytes bigint;
+  v_projected bigint;
+  v_old_size bigint;
   v_new_size bigint;
 BEGIN
   SELECT da.user_id INTO v_user_id
@@ -69,40 +169,30 @@ BEGIN
       USING ERRCODE = 'P0001';
   END IF;
 
+  -- Serialize concurrent inserts/updates for the same user (MUST-FIX 2)
+  PERFORM pg_advisory_xact_lock(hashtextextended(v_user_id::text, 0));
+
   v_new_size := COALESCE(NEW.file_size, 0);
+  v_old_size := 0;
+  IF TG_OP = 'UPDATE' THEN
+    v_old_size := COALESCE(OLD.file_size, 0);
+    IF v_new_size <= v_old_size THEN
+      RETURN NEW;
+    END IF;
+  END IF;
 
   SELECT COALESCE(SUM(aa.file_size), 0) INTO v_used_bytes
   FROM public.asset_attachments aa
   INNER JOIN public.digital_assets da ON da.id = aa.asset_id
   WHERE da.user_id = v_user_id;
 
-  -- Prefer features from an entitled subscription plan; else Free plan; else 50 MB
-  SELECT COALESCE(
-    (
-      SELECT (bp.features->>'max_storage_mb')::numeric
-      FROM public.billing_subscriptions bs
-      INNER JOIN public.billing_plans bp ON bp.id = bs.plan_id
-      WHERE bs.user_id = v_user_id
-        AND bs.status IN ('active', 'past_due', 'trialing')
-      ORDER BY bs.updated_at DESC NULLS LAST
-      LIMIT 1
-    ),
-    (
-      SELECT (features->>'max_storage_mb')::numeric
-      FROM public.billing_plans
-      WHERE id = 'plan_free'
-      LIMIT 1
-    ),
-    50
-  ) INTO v_max_mb;
+  -- SUM includes the current row on UPDATE; subtract old size then add new
+  v_projected := v_used_bytes - v_old_size + v_new_size;
 
-  IF v_max_mb IS NULL OR v_max_mb <= 0 THEN
-    v_max_mb := 50;
-  END IF;
-
+  v_max_mb := public.resolve_user_max_storage_mb(v_user_id);
   v_max_bytes := (v_max_mb * 1024 * 1024)::bigint;
 
-  IF (v_used_bytes + v_new_size) > v_max_bytes THEN
+  IF v_projected > v_max_bytes THEN
     RAISE EXCEPTION 'STORAGE_QUOTA_EXCEEDED: used=% limit_mb=%',
       v_used_bytes, v_max_mb
       USING ERRCODE = 'P0001';
@@ -115,9 +205,9 @@ $$;
 DROP TRIGGER IF EXISTS trg_enforce_user_storage_quota ON public.asset_attachments;
 
 CREATE TRIGGER trg_enforce_user_storage_quota
-  BEFORE INSERT ON public.asset_attachments
+  BEFORE INSERT OR UPDATE OF file_size ON public.asset_attachments
   FOR EACH ROW
   EXECUTE FUNCTION public.enforce_user_storage_quota();
 
 COMMENT ON FUNCTION public.enforce_user_storage_quota() IS
-  'KAN-168: reject asset_attachments inserts that would exceed the user plan max_storage_mb (Premium = 5000 MB / 5 GB).';
+  'KAN-168: reject asset_attachments INSERT/UPDATE(file_size) that would exceed plan max_storage_mb (Premium = 5000 MB / 5 GB). Uses advisory lock + entitlement-aware plan resolution.';
